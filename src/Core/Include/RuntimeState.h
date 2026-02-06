@@ -1,36 +1,51 @@
 #pragma once
+
 #include <string>
 #include <map>
+#include <shared_mutex>
 #include <mutex>
 #include <any>
+#include <vector>
+#include <memory>
+#include "../../Modules/Include/ModuleManager.h"
+
+namespace Zeri::Engines {
+    class IContext; 
+}
 
 namespace Zeri::Core {
 
     class RuntimeState {
     public:
-        RuntimeState() = default;
+        RuntimeState(); // Constructor needed now
         ~RuntimeState() = default;
 
-        void SetVariable(const std::string& key, const std::any& value);
-        [[nodiscard]] std::any GetVariable(const std::string& key) const;
-        [[nodiscard]] bool HasVariable(const std::string& key) const;
+        void SetGlobalVariable(const std::string& key, const std::any& value);
+        [[nodiscard]] std::any GetGlobalVariable(const std::string& key) const;
+        [[nodiscard]] bool HasGlobalVariable(const std::string& key) const;
+
+        void PushContext(std::unique_ptr<Zeri::Engines::IContext> context);
+        void PopContext();
+        [[nodiscard]] Zeri::Engines::IContext* GetCurrentContext() const;
+        [[nodiscard]] bool HasContexts() const;
 
         void RequestExit();
         [[nodiscard]] bool IsExitRequested() const;
 
+        // --- Module Management ---
+        [[nodiscard]] Zeri::Modules::ModuleManager& GetModuleManager();
+
     private:
-        std::map<std::string, std::any> m_variables;
-        mutable std::mutex m_mutex;
+        std::map<std::string, std::any> m_globalVariables;
+        mutable std::shared_mutex m_varMutex;
+
+        std::vector<std::unique_ptr<Zeri::Engines::IContext>> m_contextStack;
+        mutable std::mutex m_stackMutex;
+
         bool m_exitRequested{ false };
+        mutable std::mutex m_lifecycleMutex;
+
+        Zeri::Modules::ModuleManager m_moduleManager;
     };
 
 }
-
-/*
-This header defines the `RuntimeState` class, which serves as the central shared state for the application.
-It uses `std::any` to store variables of arbitrary types, allowing flexibility for dynamically typed
-scripting languages or different internal data structures.
-Thread safety for variable access is managed via a `std::mutex`, ensuring that extensions or engines
-running in parallel (if supported in future versions) do not corrupt the state.
-The exit flag (`m_exitRequested`) provides a clean way to signal the main loop to terminate from anywhere within the system.
-*/

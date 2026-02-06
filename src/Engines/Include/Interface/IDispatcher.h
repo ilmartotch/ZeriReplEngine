@@ -7,6 +7,8 @@ namespace Zeri::Engines {
         Builtin,
         LuaScript,
         SystemProcess,
+        Expression,
+        ContextCommand,
         Unknown
     };
 

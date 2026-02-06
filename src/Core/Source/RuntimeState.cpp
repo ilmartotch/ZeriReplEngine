@@ -1,40 +1,67 @@
-#include "../Include/RuntimeState.h"
+#include "RuntimeState.h"
+#include "../../Engines/Include/Interface/IContext.h"
 
 namespace Zeri::Core {
 
-    void RuntimeState::SetVariable(const std::string& key, const std::any& value) {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_variables[key] = value;
+    RuntimeState::RuntimeState() {
+        // Start scanning immediately upon state initialization
+        m_moduleManager.StartBackgroundScan();
     }
 
-    std::any RuntimeState::GetVariable(const std::string& key) const {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        auto it = m_variables.find(key);
-        if (it != m_variables.end()) {
+    Zeri::Modules::ModuleManager& RuntimeState::GetModuleManager() {
+        return m_moduleManager;
+    }
+
+    void RuntimeState::SetGlobalVariable(const std::string& key, const std::any& value) {
+        std::unique_lock lock(m_varMutex);
+        m_globalVariables[key] = value;
+    }
+
+    std::any RuntimeState::GetGlobalVariable(const std::string& key) const {
+        std::shared_lock lock(m_varMutex);
+        auto it = m_globalVariables.find(key);
+        if (it != m_globalVariables.end()) {
             return it->second;
         }
         return {};
     }
 
-    bool RuntimeState::HasVariable(const std::string& key) const {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        return m_variables.contains(key);
+    bool RuntimeState::HasGlobalVariable(const std::string& key) const {
+        std::shared_lock lock(m_varMutex);
+        return m_globalVariables.contains(key);
+    }
+
+    void RuntimeState::PushContext(std::unique_ptr<Zeri::Engines::IContext> context) {
+        std::lock_guard<std::mutex> lock(m_stackMutex);
+        m_contextStack.push_back(std::move(context));
+    }
+
+    void RuntimeState::PopContext() {
+        std::lock_guard<std::mutex> lock(m_stackMutex);
+        if (m_contextStack.size() > 1) {
+            m_contextStack.pop_back();
+        }
+    }
+
+    Zeri::Engines::IContext* RuntimeState::GetCurrentContext() const {
+        std::lock_guard<std::mutex> lock(m_stackMutex);
+        if (m_contextStack.empty()) return nullptr;
+        return m_contextStack.back().get();
+    }
+
+    bool RuntimeState::HasContexts() const {
+        std::lock_guard<std::mutex> lock(m_stackMutex);
+        return !m_contextStack.empty();
     }
 
     void RuntimeState::RequestExit() {
+        std::lock_guard<std::mutex> lock(m_lifecycleMutex);
         m_exitRequested = true;
     }
 
     bool RuntimeState::IsExitRequested() const {
+        std::lock_guard<std::mutex> lock(m_lifecycleMutex);
         return m_exitRequested;
     }
 
 }
-
-/*
-Implementation of the RuntimeState methods.
-The usage of `std::lock_guard` in variable access methods guarantees that read/write operations
-are atomic with respect to the internal map. This prevents data races.
-The `GetVariable` method returns an empty `std::any` if the key is not found, forcing the caller
-to check validity.
-*/

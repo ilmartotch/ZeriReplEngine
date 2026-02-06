@@ -1,26 +1,33 @@
 #pragma once
+
 #include <string>
 #include <vector>
 #include <map>
 
 namespace Zeri::Engines {
 
+    enum class InputType {
+        Command,        // Starts with /
+        ContextSwitch,  // Starts with $
+        SystemOp,       // Starts with ! (future use)
+        Empty,
+        Unknown
+    };
+
     struct Command {
+        InputType type = InputType::Unknown;
         std::string rawInput;
-        std::string commandName;
+        std::string target; // The command name OR the context name
         std::vector<std::string> args;
-        std::map<std::string, std::string> flags;
+        std::map<std::string, std::string> flags; // --verbose -> "true"
 
         [[nodiscard]] bool empty() const {
-            return commandName.empty();
+            return type == InputType::Empty || target.empty();
+        }
+
+        [[nodiscard]] bool isContextCommand() const {
+            return type == InputType::Command;
         }
     };
 
 }
-
-/*
-Defines the `Command` structure, which acts as the Data Transfer Object (DTO) between the Parser
-and the rest of the system (Dispatcher, Executors).
-It decouples the raw string input from its semantic meaning, allowing different parsers to produce
-a standard command format that the Dispatcher can route without knowing the original syntax.
-*/

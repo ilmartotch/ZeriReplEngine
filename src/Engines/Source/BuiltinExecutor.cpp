@@ -6,19 +6,19 @@ namespace Zeri::Engines::Defaults {
         const Command& cmd, 
         Zeri::Core::RuntimeState& state
     ) {
-        if (cmd.commandName == "exit") {
+        if (cmd.target == "exit") {
             state.RequestExit();
             return "Exiting...";
         }
-        if (cmd.commandName == "help") {
+        if (cmd.target == "help") {
             return "Available commands: help, exit, set <key> <val>, get <key>, *.lua, !<command>";
         }
-        if (cmd.commandName == "set" && cmd.args.size() >= 2) {
-            state.SetVariable(cmd.args[0], cmd.args[1]);
+        if (cmd.target == "set" && cmd.args.size() >= 2) {
+            state.SetGlobalVariable(cmd.args[0], cmd.args[1]);
             return "Variable set: " + cmd.args[0];
         }
-        if (cmd.commandName == "get" && !cmd.args.empty()) {
-            auto val = state.GetVariable(cmd.args[0]);
+        if (cmd.target == "get" && !cmd.args.empty()) {
+            auto val = state.GetGlobalVariable(cmd.args[0]);
             if (val.has_value()) {
                 try {
                     return std::any_cast<std::string>(val);
