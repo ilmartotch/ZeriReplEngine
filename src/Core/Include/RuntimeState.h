@@ -10,7 +10,7 @@
 #include "../../Modules/Include/ModuleManager.h"
 
 namespace Zeri::Engines {
-    class IContext; 
+    class IContext;
 }
 
 namespace Zeri::Core {
@@ -23,6 +23,12 @@ namespace Zeri::Core {
         void SetGlobalVariable(const std::string& key, const std::any& value);
         [[nodiscard]] std::any GetGlobalVariable(const std::string& key) const;
         [[nodiscard]] bool HasGlobalVariable(const std::string& key) const;
+
+        void SetVariable(const std::string& key, const std::any& value);
+        [[nodiscard]] std::any GetVariable(const std::string& key) const;
+
+        void SetActiveContext(const std::string& contextName);
+        [[nodiscard]] std::string GetActiveContext() const;
 
         void PushContext(std::unique_ptr<Zeri::Engines::IContext> context);
         void PopContext();
@@ -38,6 +44,9 @@ namespace Zeri::Core {
     private:
         std::map<std::string, std::any> m_globalVariables;
         mutable std::shared_mutex m_varMutex;
+
+        std::string m_activeContext;
+        mutable std::shared_mutex m_activeContextMutex;
 
         std::vector<std::unique_ptr<Zeri::Engines::IContext>> m_contextStack;
         mutable std::mutex m_stackMutex;

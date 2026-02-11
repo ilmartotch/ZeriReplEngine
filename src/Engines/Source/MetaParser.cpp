@@ -34,7 +34,7 @@ namespace Zeri::Engines::Defaults {
              return std::unexpected(ParseError{ "No command specified.", 1 });
         }
 
-        cmd.target = tokens[0];
+        cmd.commandName = tokens[0];
 
         // 3. Argument Parsing
         for (size_t i = 1; i < tokens.size(); ++i) {

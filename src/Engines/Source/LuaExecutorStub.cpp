@@ -8,7 +8,7 @@ namespace Zeri::Engines::Defaults {
         Zeri::Core::RuntimeState&
     ) {
         // Future: Initialize lua state, bind RuntimeState, load file.
-        return "Lua Script Execution Stub for: " + cmd.target;
+        return "Lua Script Execution Stub for: " + cmd.commandName;
     }
 
     ExecutionType LuaExecutorStub::GetType() const {

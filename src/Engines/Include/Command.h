@@ -17,12 +17,12 @@ namespace Zeri::Engines {
     struct Command {
         InputType type = InputType::Unknown;
         std::string rawInput;
-        std::string target; // The command name OR the context name
+        std::string commandName;
         std::vector<std::string> args;
         std::map<std::string, std::string> flags; // --verbose -> "true"
 
         [[nodiscard]] bool empty() const {
-            return type == InputType::Empty || target.empty();
+            return type == InputType::Empty || commandName.empty();
         }
 
         [[nodiscard]] bool isContextCommand() const {

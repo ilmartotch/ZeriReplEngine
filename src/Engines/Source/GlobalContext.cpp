@@ -1,4 +1,5 @@
 #include "../Include/GlobalContext.h"
+#include "../Include/BuiltinExecutor.h"
 #include "../../Core/Include/RuntimeState.h"
 
 namespace Zeri::Engines::Defaults {
@@ -14,16 +15,19 @@ namespace Zeri::Engines::Defaults {
         Zeri::Core::RuntimeState& state,
         Zeri::Ui::ITerminal& terminal
     ) {
-        (void)args;
         (void)terminal;
-        if (commandName == "exit") {
-            state.RequestExit();
-            return "Shutdown requested.";
+
+        if (commandName == "exit" || commandName == "help" || commandName == "set") {
+            Command cmd;
+            cmd.type = Zeri::Engines::InputType::Command;
+            cmd.commandName = commandName;
+            cmd.args = args;
+            cmd.rawInput = "/" + commandName;
+
+            BuiltinExecutor builtin;
+            return builtin.Execute(cmd, state);
         }
-        if (commandName == "help") {
-            return "GLOBAL HELP: Use $context to switch, /command to execute.\n" 
-                   "Commands: /exit, /help, /back, /save";
-        }
+
         if (commandName == "back") {
             state.PopContext();
             return "Returned to previous context.";

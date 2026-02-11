@@ -17,8 +17,10 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(Threads REQUIRED)
 
 set(CORE_SOURCES
+    src/Core/Source/ContextManager.cpp
     src/Core/Source/RuntimeState.cpp
-    src/Core/Source/SystemGuard.cpp # Added
+    src/Core/Source/SystemGuard.cpp
+    src/Core/Source/VariableScope.cpp
 )
 
 set(MODULE_SOURCES
@@ -27,14 +29,16 @@ set(MODULE_SOURCES
 
 set(ENGINE_SOURCES
     src/Engines/Source/MetaParser.cpp
-    
+    src/Engines/Source/MetaLanguageParser.cpp
     src/Engines/Source/BuiltinExecutor.cpp
+    src/Engines/Source/ContextCommandExecutor.cpp
+    src/Engines/Source/ExpressionExecutor.cpp
     src/Engines/Source/LuaExecutorStub.cpp
     src/Engines/Source/GlobalContext.cpp
     src/Engines/Source/MathContext.cpp
     src/Engines/Source/ProcessBridge.cpp
     src/Engines/Source/SandboxContext.cpp
-    src/Engines/Source/SetupContext.cpp # Added
+    src/Engines/Source/SetupContext.cpp
 )
 
 set(EXTENSION_SOURCES

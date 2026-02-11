@@ -58,7 +58,7 @@ int main() {
 
         switch (cmd.type) {
             case Zeri::Engines::InputType::ContextSwitch: {
-                std::string ctxName = cmd.target;
+                std::string ctxName = cmd.commandName;
                 if (ctxName == "math") {
                     runtimeState.PushContext(std::make_unique<Zeri::Engines::Defaults::MathContext>());
                 } else if (ctxName == "sandbox") {
@@ -77,12 +77,12 @@ int main() {
             }
 
             case Zeri::Engines::InputType::Command: {
-                if (cmd.target == "back") {
+                if (cmd.commandName == "back") {
                     runtimeState.PopContext();
                     runtimeState.GetCurrentContext()->OnEnter(terminal);
                     continue;
                 }
-                auto outcome = currentCtx->HandleCommand(cmd.target, cmd.args, runtimeState, terminal);
+                auto outcome = currentCtx->HandleCommand(cmd.commandName, cmd.args, runtimeState, terminal);
                 HandleOutcome(outcome, terminal);
                 break;
             }

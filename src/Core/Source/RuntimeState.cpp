@@ -31,6 +31,24 @@ namespace Zeri::Core {
         return m_globalVariables.contains(key);
     }
 
+    void RuntimeState::SetVariable(const std::string& key, const std::any& value) {
+        SetGlobalVariable(key, value);
+    }
+
+    std::any RuntimeState::GetVariable(const std::string& key) const {
+        return GetGlobalVariable(key);
+    }
+
+    void RuntimeState::SetActiveContext(const std::string& contextName) {
+        std::unique_lock lock(m_activeContextMutex);
+        m_activeContext = contextName;
+    }
+
+    std::string RuntimeState::GetActiveContext() const {
+        std::shared_lock lock(m_activeContextMutex);
+        return m_activeContext;
+    }
+
     void RuntimeState::PushContext(std::unique_ptr<Zeri::Engines::IContext> context) {
         std::lock_guard<std::mutex> lock(m_stackMutex);
         m_contextStack.push_back(std::move(context));
