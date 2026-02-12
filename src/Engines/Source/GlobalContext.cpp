@@ -17,7 +17,7 @@ namespace Zeri::Engines::Defaults {
     ) {
         (void)terminal;
 
-        if (commandName == "exit" || commandName == "help" || commandName == "set") {
+        if (commandName == "exit" || commandName == "help" || commandName == "set" || commandName == "get") {
             Command cmd;
             cmd.type = Zeri::Engines::InputType::Command;
             cmd.commandName = commandName;
