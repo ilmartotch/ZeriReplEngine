@@ -12,20 +12,38 @@ namespace Zeri::Core {
 		Global
 	};
 
+	enum class ValueType {
+		String,
+		Integer,
+		Float,
+		Boolean,
+		Unknown
+	};
+
+	struct TypedValue {
+		std::any value;
+		ValueType type{ ValueType::Unknown };
+	};
+
 	class VariableScope {
 	public:
 		void Set(const std::string& key, const std::any& value, ScopeLevel level = ScopeLevel::Session);
+		void SetTyped(const std::string& key, const std::any& value, ValueType type, ScopeLevel level = ScopeLevel::Session);
+		bool SetTypedFromString(const std::string& key, const std::string& rawValue, ValueType type, ScopeLevel level = ScopeLevel::Session);
+
 		[[nodiscard]] std::optional<std::any> Get(const std::string& key) const;
+		[[nodiscard]] std::optional<TypedValue> GetTyped(const std::string& key) const;
 		[[nodiscard]] bool Exists(const std::string& key) const;
 		[[nodiscard]] ScopeLevel GetLevel(const std::string& key) const;
+		[[nodiscard]] ValueType GetType(const std::string& key) const;
 
 		bool PromoteToGlobal(const std::string& key);
 		void ClearLocal();
 
 	private:
-		std::map<std::string, std::any> m_local;
-		std::map<std::string, std::any> m_session;
-		std::map<std::string, std::any> m_global;
+		std::map<std::string, TypedValue> m_local;
+		std::map<std::string, TypedValue> m_session;
+		std::map<std::string, TypedValue> m_global;
 
 		[[nodiscard]] std::string NormalizeKey(const std::string& key) const;
 	};
