@@ -1,4 +1,5 @@
 #pragma once
+#include <memory>
 #include "IDispatcher.h"
 #include "../Command.h"
 #include "../ExecutionResult.h"
@@ -18,10 +19,11 @@ namespace Zeri::Engines {
         [[nodiscard]] virtual ExecutionType GetType() const = 0;
     };
 
+    using ExecutorPtr = std::unique_ptr<IExecutor>;
+
 }
 
 /*
-Interface `IExecutor`.
 Contract for any "Black Box" capable of executing code.
 The `Execute` method receives the `RuntimeState` reference, allowing the executor to modify the application's
 memory or context side-effects. `GetType` is used by the ExtensionManager to register the executor against

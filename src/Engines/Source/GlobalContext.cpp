@@ -1,6 +1,17 @@
 #include "../Include/GlobalContext.h"
 #include "../Include/BuiltinExecutor.h"
 #include "../../Core/Include/RuntimeState.h"
+#include <memory>
+
+namespace {
+    Zeri::Engines::ExecutionOutcome ExecuteWithExecutor(
+        Zeri::Engines::ExecutorPtr executor,
+        const Zeri::Engines::Command& cmd,
+        Zeri::Core::RuntimeState& state
+    ) {
+        return executor->Execute(cmd, state);
+    }
+}
 
 namespace Zeri::Engines::Defaults {
 
@@ -24,8 +35,7 @@ namespace Zeri::Engines::Defaults {
             cmd.args = args;
             cmd.rawInput = "/" + commandName;
 
-            BuiltinExecutor builtin;
-            return builtin.Execute(cmd, state);
+            return ExecuteWithExecutor(std::make_unique<BuiltinExecutor>(), cmd, state);
         }
 
         if (commandName == "back") {

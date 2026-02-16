@@ -140,7 +140,7 @@ namespace Zeri::Core {
         return m_activeContext;
     }
 
-    void RuntimeState::PushContext(std::unique_ptr<Zeri::Engines::IContext> context) {
+    void RuntimeState::PushContext(Zeri::Engines::ContextPtr context) {
         std::scoped_lock lock(m_stackMutex, m_varMutex);
         const auto newContextName = context ? context->GetName() : "unknown";
         const auto* current = m_contextStack.empty() ? nullptr : m_contextStack.back().get();

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <memory>
 #include "ExecutionResult.h"
 #include "../../Ui/Include/ITerminal.h"
 
@@ -28,11 +29,11 @@ namespace Zeri::Engines {
         [[nodiscard]] virtual bool IsGlobalCommand(const std::string& name) const = 0;
     };
 
+    using ContextPtr = std::unique_ptr<IContext>;
+
 }
 
 /*
-FILE DOCUMENTATION:
-Interface IContext.
 Each instance represents a specific logical engine (e.g., $math, $global).
 - HandleCommand: Process local commands.
 - OnEnter/OnExit: Lifecycle hooks for wizards or welcome messages.

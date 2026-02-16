@@ -9,10 +9,7 @@
 #include <memory>
 #include "ContextManager.h"
 #include "../../Modules/Include/ModuleManager.h"
-
-namespace Zeri::Engines {
-    class IContext;
-}
+#include "../../Engines/Include/Interface/IContext.h"
 
 namespace Zeri::Core {
 
@@ -46,7 +43,7 @@ namespace Zeri::Core {
         void SetActiveContext(const std::string& contextName);
         [[nodiscard]] std::string GetActiveContext() const;
 
-        void PushContext(std::unique_ptr<Zeri::Engines::IContext> context);
+        void PushContext(Zeri::Engines::ContextPtr context);
         void PopContext();
         [[nodiscard]] Zeri::Engines::IContext* GetCurrentContext() const;
         [[nodiscard]] bool HasContexts() const;
@@ -66,7 +63,7 @@ namespace Zeri::Core {
         std::string m_activeContext;
         mutable std::shared_mutex m_activeContextMutex;
 
-        std::vector<std::unique_ptr<Zeri::Engines::IContext>> m_contextStack;
+        std::vector<Zeri::Engines::ContextPtr> m_contextStack;
         Zeri::Core::ContextManager m_contextManager;
         mutable std::mutex m_stackMutex;
 
