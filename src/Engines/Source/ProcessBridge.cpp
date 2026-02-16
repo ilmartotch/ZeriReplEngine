@@ -1,6 +1,8 @@
 #include "../Include/ProcessBridge.h"
 #include <iostream>
 #include <array>
+#include <string>
+#include <string_view>
 
 namespace Zeri::Engines::Defaults {
 
@@ -11,6 +13,45 @@ namespace Zeri::Engines::Defaults {
     }
 
 #ifdef _WIN32
+    namespace {
+        std::wstring Utf8ToWide(std::string_view input) {
+            if (input.empty()) return {};
+            int size = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, input.data(), static_cast<int>(input.size()), nullptr, 0);
+            if (size <= 0) return {};
+            std::wstring wide(static_cast<size_t>(size), L'\0');
+            MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, input.data(), static_cast<int>(input.size()), wide.data(), size);
+            return wide;
+        }
+
+        std::wstring QuoteArgument(const std::wstring& arg) {
+            if (arg.find_first_of(L" \t\"") == std::wstring::npos) return arg;
+
+            std::wstring quoted;
+            quoted.push_back(L'"');
+
+            size_t backslashes = 0;
+            for (wchar_t ch : arg) {
+                if (ch == L'\\') {
+                    ++backslashes;
+                } else if (ch == L'"') {
+                    quoted.append(backslashes * 2 + 1, L'\\');
+                    quoted.push_back(L'"');
+                    backslashes = 0;
+                } else {
+                    if (backslashes > 0) {
+                        quoted.append(backslashes, L'\\');
+                        backslashes = 0;
+                    }
+                    quoted.push_back(ch);
+                }
+            }
+
+            if (backslashes > 0) quoted.append(backslashes * 2, L'\\');
+            quoted.push_back(L'"');
+            return quoted;
+        }
+    }
+
     ExecutionOutcome ProcessBridge::Run(const std::string& path, const std::vector<std::string>& args, OutputCallback onOutput) {
         SECURITY_ATTRIBUTES saAttr;
         saAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
@@ -27,19 +68,31 @@ namespace Zeri::Engines::Defaults {
         if (!SetHandleInformation(m_hStdInWrite, HANDLE_FLAG_INHERIT, 0)) return std::unexpected(ExecutionError{"OS_ERR", "Failed Pipe Info"});
 
         PROCESS_INFORMATION piProcInfo;
-        STARTUPINFOA siStartInfo;
+        STARTUPINFOW siStartInfo;
         ZeroMemory(&piProcInfo, sizeof(PROCESS_INFORMATION));
-        ZeroMemory(&siStartInfo, sizeof(STARTUPINFOA));
-        siStartInfo.cb = sizeof(STARTUPINFOA);
+        ZeroMemory(&siStartInfo, sizeof(STARTUPINFOW));
+        siStartInfo.cb = sizeof(STARTUPINFOW);
         siStartInfo.hStdError = hStdOutWrite;
         siStartInfo.hStdOutput = hStdOutWrite;
         siStartInfo.hStdInput = hStdInRead;
         siStartInfo.dwFlags |= STARTF_USESTDHANDLES;
 
-        std::string cmdLine = path;
-        for (const auto& arg : args) cmdLine += " " + arg;
+        std::wstring widePath = Utf8ToWide(path);
+        if (widePath.empty() && !path.empty()) {
+            return std::unexpected(ExecutionError{"UTF8_ERR", "Invalid UTF-8 executable path."});
+        }
 
-        if (!CreateProcessA(NULL, cmdLine.data(), NULL, NULL, TRUE, 0, NULL, NULL, &siStartInfo, &piProcInfo)) {
+        std::wstring cmdLine = QuoteArgument(widePath);
+        for (const auto& arg : args) {
+            std::wstring wideArg = Utf8ToWide(arg);
+            if (wideArg.empty() && !arg.empty()) {
+                return std::unexpected(ExecutionError{"UTF8_ERR", "Invalid UTF-8 argument."});
+            }
+            cmdLine.append(L" ");
+            cmdLine.append(QuoteArgument(wideArg));
+        }
+
+        if (!CreateProcessW(NULL, cmdLine.data(), NULL, NULL, TRUE, 0, NULL, NULL, &siStartInfo, &piProcInfo)) {
             return std::unexpected(ExecutionError{"LAUNCH_ERR", "Process creation failed."});
         }
 
@@ -95,10 +148,8 @@ namespace Zeri::Engines::Defaults {
 }
 
 /*
-FILE DOCUMENTATION:
-ProcessBridge Implementation.
 The Windows version uses Anonymous Pipes to capture the child process's streams.
-It launches the process using CreateProcessA and monitors the output in a dedicated thread.
+It launches the process using CreateProcessW and monitors the output in a dedicated thread.
 Sending input is performed by writing to the write-end of the input pipe.
 This architecture allows the REPL to remain responsive while the child process runs.
 */
