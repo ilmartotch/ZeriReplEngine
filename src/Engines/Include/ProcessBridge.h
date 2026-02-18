@@ -42,6 +42,7 @@ namespace Zeri::Engines::Defaults {
         HANDLE m_hChildProcess{ nullptr };
         HANDLE m_hStdInWrite{ nullptr };
         HANDLE m_hStdOutRead{ nullptr };
+        HANDLE m_jobObject{ nullptr };
 #else
         int m_childPid{ -1 };
         int m_stdinPipe[2]{ -1, -1 };
