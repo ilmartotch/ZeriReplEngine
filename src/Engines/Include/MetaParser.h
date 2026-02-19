@@ -3,6 +3,8 @@
 #include "Interface/IParser.h"
 #include <vector>
 #include <string>
+#include <string_view>
+#include <memory_resource>
 
 namespace Zeri::Engines::Defaults {
 
@@ -15,14 +17,12 @@ namespace Zeri::Engines::Defaults {
         [[nodiscard]] std::expected<Command, ParseError> Parse(const std::string& input) override;
 
     private:
-        [[nodiscard]] std::vector<std::string> Tokenize(const std::string& input);
+        [[nodiscard]] std::pmr::vector<std::pmr::string> Tokenize(std::string_view input, std::pmr::memory_resource* memory);
     };
 
 }
 
 /*
-FILE DOCUMENTATION:
-MetaParser Header.
 This parser implements a basic Finite State Machine (FSM) in its Tokenize method
 to handle arguments enclosed in double quotes (e.g., /echo "Hello World").
 It also inspects the first character of the input to determine the InputType

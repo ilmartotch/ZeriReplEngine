@@ -1,5 +1,8 @@
 #include "../Include/MetaParser.h"
 #include <sstream>
+#include <array>
+#include <memory_resource>
+#include <string_view>
 
 namespace Zeri::Engines::Defaults {
 
@@ -11,8 +14,9 @@ namespace Zeri::Engines::Defaults {
         Command cmd;
         cmd.rawInput = input;
 
-        // 1. Classification
-        char prefix = input[0];
+        // Classification
+        std::string_view inputView{ input };
+        char prefix = inputView.front();
         if (prefix == '/') {
             cmd.type = InputType::Command;
         } else if (prefix == '$') {
@@ -20,40 +24,38 @@ namespace Zeri::Engines::Defaults {
         } else if (prefix == '!') {
             cmd.type = InputType::SystemOp;
         } else {
-            // Defaulting to command if no prefix, or handle as error?
-            // For Zeri v0.3, we enforce prefixes strictly.
             return std::unexpected(ParseError{ "Invalid syntax. Start with '/' for commands or '$' for context.", 0 });
         }
 
-        // 2. Tokenization (Handling quotes)
-        // We skip the prefix char for the first token
-        std::string cleanInput = input.substr(1);
-        auto tokens = Tokenize(cleanInput);
+        // Tokenization (Handling quotes), skip the prefix char for the first token
+        std::array<std::byte, 4096> scratch{};
+        std::pmr::monotonic_buffer_resource tempResource{ scratch.data(), scratch.size() };
+
+        auto cleanInput = inputView.substr(1);
+        auto tokens = Tokenize(cleanInput, &tempResource);
 
         if (tokens.empty()) {
              return std::unexpected(ParseError{ "No command specified.", 1 });
         }
 
-        cmd.commandName = tokens[0];
+        cmd.commandName.assign(tokens[0].begin(), tokens[0].end());
 
-        // 3. Argument Parsing
+        // Argument Parsing
         for (size_t i = 1; i < tokens.size(); ++i) {
             const auto& token = tokens[i];
             if (token.starts_with("--")) {
-                // Flag detection
-                std::string flagName = token.substr(2);
-                cmd.flags[flagName] = "true";
+                cmd.flags.emplace(std::string(token.begin() + 2, token.end()), "true");
             } else {
-                cmd.args.push_back(token);
+                cmd.args.emplace_back(token.begin(), token.end());
             }
         }
 
         return cmd;
     }
 
-    std::vector<std::string> MetaParser::Tokenize(const std::string& input) {
-        std::vector<std::string> tokens;
-        std::string currentToken;
+    std::pmr::vector<std::pmr::string> MetaParser::Tokenize(std::string_view input, std::pmr::memory_resource* memory) {
+        std::pmr::vector<std::pmr::string> tokens{ memory };
+        std::pmr::string currentToken{ memory };
         bool inQuotes = false;
         bool escape = false;
 
@@ -76,7 +78,7 @@ namespace Zeri::Engines::Defaults {
 
             if (c == ' ' && !inQuotes) {
                 if (!currentToken.empty()) {
-                    tokens.push_back(currentToken);
+                    tokens.emplace_back(currentToken);
                     currentToken.clear();
                 }
             } else {
@@ -85,17 +87,15 @@ namespace Zeri::Engines::Defaults {
         }
 
         if (!currentToken.empty()) {
-            tokens.push_back(currentToken);
+            tokens.emplace_back(currentToken);
         }
 
         return tokens;
     }
 
-} 
+}
 
 /*
-FILE DOCUMENTATION:
-MetaParser Implementation.
 The Tokenize method uses a boolean state `inQuotes` to decide whether a space character
 should split the token or be included in it.
 It also supports basic escaping (`\"`) allowing quotes inside quoted strings.

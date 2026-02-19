@@ -3,7 +3,7 @@
 #include "Engines/Include/GlobalContext.h"
 #include "Engines/Include/MathContext.h"
 #include "Engines/Include/SandboxContext.h"
-#include "Engines/Include/SetupContext.h" // Added Setup
+#include "Engines/Include/SetupContext.h"
 #include "Ui/Include/TerminalUi.h"
 #include "Engines/Include/MetaParser.h"
 
@@ -21,22 +21,22 @@ namespace {
 }
 
 int main() {
-    // 1. Core Initialization
+    // Core Initialization
     Zeri::Core::RuntimeState runtimeState;
     Zeri::Ui::TerminalUi terminal;
     Zeri::Engines::Defaults::MetaParser parser;
 
-    // 2. System Health Check
+    // System Health Check
     auto health = Zeri::Core::SystemGuard::CheckEnvironment();
     if (!health.IsReady()) {
         Zeri::Core::SystemGuard::PrintGuide(health);
     }
 
-    // 3. Bootstrapping (Root Context)
+    // Bootstrapping (Root Context)
     runtimeState.PushContext(std::make_unique<Zeri::Engines::Defaults::GlobalContext>());
     runtimeState.GetCurrentContext()->OnEnter(terminal);
 
-    // 4. Main Loop
+    // Main Loop
     while (!runtimeState.IsExitRequested()) {
         auto* currentCtx = runtimeState.GetCurrentContext();
         std::string prompt = currentCtx ? (currentCtx->GetPrompt() + "> ") : "zeri> ";
@@ -98,8 +98,6 @@ int main() {
 }
 
 /*
-FILE DOCUMENTATION:
-Main Loop v0.3.6.
 Integrated SystemGuard for startup health checks.
 Added $setup context switch to trigger the configuration wizard.
 */
