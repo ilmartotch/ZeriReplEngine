@@ -76,7 +76,8 @@ namespace Zeri::Core {
 
 	std::string VariableScope::NormalizeKey(const std::string& key) const {
 		std::string normalized = key;
-		std::transform(normalized.begin(), normalized.end(), normalized.begin(), ::tolower);
+		std::transform(normalized.begin(), normalized.end(), normalized.begin(),
+			[](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
 		return normalized;
 	}
 

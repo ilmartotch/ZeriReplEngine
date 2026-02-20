@@ -15,6 +15,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(Threads REQUIRED)
+find_path(EXPRTK_INCLUDE_DIRS "exprtk.hpp")
 
 set(CORE_SOURCES
     src/Core/Source/ContextManager.cpp
@@ -69,6 +70,7 @@ target_include_directories(ZeriEngine PRIVATE
     src/Engines/Include
     src/Extensions/Include
     src/Ui/Include
+    ${EXPRTK_INCLUDE_DIRS}
 )
 
 target_link_libraries(ZeriEngine PRIVATE 
@@ -76,7 +78,7 @@ target_link_libraries(ZeriEngine PRIVATE
 )
 
 if(MSVC)
-    target_compile_options(ZeriEngine PRIVATE /W4 /WX /permissive-)
+    target_compile_options(ZeriEngine PRIVATE /W4 /WX /permissive- /bigobj)
 else()
     target_compile_options(ZeriEngine PRIVATE -Wall -Wextra -Werror -pedantic)
 endif()

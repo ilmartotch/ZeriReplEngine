@@ -24,8 +24,6 @@ namespace Zeri::Engines::Defaults {
         [[nodiscard]] ExecutionType GetType() const override;
 
     private:
-        std::map<std::string, std::function<double(std::vector<double>)>> m_functions;
-
         [[nodiscard]] ExecutionOutcome EvaluateFunction(const FunctionCall& fc) const;
         [[nodiscard]] ExecutionOutcome EvaluateState(const std::string& expression, Zeri::Core::RuntimeState& state) const;
     };
@@ -33,7 +31,6 @@ namespace Zeri::Engines::Defaults {
 }
 
 /*
-Header for `ExpressionExecutor`.
 Handles mathematical expression evaluation as per spec: "Expressions and Evaluation".
 Supports nested function invocation, function Invocation and Nesting.
 */

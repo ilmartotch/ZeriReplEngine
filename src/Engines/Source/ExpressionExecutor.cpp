@@ -3,14 +3,56 @@
 #include <cctype>
 #include <charconv>
 #include <iomanip>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <sstream>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
+
+// Disable only the MSVC C4702 (non-executable code) warning emitted by exprtk.hpp.
+// The warning would be promoted to an error by /WX; the rest of the warnings remain active.
+// https://learn.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-4-c4702?view=msvc-170
+
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable:4702)
+#endif
 #include <exprtk.hpp>
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 namespace {
+
+    class RuntimeFunctionAdapter final : public exprtk::ivararg_function<double> {
+    public:
+        using FunctionSignature = Zeri::Core::RuntimeState::FunctionSignature;
+
+        explicit RuntimeFunctionAdapter(FunctionSignature function)
+            : m_function(std::move(function)) {}
+
+        double operator()(const std::vector<double>& args) override {
+            return m_function(args);
+        }
+
+    private:
+        FunctionSignature m_function;
+    };
+
+    struct CachedExpression {
+        exprtk::symbol_table<double> symbolTable;
+        exprtk::expression<double> expression;
+        std::unordered_map<std::string, double> variableStorage;
+        std::unordered_set<std::string> identifiers;
+        std::vector<std::unique_ptr<RuntimeFunctionAdapter>> functionAdapters;
+        std::size_t functionRevision{ 0 };
+    };
+
+    std::unordered_map<std::string, CachedExpression> g_expressionCache;
+    std::mutex g_expressionCacheMutex;
 
     [[nodiscard]] std::string Trim(std::string_view text) {
         size_t start = 0;
@@ -235,13 +277,79 @@ namespace Zeri::Engines::Defaults {
             }
         }
 
-        std::unordered_map<std::string, double> variableStorage;
-        exprtk::symbol_table<double> symbolTable;
-        symbolTable.add_constants();
+        const auto functionRevision = state.GetFunctionRegistryRevision();
 
-        for (const auto& identifier : ExtractIdentifiers(expressionText)) {
+        std::unique_lock cacheLock(g_expressionCacheMutex);
+        auto cacheIt = g_expressionCache.find(expressionText);
+
+        if (cacheIt == g_expressionCache.end() || cacheIt->second.functionRevision != functionRevision) {
+            CachedExpression entry;
+            entry.identifiers = ExtractIdentifiers(expressionText);
+            entry.functionRevision = functionRevision;
+            entry.symbolTable.add_constants();
+
+            for (const auto& identifier : entry.identifiers) {
+                if (!state.HasVariable(identifier)) {
+                    return std::unexpected(ExecutionError{
+                        "MissingVariable",
+                        "Variabile non definita: " + identifier,
+                        identifier,
+                        { "Definisci la variabile nello scope corrente o promuovila" }
+                    });
+                }
+
+                const auto value = TryConvertToDouble(state.GetVariable(identifier));
+                if (!value.has_value()) {
+                    return std::unexpected(ExecutionError{
+                        "InvalidVariableType",
+                        "Variabile non numerica: " + identifier,
+                        identifier,
+                        { "Salva un valore numerico (int, float, double o stringa numerica)" }
+                    });
+                }
+
+                auto [it, inserted] = entry.variableStorage.emplace(identifier, *value);
+                entry.symbolTable.add_variable(it->first, it->second);
+            }
+
+            const auto functions = state.GetResolvedFunctions();
+            entry.functionAdapters.reserve(functions.size());
+            for (const auto& [name, fn] : functions) {
+                auto adapter = std::make_unique<RuntimeFunctionAdapter>(fn);
+                entry.symbolTable.add_function(name, *adapter);
+                entry.functionAdapters.push_back(std::move(adapter));
+            }
+
+            entry.expression.register_symbol_table(entry.symbolTable);
+
+            exprtk::parser<double> parser;
+            if (!parser.compile(expressionText, entry.expression)) {
+                std::vector<std::string> hints;
+                for (std::size_t i = 0; i < parser.error_count(); ++i) {
+                    const auto error = parser.get_error(i);
+                    hints.emplace_back(error.diagnostic);
+                }
+
+                return std::unexpected(ExecutionError{
+                    "ExpressionParseError",
+                    "Errore di compilazione ExprTk",
+                    expressionText,
+                    std::move(hints)
+                });
+            }
+
+            cacheIt = g_expressionCache.insert_or_assign(expressionText, std::move(entry)).first;
+        }
+
+        auto& cacheEntry = cacheIt->second;
+        for (const auto& identifier : cacheEntry.identifiers) {
             if (!state.HasVariable(identifier)) {
-                continue;
+                return std::unexpected(ExecutionError{
+                    "MissingVariable",
+                    "Variabile non definita: " + identifier,
+                    identifier,
+                    { "Definisci la variabile nello scope corrente o promuovila" }
+                });
             }
 
             const auto value = TryConvertToDouble(state.GetVariable(identifier));
@@ -254,30 +362,11 @@ namespace Zeri::Engines::Defaults {
                 });
             }
 
-            auto [it, inserted] = variableStorage.emplace(identifier, *value);
-            symbolTable.add_variable(it->first, it->second);
+            cacheEntry.variableStorage[identifier] = *value;
         }
 
-        exprtk::expression<double> compiledExpression;
-        compiledExpression.register_symbol_table(symbolTable);
-
-        exprtk::parser<double> parser;
-        if (!parser.compile(expressionText, compiledExpression)) {
-            std::vector<std::string> hints;
-            for (std::size_t i = 0; i < parser.error_count(); ++i) {
-                const auto error = parser.get_error(i);
-                hints.emplace_back(error.diagnostic);
-            }
-
-            return std::unexpected(ExecutionError{
-                "ExpressionParseError",
-                "Errore di compilazione ExprTk",
-                expressionText,
-                std::move(hints)
-            });
-        }
-
-        const double result = compiledExpression.value();
+        const double result = cacheEntry.expression.value();
+        cacheLock.unlock();
 
         if (isAssignment) {
             state.SetVariable(variableName, result);

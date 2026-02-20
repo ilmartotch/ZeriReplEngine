@@ -17,7 +17,6 @@ namespace Zeri::Engines::Defaults {
 }
 
 /*
-Header for `MetaLanguageParser`.
 Implements the full parsing logic for the meta-language specification.
 Handles symbol semantics: / (commands), -- (flags), () (functions), = (binding), # (comments).
 Enforces the rule: "Only one command is allowed per line" ("Command Model").
