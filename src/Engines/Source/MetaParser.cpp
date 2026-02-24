@@ -58,6 +58,23 @@ namespace Zeri::Engines::Defaults {
         std::pmr::string currentToken{ memory };
         bool inQuotes = false;
         bool escape = false;
+        bool hasVariablePrefix = false;
+
+        auto pushToken = [&]() {
+            if (currentToken.empty() && !hasVariablePrefix) {
+                return;
+            }
+
+            std::pmr::string token{ memory };
+            if (hasVariablePrefix) {
+                token += '@';
+            }
+            token += currentToken;
+
+            tokens.emplace_back(std::move(token));
+            currentToken.clear();
+            hasVariablePrefix = false;
+        };
 
         for (char c : input) {
             if (escape) {
@@ -71,24 +88,24 @@ namespace Zeri::Engines::Defaults {
                 continue;
             }
 
+            if (!inQuotes && currentToken.empty() && !hasVariablePrefix && c == '@') {
+                hasVariablePrefix = true;
+                continue;
+            }
+
             if (c == '"') {
                 inQuotes = !inQuotes;
                 continue;
             }
 
             if (c == ' ' && !inQuotes) {
-                if (!currentToken.empty()) {
-                    tokens.emplace_back(currentToken);
-                    currentToken.clear();
-                }
+                pushToken();
             } else {
                 currentToken += c;
             }
         }
 
-        if (!currentToken.empty()) {
-            tokens.emplace_back(currentToken);
-        }
+        pushToken();
 
         return tokens;
     }
