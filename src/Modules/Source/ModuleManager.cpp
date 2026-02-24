@@ -1,7 +1,7 @@
 #include "../Include/ModuleManager.h"
 #include <fstream>
 #include <iostream>
-#include <sstream>
+#include <nlohmann/json.hpp>
 
 namespace fs = std::filesystem;
 
@@ -15,12 +15,15 @@ namespace Zeri::Modules {
     }
 
     ModuleManager::~ModuleManager() {
-        // jthread handles join automatically
+        if (m_scanThread.joinable()) {
+            m_scanThread.request_stop();
+        }
     }
 
     void ModuleManager::StartBackgroundScan() {
         if (m_isScanning) return;
         m_isScanning = true;
+        // std::jthread passa automaticamente lo stop_token come primo argomento
         m_scanThread = std::jthread(&ModuleManager::ScanTask, this);
     }
 
@@ -38,9 +41,13 @@ namespace Zeri::Modules {
         return result;
     }
 
-    void ModuleManager::ScanTask() {
+    void ModuleManager::ScanTask(std::stop_token stoken) {
         try {
             for (const auto& entry : fs::directory_iterator(m_modulesRoot)) {
+                if (stoken.stop_requested()) {
+                    break;
+                }
+
                 if (entry.is_directory()) {
                     auto manifest = ParseManifest(entry.path());
                     if (manifest.IsValid()) {
@@ -49,14 +56,15 @@ namespace Zeri::Modules {
                     }
                 }
             }
+        } catch (const std::exception& e) {
+            // Error log
+            std::cerr << "[ModuleManager] Exception during background scan: " << e.what() << "\n";
         } catch (...) {
-            // Log error silently or to a file
+            std::cerr << "[ModuleManager] Unknown exception during background scan.\n";
         }
         m_isScanning = false;
     }
 
-    // --- Simple Manual JSON Parser (Fallback for MVP without external deps) ---
-    // In v0.4, replace this with nlohmann::json
     ModuleManifest ModuleManager::ParseManifest(const fs::path& dirPath) {
         fs::path manifestPath = dirPath / "manifest.json";
         ModuleManifest manifest;
@@ -66,44 +74,60 @@ namespace Zeri::Modules {
             // Auto-detect based on folder name if manifest is missing
             manifest.name = dirPath.filename().string();
             manifest.type = "unknown";
+            
+            try {
+                for (const auto& entry : fs::directory_iterator(dirPath)) {
+                    if (entry.is_regular_file()) {
+                        auto ext = entry.path().extension().string();
+                        if (ext == ".lua") {
+                            manifest.type = "lua";
+                            manifest.entryPoint = entry.path().filename().string();
+                            break;
+                        } else if (ext == ".dll" || ext == ".so" || ext == ".exe") {
+                            manifest.type = "cpp";
+                            manifest.entryPoint = entry.path().filename().string();
+                            break;
+                        }
+                    }
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "[ModuleManager] Auto-detect failed for " << dirPath << ": " << e.what() << "\n";
+            }
+            
             return manifest;
         }
 
-        std::ifstream file(manifestPath);
-        std::string line;
-        while (std::getline(file, line)) {
-            // Super basic key-value parser: "key": "value"
-            auto parseLine = [&](const std::string& key) -> std::string {
-                size_t keyPos = line.find("\"" + key + "\"");
-                if (keyPos != std::string::npos) {
-                    size_t colonPos = line.find(":", keyPos);
-                    size_t firstQuote = line.find("\"", colonPos + 1);
-                    size_t secondQuote = line.find("\"", firstQuote + 1);
-                    if (firstQuote != std::string::npos && secondQuote != std::string::npos) {
-                        return line.substr(firstQuote + 1, secondQuote - firstQuote - 1);
-                    }
-                }
-                return "";
-            };
+        try {
+            std::ifstream file(manifestPath);
+            if (!file.is_open()) {
+                manifest.name = dirPath.filename().string();
+                manifest.type = "unknown";
+                return manifest;
+            }
 
-            if (manifest.name.empty()) manifest.name = parseLine("name");
-            if (manifest.version.empty()) manifest.version = parseLine("version");
-            if (manifest.type.empty()) manifest.type = parseLine("type");
-            if (manifest.entryPoint.empty()) manifest.entryPoint = parseLine("entry_point");
+            nlohmann::json j = nlohmann::json::parse(file);
+
+            manifest.name = j.value("name", "");
+            manifest.version = j.value("version", "");
+            manifest.description = j.value("description", "");
+            manifest.type = j.value("type", "");
+            manifest.entryPoint = j.value("entry_point", "");
+
+        } catch (const nlohmann::json::exception& e) {
+            std::cerr << "[ModuleManager] Failed to parse manifest: "
+                      << manifestPath << " — " << e.what() << "\n";
         }
 
         if (manifest.name.empty()) manifest.name = dirPath.filename().string();
-        
+
         return manifest;
     }
 
-} // namespace Zeri::Modules
+}
 
 /*
-FILE DOCUMENTATION:
-ModuleManager Implementation.
 Uses std::filesystem to iterate over the 'modules' directory.
 The ScanTask runs on a separate thread. It locks the m_mutex ONLY when writing to the map,
 minimizing contention with the main thread (which reads the map).
-Includes a rudimentary JSON parser to avoid build dependency hell in this phase.
+Uses nlohmann::json for robust manifest parsing with proper error handling.
 */

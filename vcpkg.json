@@ -2,6 +2,7 @@
   "name": "zeriengine",
   "version": "0.1.0",
   "dependencies": [
-    "exprtk"
+    "exprtk",
+    "nlohmann-json"
   ]
 }

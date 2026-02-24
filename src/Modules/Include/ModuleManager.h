@@ -7,6 +7,7 @@
 #include <thread>
 #include <atomic>
 #include <filesystem>
+#include <stop_token>
 
 namespace Zeri::Modules {
 
@@ -23,7 +24,7 @@ namespace Zeri::Modules {
         [[nodiscard]] bool IsScanning() const;
 
     private:
-        void ScanTask();
+        void ScanTask(std::stop_token stoken);
         ModuleManifest ParseManifest(const std::filesystem::path& dirPath);
 
         std::map<std::string, ModuleManifest> m_modules;
@@ -37,8 +38,6 @@ namespace Zeri::Modules {
 }
 
 /*
-FILE DOCUMENTATION:
-ModuleManager Header.
 Manages the lifecycle of user modules.
 It uses std::jthread (C++20) which automatically joins on destruction, ensuring safe thread cleanup.
 The scanning logic is completely decoupled from the main thread to ensure fast startup times.
