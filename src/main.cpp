@@ -6,6 +6,8 @@
 #include "Engines/Include/SetupContext.h"
 #include "Ui/Include/TerminalUi.h"
 #include "Engines/Include/MetaParser.h"
+#include "Engines/Include/DefaultDispatcher.h"
+#include "Engines/Include/CachedDispatcher.h"
 
 #include <memory>
 #include <print>
@@ -25,6 +27,8 @@ int main() {
     Zeri::Core::RuntimeState runtimeState;
     Zeri::Ui::TerminalUi terminal;
     Zeri::Engines::Defaults::MetaParser parser;
+    Zeri::Engines::Defaults::DefaultDispatcher baseDispatcher;
+    Zeri::Engines::Defaults::CachedDispatcher dispatcher(parser, baseDispatcher);
 
     // System Health Check
     auto health = Zeri::Core::SystemGuard::CheckEnvironment();
@@ -47,13 +51,13 @@ int main() {
         std::string input = *inputOpt;
         if (input.empty()) continue;
 
-        auto parseResult = parser.Parse(input);
-        if (!parseResult.has_value()) {
-            terminal.WriteError(parseResult.error().message);
+        auto dispatchResult = dispatcher.Dispatch(input);
+        if (!dispatchResult.has_value()) {
+            terminal.WriteError(dispatchResult.error().message);
             continue;
         }
 
-        auto& cmd = parseResult.value();
+        auto& cmd = dispatchResult->command;
         if (cmd.empty()) continue;
 
         switch (cmd.type) {
