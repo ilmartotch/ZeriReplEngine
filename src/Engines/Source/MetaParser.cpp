@@ -3,19 +3,65 @@
 #include <array>
 #include <memory_resource>
 #include <string_view>
+#include <cctype>
+
+namespace {
+    [[nodiscard]] std::string_view Trim(std::string_view value) {
+        auto isSpace = [](unsigned char c) { return std::isspace(c) != 0; };
+        while (!value.empty() && isSpace(static_cast<unsigned char>(value.front()))) value.remove_prefix(1);
+        while (!value.empty() && isSpace(static_cast<unsigned char>(value.back()))) value.remove_suffix(1);
+        return value;
+    }
+
+    [[nodiscard]] std::optional<size_t> FindUnclosedQuotePosition(std::string_view input) {
+        bool inQuotes = false;
+        bool escape = false;
+        size_t lastQuotePos = 0;
+
+        for (size_t i = 0; i < input.size(); ++i) {
+            char c = input[i];
+
+            if (escape) {
+                escape = false;
+                continue;
+            }
+
+            if (c == '\\') {
+                escape = true;
+                continue;
+            }
+
+            if (c == '"') {
+                inQuotes = !inQuotes;
+                lastQuotePos = i;
+            }
+        }
+
+        if (inQuotes) return lastQuotePos;
+        return std::nullopt;
+    }
+}
 
 namespace Zeri::Engines::Defaults {
 
     std::expected<Command, ParseError> MetaParser::Parse(const std::string& input) {
-        if (input.empty()) {
+        std::string_view inputView{ input };
+        inputView = Trim(inputView);
+
+        if (inputView.empty()) {
             return Command{ .type = InputType::Empty };
         }
 
-        Command cmd;
-        cmd.rawInput = input;
+        if (auto unclosedQuotePos = FindUnclosedQuotePosition(inputView); unclosedQuotePos.has_value()) {
+            return std::unexpected(ParseError{
+                "Unclosed quoted string.",
+                *unclosedQuotePos
+            });
+        }
 
-        // Classification
-        std::string_view inputView{ input };
+        Command cmd;
+        cmd.rawInput = std::string(inputView);
+
         char prefix = inputView.front();
         if (prefix == '/') {
             cmd.type = InputType::Command;
@@ -24,10 +70,12 @@ namespace Zeri::Engines::Defaults {
         } else if (prefix == '!') {
             cmd.type = InputType::SystemOp;
         } else {
-            return std::unexpected(ParseError{ "Invalid syntax. Start with '/' for commands or '$' for context.", 0 });
+            return std::unexpected(ParseError{
+                "Invalid syntax. Input must start with '/', '$' or '!'.",
+                0
+            });
         }
 
-        // Tokenization (Handling quotes), skip the prefix char for the first token
         std::array<std::byte, 4096> scratch{};
         std::pmr::monotonic_buffer_resource tempResource{ scratch.data(), scratch.size() };
 
@@ -35,7 +83,7 @@ namespace Zeri::Engines::Defaults {
         auto tokens = Tokenize(cleanInput, &tempResource);
 
         if (tokens.empty()) {
-             return std::unexpected(ParseError{ "No command specified.", 1 });
+            return std::unexpected(ParseError{ "Missing command or context name after prefix.",1 });
         }
 
         cmd.commandName.assign(tokens[0].begin(), tokens[0].end());
@@ -106,15 +154,14 @@ namespace Zeri::Engines::Defaults {
         }
 
         pushToken();
-
         return tokens;
     }
 
 }
 
 /*
-The Tokenize method uses a boolean state `inQuotes` to decide whether a space character
-should split the token or be included in it.
-It also supports basic escaping (`\"`) allowing quotes inside quoted strings.
-The Parse method acts as the "Classifier", mapping the raw string to the specific Zeri semantics ($ vs /).
-*/
+ - Trim function: trims the input string_view in the Parse method to remove unwanted spaces.
+ - FindUnclosedQuotePosition function: Added to detect unclosed quotes in the input.
+ - Parse method: checks for unclosed quotes and trims the input. Improperly formatted inputs are rejected with an error.
+ - Tokenization and command parsing logic remains the same.
+ */

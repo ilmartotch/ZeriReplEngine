@@ -17,7 +17,7 @@ namespace Zeri::Engines::Defaults {
 
     void GlobalContext::OnEnter(Zeri::Ui::ITerminal& terminal) {
         (void)terminal;
-        terminal.WriteLine("Entering Global Context. Type $help for system info.");
+        terminal.WriteLine("Entering Global Context. Type /help for available commands.");
     }
 
     ExecutionOutcome GlobalContext::HandleCommand(
@@ -42,8 +42,8 @@ namespace Zeri::Engines::Defaults {
             state.PopContext();
             return "Returned to previous context.";
         }
-        
-        return std::unexpected(ExecutionError{"GlobalUnknown", "Unknown global command."});
+
+        return std::unexpected(ExecutionError{ "GlobalUnknown", "Unknown global command." });
     }
 
 }

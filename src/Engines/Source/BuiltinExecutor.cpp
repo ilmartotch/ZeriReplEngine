@@ -4,7 +4,7 @@
 namespace Zeri::Engines::Defaults {
 
     ExecutionOutcome BuiltinExecutor::Execute(
-        const Command& cmd, 
+        const Command& cmd,
         Zeri::Core::RuntimeState& state
     ) {
         if (cmd.commandName == "exit") {
@@ -13,7 +13,33 @@ namespace Zeri::Engines::Defaults {
         }
 
         if (cmd.commandName == "help") {
-            return "Available commands: help, exit, set <key> <val>, get <key>, *.lua, !<command>";
+            return
+                "Zeri REPL Help\n"
+                "================\n"
+                "Core syntax\n"
+                "  /<command>            Execute a command in current context\n"
+                "  $<context>            Switch context (global, math, sandbox, setup)\n"
+                "  <stage1> | <stage2>   Pipeline across stages\n"
+                "\n"
+                "Global built-in commands\n"
+                "  /help                 Show this help\n"
+                "  /exit                 Exit REPL\n"
+                "  /set <key> <value>    Store variable (session in global, local in non-global)\n"
+                "  /get <key>            Read variable from current scope\n"
+                "\n"
+                "Pipeline notes\n"
+                "  - Pipeline output is carried as text to the next stage.\n"
+                "  - Latest value is persisted in session key: __pipe_value\n"
+                "  - In math context, /calc can fallback to __pipe_value when args are missing.\n"
+                "\n"
+                "Examples\n"
+                "  $math\n"
+                "  /calc 2 + 3\n"
+                "  /logic and true false\n"
+                "  /set x 10\n"
+                "  /get x\n"
+                "  /set expr \"10 + 5\" | $math | /calc\n"
+                "  $sandbox | /list\n";
         }
 
         auto scope = Zeri::Core::RuntimeState::VariableScope::Session;
@@ -48,7 +74,7 @@ namespace Zeri::Engines::Defaults {
             return "Variable not found.";
         }
 
-        return std::unexpected(ExecutionError{"UnknownBuiltin", "Command not implemented yet."});
+        return std::unexpected(ExecutionError{ "UnknownBuiltin", "Command not implemented yet." });
     }
 
     ExecutionType BuiltinExecutor::GetType() const {

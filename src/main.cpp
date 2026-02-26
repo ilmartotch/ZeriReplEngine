@@ -11,13 +11,174 @@
 
 #include <memory>
 #include <print>
+#include <cctype>
+#include <string_view>
+#include <vector>
+#include <optional>
+#include <algorithm>
 
 namespace {
+    constexpr std::string_view kPipeValueKey = "__pipe_value";
+
+    void SavePipeValue(Zeri::Core::RuntimeState& state, const std::string& value) {
+        state.SetSessionVariable(std::string(kPipeValueKey), value);
+    }
+
+    [[nodiscard]] std::optional<std::string> LoadPipeValue(const Zeri::Core::RuntimeState& state) {
+        auto valueAny = state.GetSessionVariable(std::string(kPipeValueKey));
+        if (!valueAny.has_value()) {
+            return std::nullopt;
+        }
+
+        try {
+            return std::any_cast<std::string>(valueAny);
+        } catch (...) {
+            return std::nullopt;
+        }
+    }
+
+    [[nodiscard]] std::string_view Trim(std::string_view value) {
+        auto isSpace = [](unsigned char c) { return std::isspace(c) != 0; };
+        while (!value.empty() && isSpace(static_cast<unsigned char>(value.front()))) value.remove_prefix(1);
+        while (!value.empty() && isSpace(static_cast<unsigned char>(value.back()))) value.remove_suffix(1);
+        return value;
+    }
+
+    [[nodiscard]] std::vector<std::string> SplitPipeline(std::string_view input) {
+        std::vector<std::string> stages;
+        std::string current;
+        bool inQuotes = false;
+        bool escape = false;
+
+        for (char c : input) {
+            if (escape) {
+                current.push_back(c);
+                escape = false;
+                continue;
+            }
+
+            if (c == '\\') {
+                escape = true;
+                current.push_back(c);
+                continue;
+            }
+
+            if (c == '"') {
+                inQuotes = !inQuotes;
+                current.push_back(c);
+                continue;
+            }
+
+            if (c == '|' && !inQuotes) {
+                stages.emplace_back(std::string{ Trim(current) });
+                current.clear();
+                continue;
+            }
+
+            current.push_back(c);
+        }
+
+        stages.emplace_back(std::string{ Trim(current) });
+        return stages;
+    }
+
+    [[nodiscard]] std::unique_ptr<Zeri::Engines::IContext> BuildContext(const std::string& name) {
+        if (name == "math") return std::make_unique<Zeri::Engines::Defaults::MathContext>();
+        if (name == "sandbox") return std::make_unique<Zeri::Engines::Defaults::SandboxContext>();
+        if (name == "setup") return std::make_unique<Zeri::Engines::Defaults::SetupContext>();
+        return nullptr;
+    }
+
     void HandleOutcome(const Zeri::Engines::ExecutionOutcome& outcome, Zeri::Ui::TerminalUi& terminal) {
         if (outcome.has_value()) {
             if (!outcome->empty()) terminal.WriteLine(outcome.value());
         } else {
-            terminal.WriteError("[" + outcome.error().code + "] " + outcome.error().message);
+            terminal.WriteError(outcome.error().Format());
+        }
+    }
+
+    [[nodiscard]] bool SwitchContext(
+        const std::string& ctxName,
+        Zeri::Core::RuntimeState& runtimeState,
+        Zeri::Ui::TerminalUi& terminal
+    ) {
+        if (ctxName == "global") {
+            auto* current = runtimeState.GetCurrentContext();
+            while ( current && current->GetName() != "global") {
+                runtimeState.PopContext();
+            }
+
+            if (auto* current = runtimeState.GetCurrentContext()) {
+                current->OnEnter(terminal);
+                return true;
+            }
+
+            terminal.WriteError("Internal error: no active context available.");
+            return false;
+        }
+
+        auto nextContext = BuildContext(ctxName);
+        if (!nextContext) {
+            terminal.WriteError("Unknown context: " + ctxName);
+            return false;
+        }
+
+        runtimeState.PushContext(std::move(nextContext));
+        runtimeState.GetCurrentContext()->OnEnter(terminal);
+        return true;
+    }
+
+    [[nodiscard]] bool ExecuteStage(
+        const std::string& stageInput,
+        Zeri::Engines::Defaults::CachedDispatcher& dispatcher,
+        Zeri::Core::RuntimeState& runtimeState,
+        Zeri::Ui::TerminalUi& terminal,
+        std::optional<std::string>& pipedValue
+    ) {
+        if (!pipedValue.has_value()) {
+            pipedValue = LoadPipeValue(runtimeState);
+        }
+
+        auto dispatchResult = dispatcher.Dispatch(stageInput);
+        if (!dispatchResult.has_value()) {
+            const auto& err = dispatchResult.error();
+            std::string caret(err.position, ' ');
+            caret += '^';
+            terminal.WriteError(err.message + "\n  " + stageInput + "\n  " + caret);
+            return false;
+        }
+
+        auto& cmd = dispatchResult->command;
+        if (cmd.empty()) return true;
+
+        switch (cmd.type) {
+        case Zeri::Engines::InputType::ContextSwitch:
+            if (pipedValue.has_value()) {
+                SavePipeValue(runtimeState, *pipedValue);
+            }
+            return SwitchContext(cmd.commandName, runtimeState, terminal);
+
+        case Zeri::Engines::InputType::Command: {
+            auto* currentCtx = runtimeState.GetCurrentContext();
+            if (!currentCtx) return false;
+
+            std::vector<std::string> args = cmd.args;
+            if (pipedValue.has_value() && !pipedValue->empty()) {
+                args.push_back(*pipedValue);
+            }
+
+            auto outcome = currentCtx->HandleCommand(cmd.commandName, args, runtimeState, terminal);
+            HandleOutcome(outcome, terminal);
+
+            if (!outcome.has_value()) return false;
+
+            pipedValue = outcome.value();
+            SavePipeValue(runtimeState, *pipedValue);
+            return true;
+        }
+
+        default:
+            return false;
         }
     }
 }
@@ -44,56 +205,31 @@ int main() {
     while (!runtimeState.IsExitRequested()) {
         auto* currentCtx = runtimeState.GetCurrentContext();
         std::string prompt = currentCtx ? (currentCtx->GetPrompt() + "> ") : "zeri> ";
-        
+
         auto inputOpt = terminal.ReadLine(prompt);
         if (!inputOpt.has_value()) break;
 
         std::string input = *inputOpt;
-        if (input.empty()) continue;
+        if (Trim(input).empty()) continue;
 
-        auto dispatchResult = dispatcher.Dispatch(input);
-        if (!dispatchResult.has_value()) {
-            terminal.WriteError(dispatchResult.error().message);
+        auto stages = SplitPipeline(input);
+        if (std::ranges::any_of(stages, [](const std::string& s) { return Trim(s).empty(); })) {
+            terminal.WriteError("Invalid pipeline syntax: empty stage detected around '|'.")
+;
             continue;
         }
 
-        auto& cmd = dispatchResult->command;
-        if (cmd.empty()) continue;
-
-        switch (cmd.type) {
-            case Zeri::Engines::InputType::ContextSwitch: {
-                std::string ctxName = cmd.commandName;
-                if (ctxName == "math") {
-                    runtimeState.PushContext(std::make_unique<Zeri::Engines::Defaults::MathContext>());
-                } else if (ctxName == "sandbox") {
-                    runtimeState.PushContext(std::make_unique<Zeri::Engines::Defaults::SandboxContext>());
-                } else if (ctxName == "setup") {
-                    runtimeState.PushContext(std::make_unique<Zeri::Engines::Defaults::SetupContext>());
-                } else if (ctxName == "global") {
-                    terminal.WriteLine("Global context is the root.");
-                    continue;
-                } else {
-                    terminal.WriteError("Unknown context: " + ctxName);
-                    continue;
-                }
-                runtimeState.GetCurrentContext()->OnEnter(terminal);
+        std::optional<std::string> pipedValue;
+        bool ok = true;
+        for (const auto& stage : stages) {
+            if (!ExecuteStage(stage, dispatcher, runtimeState, terminal, pipedValue)) {
+                ok = false;
                 break;
             }
+        }
 
-            case Zeri::Engines::InputType::Command: {
-                if (cmd.commandName == "back") {
-                    runtimeState.PopContext();
-                    runtimeState.GetCurrentContext()->OnEnter(terminal);
-                    continue;
-                }
-                auto outcome = currentCtx->HandleCommand(cmd.commandName, cmd.args, runtimeState, terminal);
-                HandleOutcome(outcome, terminal);
-                break;
-            }
-
-            default:
-                terminal.WriteError("Syntax not supported.");
-                break;
+        if (!ok) {
+            continue;
         }
     }
 
@@ -102,6 +238,7 @@ int main() {
 }
 
 /*
-Integrated SystemGuard for startup health checks.
-Added $setup context switch to trigger the configuration wizard.
+Integrated enhanced pipeline processing with context-aware command execution.
+Improved error reporting and handling for pipeline stages.
+Refactored context switching logic for clarity and reliability.
 */
