@@ -23,8 +23,13 @@ namespace Zeri::Modules {
     void ModuleManager::StartBackgroundScan() {
         if (m_isScanning) return;
         m_isScanning = true;
-        // std::jthread passa automaticamente lo stop_token come primo argomento
-        m_scanThread = std::jthread(&ModuleManager::ScanTask, this);
+
+        // std::jthread automatically passes the stop_token as the first argument
+        // We avoid direct dispatch of the method pointer with stop_token with an explicit lambda
+
+        m_scanThread = std::jthread([this](std::stop_token stoken) {
+            ScanTask(stoken);
+        });
     }
 
     bool ModuleManager::IsScanning() const {

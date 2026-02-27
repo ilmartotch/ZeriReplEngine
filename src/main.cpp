@@ -104,12 +104,14 @@ namespace {
     ) {
         if (ctxName == "global") {
             auto* current = runtimeState.GetCurrentContext();
-            while ( current && current->GetName() != "global") {
+            while (current && current->GetName() != "global") {
                 runtimeState.PopContext();
+                current = runtimeState.GetCurrentContext();
             }
 
-            if (auto* current = runtimeState.GetCurrentContext()) {
-                current->OnEnter(terminal);
+            auto* activeContext = runtimeState.GetCurrentContext();
+            if (activeContext != nullptr) {
+                activeContext->OnEnter(terminal);
                 return true;
             }
 

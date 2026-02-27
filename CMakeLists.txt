@@ -16,6 +16,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(Threads REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
+find_package(replxx CONFIG REQUIRED)
 find_path(EXPRTK_INCLUDE_DIRS "exprtk.hpp")
 
 set(CORE_SOURCES
@@ -79,6 +80,7 @@ target_include_directories(ZeriEngine PRIVATE
 target_link_libraries(ZeriEngine PRIVATE 
     Threads::Threads
     nlohmann_json::nlohmann_json
+    replxx::replxx
 )
 
 if(MSVC)

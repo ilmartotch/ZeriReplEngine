@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "dependencies": [
     "exprtk",
-    "nlohmann-json"
+    "nlohmann-json",
+    "replxx"
   ]
 }
