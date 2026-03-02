@@ -18,25 +18,6 @@
 #include <algorithm>
 
 namespace {
-    constexpr std::string_view kPipeValueKey = "__pipe_value";
-
-    void SavePipeValue(Zeri::Core::RuntimeState& state, const std::string& value) {
-        state.SetSessionVariable(std::string(kPipeValueKey), value);
-    }
-
-    [[nodiscard]] std::optional<std::string> LoadPipeValue(const Zeri::Core::RuntimeState& state) {
-        auto valueAny = state.GetSessionVariable(std::string(kPipeValueKey));
-        if (!valueAny.has_value()) {
-            return std::nullopt;
-        }
-
-        try {
-            return std::any_cast<std::string>(valueAny);
-        } catch (...) {
-            return std::nullopt;
-        }
-    }
-
     [[nodiscard]] std::string_view Trim(std::string_view value) {
         auto isSpace = [](unsigned char c) { return std::isspace(c) != 0; };
         while (!value.empty() && isSpace(static_cast<unsigned char>(value.front()))) value.remove_prefix(1);
@@ -137,10 +118,6 @@ namespace {
         Zeri::Ui::TerminalUi& terminal,
         std::optional<std::string>& pipedValue
     ) {
-        if (!pipedValue.has_value()) {
-            pipedValue = LoadPipeValue(runtimeState);
-        }
-
         auto dispatchResult = dispatcher.Dispatch(stageInput);
         if (!dispatchResult.has_value()) {
             const auto& err = dispatchResult.error();
@@ -150,32 +127,24 @@ namespace {
             return false;
         }
 
-        auto& cmd = dispatchResult->command;
+        auto cmd = dispatchResult->command;
         if (cmd.empty()) return true;
+
+        cmd.pipeInput = pipedValue;
 
         switch (cmd.type) {
         case Zeri::Engines::InputType::ContextSwitch:
-            if (pipedValue.has_value()) {
-                SavePipeValue(runtimeState, *pipedValue);
-            }
             return SwitchContext(cmd.commandName, runtimeState, terminal);
 
         case Zeri::Engines::InputType::Command: {
             auto* currentCtx = runtimeState.GetCurrentContext();
             if (!currentCtx) return false;
 
-            std::vector<std::string> args = cmd.args;
-            if (pipedValue.has_value() && !pipedValue->empty()) {
-                args.push_back(*pipedValue);
-            }
-
-            auto outcome = currentCtx->HandleCommand(cmd.commandName, args, runtimeState, terminal);
+            auto outcome = currentCtx->HandleCommand(cmd, runtimeState, terminal);
             HandleOutcome(outcome, terminal);
 
             if (!outcome.has_value()) return false;
-
             pipedValue = outcome.value();
-            SavePipeValue(runtimeState, *pipedValue);
             return true;
         }
 

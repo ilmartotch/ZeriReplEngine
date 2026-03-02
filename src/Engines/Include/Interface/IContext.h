@@ -2,6 +2,7 @@
 
 #include <string>
 #include <memory>
+#include "../Command.h"
 #include "ExecutionResult.h"
 #include "../../Ui/Include/ITerminal.h"
 
@@ -20,8 +21,7 @@ namespace Zeri::Engines {
         [[nodiscard]] virtual std::string GetPrompt() const = 0;
 
         [[nodiscard]] virtual ExecutionOutcome HandleCommand(
-            const std::string& commandName,
-            const std::vector<std::string>& args,
+            const Command& cmd,
             Zeri::Core::RuntimeState& state,
             Zeri::Ui::ITerminal& terminal
         ) = 0;

@@ -13,8 +13,7 @@ namespace Zeri::Engines::Defaults {
         [[nodiscard]] std::string GetPrompt() const override { return "zeri::sandbox"; }
 
         [[nodiscard]] ExecutionOutcome HandleCommand(
-            const std::string& commandName,
-            const std::vector<std::string>& args,
+            const Command& cmd,
             Zeri::Core::RuntimeState& state,
             Zeri::Ui::ITerminal& terminal
         ) override;
@@ -30,8 +29,6 @@ namespace Zeri::Engines::Defaults {
 }
 
 /*
-FILE DOCUMENTATION:
-SandboxContext Header.
 This context allows users to manage their custom modules.
 It provides commands to list, build (via CMake), and run modules using the ProcessBridge.
 It acts as the development hub for the REPL.

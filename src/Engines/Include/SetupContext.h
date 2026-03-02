@@ -11,8 +11,7 @@ namespace Zeri::Engines::Defaults {
         [[nodiscard]] std::string GetPrompt() const override { return "zeri::setup"; }
 
         [[nodiscard]] ExecutionOutcome HandleCommand(
-            const std::string& commandName,
-            const std::vector<std::string>& args,
+            const Command& cmd,
             Zeri::Core::RuntimeState& state,
             Zeri::Ui::ITerminal& terminal
         ) override;
@@ -24,8 +23,6 @@ namespace Zeri::Engines::Defaults {
 }
 
 /*
-FILE DOCUMENTATION:
-SetupContext Header.
 This context is triggered for initial configuration.
 It guides the user through setting up preferences like the preferred IDE.
 */

@@ -11,8 +11,7 @@ namespace Zeri::Engines::Defaults {
         [[nodiscard]] std::string GetPrompt() const override { return "zeri::math"; }
 
         [[nodiscard]] ExecutionOutcome HandleCommand(
-            const std::string& commandName,
-            const std::vector<std::string>& args,
+            const Command& cmd,
             Zeri::Core::RuntimeState& state,
             Zeri::Ui::ITerminal& terminal
         ) override;

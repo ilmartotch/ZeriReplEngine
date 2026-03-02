@@ -30,14 +30,14 @@ namespace Zeri::Engines::Defaults {
     }
 
     ExecutionOutcome MathContext::HandleCommand(
-        const std::string& commandName,
-        const std::vector<std::string>& args,
+        const Command& cmd,
         Zeri::Core::RuntimeState& state,
         Zeri::Ui::ITerminal& terminal
     ) {
+        (void)state;
         (void)terminal;
 
-        if (commandName == "help") {
+        if (cmd.commandName == "help") {
             return
                 "Math Context Help\n"
                 "-----------------\n"
@@ -55,20 +55,14 @@ namespace Zeri::Engines::Defaults {
                 "  /set expr \"10 + 5\" | /calc\n";
         }
 
-        if (commandName == "calc") {
-            std::vector<std::string> effectiveArgs = args;
+        if (cmd.commandName == "calc") {
+            std::vector<std::string> effectiveArgs = cmd.args;
 
-            if (effectiveArgs.size() < 3) {
-                auto pipeAny = state.GetSessionVariable("__pipe_value");
-                if (pipeAny.has_value()) {
-                    try {
-                        const auto& pipeText = std::any_cast<std::string>(pipeAny);
-                        std::istringstream iss(pipeText);
-                        std::string a, op, b;
-                        if (iss >> a >> op >> b) {
-                            effectiveArgs = { a, op, b };
-                        }
-                    } catch (...) {}
+            if (effectiveArgs.size() < 3 && cmd.pipeInput.has_value()) {
+                std::istringstream iss(*cmd.pipeInput);
+                std::string a, op, b;
+                if (iss >> a >> op >> b) {
+                    effectiveArgs = { a, op, b };
                 }
             }
 
@@ -120,8 +114,8 @@ namespace Zeri::Engines::Defaults {
             return std::format("{} {} {} = {}", lhs, op, rhs, result);
         }
 
-        if (commandName == "logic") {
-            if (args.size() < 3) {
+        if (cmd.commandName == "logic") {
+            if (cmd.args.size() < 3) {
                 return std::unexpected(ExecutionError{
                     "LogicArgs",
                     "Invalid arguments for /logic.",
@@ -130,8 +124,8 @@ namespace Zeri::Engines::Defaults {
                 });
             }
 
-            auto lhs = ParseBool(args[1]);
-            auto rhs = ParseBool(args[2]);
+            auto lhs = ParseBool(cmd.args[1]);
+            auto rhs = ParseBool(cmd.args[2]);
 
             if (!lhs.has_value() || !rhs.has_value()) {
                 return std::unexpected(ExecutionError{
@@ -142,7 +136,7 @@ namespace Zeri::Engines::Defaults {
                 });
             }
 
-            const std::string& op = args[0];
+            const std::string& op = cmd.args[0];
             bool result = false;
 
             if (op == "and") result = *lhs && *rhs;
@@ -163,7 +157,7 @@ namespace Zeri::Engines::Defaults {
         return std::unexpected(ExecutionError{
             "MathErr",
             "Unknown math command.",
-            commandName,
+            cmd.commandName,
             { "Try /help, /calc or /logic." }
         });
     }
