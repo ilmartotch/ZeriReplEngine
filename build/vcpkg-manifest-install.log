@@ -1,0 +1,97 @@
+Recupero delle informazioni del Registro di sistema da https://github.com/microsoft/vcpkg (HEAD)...
+Rilevamento dell'hash del compilatore per la tripletta x86-windows...
+Compilatore trovato: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x86/cl.exe
+Rilevamento dell'hash del compilatore per la tripletta x64-windows...
+Compilatore trovato: C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.50.35717/bin/Hostx64/x64/cl.exe
+Verranno compilati e installati i pacchetti seguenti:
+    exprtk:x86-windows@0.0.3 -- git+https://github.com/microsoft/vcpkg@266380073f12896cc91ff1113f8e2ae7374be9d6
+    nlohmann-json:x86-windows@3.12.0 -- git+https://github.com/microsoft/vcpkg@060c829772d52e920fee94cf84755031c61e3b67
+    replxx:x86-windows@0.0.4#1 -- git+https://github.com/microsoft/vcpkg@5f699bd3a8850016bfd6ff8a8eb03d82fe83bdb9
+  * vcpkg-cmake:x64-windows@2024-04-23 -- git+https://github.com/microsoft/vcpkg@e74aa1e8f93278a8e71372f1fa08c3df420eb840
+  * vcpkg-cmake-config:x64-windows@2024-05-23 -- git+https://github.com/microsoft/vcpkg@97a63e4bc1a17422ffe4eff71da53b4b561a7841
+I pacchetti aggiuntivi (*) verranno modificati per completare l'operazione.
+Sono stati ripristinati 2 pacchetti da C:\Users\lucam\AppData\Local\vcpkg\archives in 316 ms. Usare --debug per visualizzare altri dettagli.
+Installing 1/5 exprtk:x86-windows@0.0.3...
+Creazione di exprtk:x86-windows@0.0.3...
+C:\Users\lucam\AppData\Local\vcpkg\registries\git-trees\266380073f12896cc91ff1113f8e2ae7374be9d6: info: installazione da un registro Git git+https://github.com/microsoft/vcpkg@266380073f12896cc91ff1113f8e2ae7374be9d6
+-- Using cached ArashPartow-exprtk-0.0.3.tar.gz
+-- Extracting source C:/Users/lucam/AppData/Local/vcpkg/downloads/ArashPartow-exprtk-0.0.3.tar.gz
+-- Using source at D:/progetti/REPL/project zeri/build/vcpkg_installed/vcpkg/blds/exprtk/src/0.0.3-ed23846d56.clean
+-- Installing: D:/progetti/REPL/project zeri/build/vcpkg_installed/vcpkg/pkgs/exprtk_x86-windows/share/exprtk/copyright
+-- Esecuzione della convalida post-compilazione
+Avvio dell'invio di exprtk:x86-windows@0.0.3 a 1 cache binarie in background
+Tempo trascorso per la gestione di exprtk:x86-windows: 556 ms
+ABI pacchetto exprtk:x86-windows: 97484db9999f029e0a768d2efffef6bf592ba5d594780f2d7edf0cd404e0d7b3
+Installing 2/5 vcpkg-cmake-config:x64-windows@2024-05-23...
+Tempo trascorso per la gestione di vcpkg-cmake-config:x64-windows: 32.2 ms
+ABI pacchetto vcpkg-cmake-config:x64-windows: 77452494cd07a1a3497378726e731453232eb8d896ac153767c31740171f807c
+Installing 3/5 vcpkg-cmake:x64-windows@2024-04-23...
+Tempo trascorso per la gestione di vcpkg-cmake:x64-windows: 31.2 ms
+ABI pacchetto vcpkg-cmake:x64-windows: a2d944fb553e48ccaa125bc87aeb14a98b279fbe3e61e45ad893657269b01273
+Installing 4/5 nlohmann-json:x86-windows@3.12.0...
+Creazione di nlohmann-json:x86-windows@3.12.0...
+C:\Users\lucam\AppData\Local\vcpkg\registries\git-trees\060c829772d52e920fee94cf84755031c61e3b67: info: installazione da un registro Git git+https://github.com/microsoft/vcpkg@060c829772d52e920fee94cf84755031c61e3b67
+-- Using cached nlohmann-json-v3.12.0.tar.gz
+-- Extracting source C:/Users/lucam/AppData/Local/vcpkg/downloads/nlohmann-json-v3.12.0.tar.gz
+-- Using source at D:/progetti/REPL/project zeri/build/vcpkg_installed/vcpkg/blds/nlohmann-json/src/v3.12.0-1a1eb3c42a.clean
+-- Configuring x86-windows
+-- Building x86-windows-dbg
+-- Building x86-windows-rel
+-- Fixing pkgconfig file: D:/progetti/REPL/project zeri/build/vcpkg_installed/vcpkg/pkgs/nlohmann-json_x86-windows/share/pkgconfig/nlohmann_json.pc
+-- Using cached msys2-mingw-w64-x86_64-pkgconf-1~2.4.3-1-any.pkg.tar.zst
+-- Using cached msys2-msys2-runtime-3.6.2-2-x86_64.pkg.tar.zst
+-- Using msys root at C:/Users/lucam/AppData/Local/vcpkg/downloads/tools/msys2/9272adbcaf19caef
+-- Fixing pkgconfig file: D:/progetti/REPL/project zeri/build/vcpkg_installed/vcpkg/pkgs/nlohmann-json_x86-windows/debug/share/pkgconfig/nlohmann_json.pc
+-- Installing: D:/progetti/REPL/project zeri/build/vcpkg_installed/vcpkg/pkgs/nlohmann-json_x86-windows/share/nlohmann-json/copyright
+-- Esecuzione della convalida post-compilazione
+Avvio dell'invio di nlohmann-json:x86-windows@3.12.0 a 1 cache binarie in background
+Tempo trascorso per la gestione di nlohmann-json:x86-windows: 7.8 s
+ABI pacchetto nlohmann-json:x86-windows: bcc087420227badb993f48df76cd57fad74d1fe99bad1bbf4068448b4a00037f
+L'invio di exprtk:x86-windows@0.0.3 a 1 cache binarie in 318 ms ├¿ stato completato
+Installing 5/5 replxx:x86-windows@0.0.4#1...
+Creazione di replxx:x86-windows@0.0.4#1...
+C:\Users\lucam\AppData\Local\vcpkg\registries\git-trees\5f699bd3a8850016bfd6ff8a8eb03d82fe83bdb9: info: installazione da un registro Git git+https://github.com/microsoft/vcpkg@5f699bd3a8850016bfd6ff8a8eb03d82fe83bdb9
+-- Using cached AmokHuginnsson-replxx-release-0.0.4.tar.gz
+-- Extracting source C:/Users/lucam/AppData/Local/vcpkg/downloads/AmokHuginnsson-replxx-release-0.0.4.tar.gz
+-- Using source at D:/progetti/REPL/project zeri/build/vcpkg_installed/vcpkg/blds/replxx/src/ease-0.0.4-bd2b0f241d.clean
+-- Configuring x86-windows-dbg
+-- Configuring x86-windows-rel
+-- Building x86-windows-dbg
+-- Building x86-windows-rel
+-- Installing: D:/progetti/REPL/project zeri/build/vcpkg_installed/vcpkg/pkgs/replxx_x86-windows/share/replxx/copyright
+-- Esecuzione della convalida post-compilazione
+Avvio dell'invio di replxx:x86-windows@0.0.4#1 a 1 cache binarie in background
+Tempo trascorso per la gestione di replxx:x86-windows: 33 s
+ABI pacchetto replxx:x86-windows: 83f1e30eb4cd7296dff08e8dce327f3f5b7a33f7fbe261ee2ea9f530b4e45c98
+I contenuti installati sono concessi in licenza dai rispettivi proprietari. Microsoft non ├¿ responsabile n├® concede alcuna licenza per i pacchetti di terzi.
+Alcuni pacchetti non dichiarano una licenza SPDX. Controlla il file 'copyright' per ogni pacchetto per ulteriori informazioni sulle relative licenze.
+I pacchetti installati in questa installazione di vcpkg dichiarano le licenze seguenti:
+MIT
+exprtk ├¿ di sola intestazione e pu├▓ essere usato da CMake tramite:
+
+  find_path(EXPRTK_INCLUDE_DIRS "exprtk.hpp")
+  target_include_directories(main PRIVATE ${EXPRTK_INCLUDE_DIRS})
+
+The package nlohmann-json provides CMake targets:
+
+    find_package(nlohmann_json CONFIG REQUIRED)
+    target_link_libraries(main PRIVATE nlohmann_json::nlohmann_json)
+
+The package nlohmann-json can be configured to not provide implicit conversions via a custom triplet file:
+
+    set(nlohmann-json_IMPLICIT_CONVERSIONS OFF)
+
+For more information, see the docs here:
+    
+    https://json.nlohmann.me/api/macros/json_use_implicit_conversions/
+
+replxx fornisce destinazioni CMake:
+
+  # generato in modo euristico e potrebbe non essere corretto
+  find_package(replxx CONFIG REQUIRED)
+  target_link_libraries(main PRIVATE replxx::replxx)
+
+L'invio di nlohmann-json:x86-windows@3.12.0 a 1 cache binarie in 121 ms ├¿ stato completato
+In attesa di 1 invii alla cache binaria rimanenti...
+L'invio di replxx:x86-windows@0.0.4#1 a 1 cache binarie in 1.5 s ├¿ stato completato (1/1)
+Tutte le installazioni richieste sono state completate in: 42 s

@@ -17,6 +17,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(Threads REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(replxx CONFIG REQUIRED)
+find_package(Lua REQUIRED)
 find_path(EXPRTK_INCLUDE_DIRS "exprtk.hpp")
 
 set(CORE_SOURCES
@@ -36,7 +37,7 @@ set(ENGINE_SOURCES
     src/Engines/Source/BuiltinExecutor.cpp
     src/Engines/Source/ContextCommandExecutor.cpp
     src/Engines/Source/ExpressionExecutor.cpp
-    src/Engines/Source/LuaExecutorStub.cpp
+    src/Engines/Source/LuaExecutor.cpp
     src/Engines/Source/GlobalContext.cpp
     src/Engines/Source/MathContext.cpp
     src/Engines/Source/ProcessBridge.cpp
@@ -75,12 +76,14 @@ target_include_directories(ZeriEngine PRIVATE
     src/Extensions/Include
     src/Ui/Include
     ${EXPRTK_INCLUDE_DIRS}
+    ${LUA_INCLUDE_DIR}
 )
 
 target_link_libraries(ZeriEngine PRIVATE 
     Threads::Threads
     nlohmann_json::nlohmann_json
     replxx::replxx
+    ${LUA_LIBRARIES}
 )
 
 if(MSVC)

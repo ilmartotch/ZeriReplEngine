@@ -10,14 +10,12 @@ namespace Zeri::Engines::Defaults {
     }
 
     ExecutionOutcome SetupContext::HandleCommand(
-        const std::string& commandName,
-        const std::vector<std::string>& args,
+        const Command& cmd,
         Zeri::Core::RuntimeState& state,
         Zeri::Ui::ITerminal& terminal
     ) {
-        (void)args;
 
-        if (commandName == "help") {
+        if (cmd.commandName == "help") {
             return
                 "Setup Context Help\n"
                 "------------------\n"
@@ -28,7 +26,7 @@ namespace Zeri::Engines::Defaults {
                 "  $setup | /start\n";
         }
 
-        if (commandName == "start") {
+        if (cmd.commandName == "start") {
             RunWizard(terminal, state);
             return "Configuration complete. Returning to global context.";
         }

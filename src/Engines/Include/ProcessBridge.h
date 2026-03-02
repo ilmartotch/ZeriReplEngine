@@ -17,7 +17,7 @@
 
 namespace Zeri::Engines::Defaults {
 
-    class ProcessBridge : public IProcessBridge {
+    class ProcessBridge : public Zeri::Engines::IProcessBridge {
     public:
         ProcessBridge();
         ~ProcessBridge() override;
@@ -26,6 +26,11 @@ namespace Zeri::Engines::Defaults {
             const std::string& executablePath,
             const std::vector<std::string>& args,
             OutputCallback onOutput
+        ) override;
+
+        [[nodiscard]] int ExecuteSync(
+            const std::string& executablePath,
+            const std::vector<std::string>& args
         ) override;
 
         void SendInput(const std::string& input) override;
@@ -53,8 +58,6 @@ namespace Zeri::Engines::Defaults {
 }
 
 /*
-FILE DOCUMENTATION:
-ProcessBridge Header.
 Uses platform-specific handles (HANDLE for Windows, file descriptors for POSIX).
 The m_running atomic flag and m_outputThread (jthread) ensure safe asynchronous output capture.
 */

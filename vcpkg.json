@@ -4,6 +4,7 @@
   "dependencies": [
     "exprtk",
     "nlohmann-json",
-    "replxx"
+    "replxx",
+    "lua"
   ]
 }

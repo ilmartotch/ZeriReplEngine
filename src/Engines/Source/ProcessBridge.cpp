@@ -1,9 +1,7 @@
 #include "../Include/ProcessBridge.h"
-#include <iostream>
 #include <array>
 #include <string>
 #include <string_view>
-#include <mutex>
 
 #ifndef _WIN32
     #include <cerrno>
@@ -24,227 +22,296 @@ namespace Zeri::Engines::Defaults {
 
 #ifdef _WIN32
     namespace {
-        std::wstring Utf8ToWide(std::string_view input) {
+        class ScopedHandle final {
+        public:
+            ScopedHandle() = default;
+            explicit ScopedHandle(HANDLE h) noexcept : m_handle(h) {}
+            ScopedHandle(const ScopedHandle&) = delete;
+            ScopedHandle& operator=(const ScopedHandle&) = delete;
+
+            ScopedHandle(ScopedHandle&& other) noexcept : m_handle(other.m_handle) {
+                other.m_handle = nullptr;
+            }
+
+            ScopedHandle& operator=(ScopedHandle&& other) noexcept {
+                if (this != &other) {
+                    Reset();
+                    m_handle = other.m_handle;
+                    other.m_handle = nullptr;
+                }
+                return *this;
+            }
+
+            ~ScopedHandle() { Reset(); }
+
+            [[nodiscard]] HANDLE Get() const noexcept { return m_handle; }
+
+            [[nodiscard]] HANDLE Release() noexcept {
+                HANDLE tmp = m_handle;
+                m_handle = nullptr;
+                return tmp;
+            }
+
+            void Reset(HANDLE h = nullptr) noexcept {
+                if (m_handle != nullptr) {
+                    CloseHandle(m_handle);
+                }
+                m_handle = h;
+            }
+
+        private:
+            HANDLE m_handle{ nullptr };
+        };
+
+        [[nodiscard]] std::wstring Utf8ToWide(std::string_view input) {
             if (input.empty()) return {};
-            int size = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, input.data(), static_cast<int>(input.size()), nullptr, 0);
+            const int size = MultiByteToWideChar(
+                CP_UTF8,
+                MB_ERR_INVALID_CHARS,
+                input.data(),
+                static_cast<int>(input.size()),
+                nullptr,
+                0
+            );
+
             if (size <= 0) return {};
-            std::wstring wide(static_cast<size_t>(size), L'\0');
-            MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, input.data(), static_cast<int>(input.size()), wide.data(), size);
-            return wide;
+
+            std::wstring out(static_cast<size_t>(size), L'\0');
+            const int written = MultiByteToWideChar(
+                CP_UTF8,
+                MB_ERR_INVALID_CHARS,
+                input.data(),
+                static_cast<int>(input.size()),
+                out.data(),
+                size
+            );
+
+            if (written <= 0) return {};
+            return out;
         }
 
-        std::wstring QuoteArgument(const std::wstring& arg) {
+        [[nodiscard]] std::wstring QuoteArgument(const std::wstring& arg) {
             if (arg.find_first_of(L" \t\"") == std::wstring::npos) return arg;
 
-            std::wstring quoted;
-            quoted.push_back(L'"');
+            std::wstring out;
+            out.push_back(L'"');
 
             size_t backslashes = 0;
             for (wchar_t ch : arg) {
                 if (ch == L'\\') {
                     ++backslashes;
                 } else if (ch == L'"') {
-                    quoted.append(backslashes * 2 + 1, L'\\');
-                    quoted.push_back(L'"');
+                    out.append(backslashes * 2 + 1, L'\\');
+                    out.push_back(L'"');
                     backslashes = 0;
                 } else {
                     if (backslashes > 0) {
-                        quoted.append(backslashes, L'\\');
+                        out.append(backslashes, L'\\');
                         backslashes = 0;
                     }
-                    quoted.push_back(ch);
+                    out.push_back(ch);
                 }
             }
 
-            if (backslashes > 0) quoted.append(backslashes * 2, L'\\');
-            quoted.push_back(L'"');
-            return quoted;
+            if (backslashes > 0) out.append(backslashes * 2, L'\\');
+            out.push_back(L'"');
+            return out;
         }
     }
 
     ExecutionOutcome ProcessBridge::Run(const std::string& path, const std::vector<std::string>& args, OutputCallback onOutput) {
-        SECURITY_ATTRIBUTES saAttr;
+        if (m_running) {
+            return std::unexpected(ExecutionError{ "STATE_ERR", "A process is already running." });
+        }
+
+        SECURITY_ATTRIBUTES saAttr{};
         saAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
         saAttr.bInheritHandle = TRUE;
-        saAttr.lpSecurityDescriptor = NULL;
+        saAttr.lpSecurityDescriptor = nullptr;
 
-        // Create Pipes for STDOUT and STDIN
-        HANDLE hStdOutWrite = nullptr;
-        if (!CreatePipe(&m_hStdOutRead, &hStdOutWrite, &saAttr, 0)) return std::unexpected(ExecutionError{"OS_ERR", "Failed Out Pipe"});
-        if (!SetHandleInformation(m_hStdOutRead, HANDLE_FLAG_INHERIT, 0)) {
-            CloseHandle(m_hStdOutRead);
-            CloseHandle(hStdOutWrite);
-            m_hStdOutRead = nullptr;
-            return std::unexpected(ExecutionError{"OS_ERR", "Failed Pipe Info"});
+        ScopedHandle outRead;
+        ScopedHandle outWrite;
+        ScopedHandle inRead;
+        ScopedHandle inWrite;
+        ScopedHandle job;
+
+        HANDLE outReadRaw = nullptr;
+        HANDLE outWriteRaw = nullptr;
+        if (!CreatePipe(&outReadRaw, &outWriteRaw, &saAttr, 0)) {
+            return std::unexpected(ExecutionError{ "OS_ERR", "Failed to create stdout pipe." });
+        }
+        outRead.Reset(outReadRaw);
+        outWrite.Reset(outWriteRaw);
+
+        if (!SetHandleInformation(outRead.Get(), HANDLE_FLAG_INHERIT, 0)) {
+            return std::unexpected(ExecutionError{ "OS_ERR", "Failed to set stdout pipe inheritance." });
         }
 
-        HANDLE hStdInRead = nullptr;
-        if (!CreatePipe(&hStdInRead, &m_hStdInWrite, &saAttr, 0)) {
-            CloseHandle(m_hStdOutRead);
-            CloseHandle(hStdOutWrite);
-            m_hStdOutRead = nullptr;
-            return std::unexpected(ExecutionError{"OS_ERR", "Failed In Pipe"});
+        HANDLE inReadRaw = nullptr;
+        HANDLE inWriteRaw = nullptr;
+        if (!CreatePipe(&inReadRaw, &inWriteRaw, &saAttr, 0)) {
+            return std::unexpected(ExecutionError{ "OS_ERR", "Failed to create stdin pipe." });
         }
-        if (!SetHandleInformation(m_hStdInWrite, HANDLE_FLAG_INHERIT, 0)) {
-            CloseHandle(m_hStdOutRead);
-            CloseHandle(hStdOutWrite);
-            CloseHandle(hStdInRead);
-            CloseHandle(m_hStdInWrite);
-            m_hStdOutRead = nullptr;
-            m_hStdInWrite = nullptr;
-            return std::unexpected(ExecutionError{"OS_ERR", "Failed Pipe Info"});
+        inRead.Reset(inReadRaw);
+        inWrite.Reset(inWriteRaw);
+
+        if (!SetHandleInformation(inWrite.Get(), HANDLE_FLAG_INHERIT, 0)) {
+            return std::unexpected(ExecutionError{ "OS_ERR", "Failed to set stdin pipe inheritance." });
         }
 
-        m_jobObject = CreateJobObjectW(nullptr, nullptr);
-        if (!m_jobObject) {
-            CloseHandle(m_hStdOutRead);
-            CloseHandle(hStdOutWrite);
-            CloseHandle(hStdInRead);
-            CloseHandle(m_hStdInWrite);
-            m_hStdOutRead = nullptr;
-            m_hStdInWrite = nullptr;
-            return std::unexpected(ExecutionError{"OS_ERR", "Failed to create Job Object"});
+        job.Reset(CreateJobObjectW(nullptr, nullptr));
+        if (!job.Get()) {
+            return std::unexpected(ExecutionError{ "OS_ERR", "Failed to create Job Object." });
         }
 
         JOBOBJECT_EXTENDED_LIMIT_INFORMATION jobInfo{};
         jobInfo.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-        if (!SetInformationJobObject(m_jobObject, JobObjectExtendedLimitInformation, &jobInfo, sizeof(jobInfo))) {
-            CloseHandle(m_jobObject);
-            m_jobObject = nullptr;
-            CloseHandle(m_hStdOutRead);
-            CloseHandle(hStdOutWrite);
-            CloseHandle(hStdInRead);
-            CloseHandle(m_hStdInWrite);
-            m_hStdOutRead = nullptr;
-            m_hStdInWrite = nullptr;
-            return std::unexpected(ExecutionError{"OS_ERR", "Failed to configure Job Object"});
+        if (!SetInformationJobObject(job.Get(), JobObjectExtendedLimitInformation, &jobInfo, sizeof(jobInfo))) {
+            return std::unexpected(ExecutionError{ "OS_ERR", "Failed to configure Job Object." });
         }
 
-        PROCESS_INFORMATION piProcInfo;
-        STARTUPINFOW siStartInfo;
-        ZeroMemory(&piProcInfo, sizeof(PROCESS_INFORMATION));
-        ZeroMemory(&siStartInfo, sizeof(STARTUPINFOW));
-        siStartInfo.cb = sizeof(STARTUPINFOW);
-        siStartInfo.hStdError = hStdOutWrite;
-        siStartInfo.hStdOutput = hStdOutWrite;
-        siStartInfo.hStdInput = hStdInRead;
-        siStartInfo.dwFlags |= STARTF_USESTDHANDLES;
-
-        std::wstring widePath = Utf8ToWide(path);
+        const std::wstring widePath = Utf8ToWide(path);
         if (widePath.empty() && !path.empty()) {
-            CloseHandle(m_jobObject);
-            m_jobObject = nullptr;
-            CloseHandle(m_hStdOutRead);
-            CloseHandle(hStdOutWrite);
-            CloseHandle(hStdInRead);
-            CloseHandle(m_hStdInWrite);
-            m_hStdOutRead = nullptr;
-            m_hStdInWrite = nullptr;
-            return std::unexpected(ExecutionError{"UTF8_ERR", "Invalid UTF-8 executable path."});
+            return std::unexpected(ExecutionError{ "UTF8_ERR", "Invalid UTF-8 executable path." });
         }
 
         std::wstring cmdLine = QuoteArgument(widePath);
         for (const auto& arg : args) {
-            std::wstring wideArg = Utf8ToWide(arg);
+            const std::wstring wideArg = Utf8ToWide(arg);
             if (wideArg.empty() && !arg.empty()) {
-                CloseHandle(m_jobObject);
-                m_jobObject = nullptr;
-                CloseHandle(m_hStdOutRead);
-                CloseHandle(hStdOutWrite);
-                CloseHandle(hStdInRead);
-                CloseHandle(m_hStdInWrite);
-                m_hStdOutRead = nullptr;
-                m_hStdInWrite = nullptr;
-                return std::unexpected(ExecutionError{"UTF8_ERR", "Invalid UTF-8 argument."});
+                return std::unexpected(ExecutionError{ "UTF8_ERR", "Invalid UTF-8 argument." });
             }
-            cmdLine.append(L" ");
+            cmdLine.push_back(L' ');
             cmdLine.append(QuoteArgument(wideArg));
         }
 
-        DWORD creationFlags = CREATE_SUSPENDED;
-        if (!CreateProcessW(NULL, cmdLine.data(), NULL, NULL, TRUE, creationFlags, NULL, NULL, &siStartInfo, &piProcInfo)) {
-            CloseHandle(m_jobObject);
-            m_jobObject = nullptr;
-            CloseHandle(m_hStdOutRead);
-            CloseHandle(hStdOutWrite);
-            CloseHandle(hStdInRead);
-            CloseHandle(m_hStdInWrite);
-            m_hStdOutRead = nullptr;
-            m_hStdInWrite = nullptr;
-            return std::unexpected(ExecutionError{"LAUNCH_ERR", "Process creation failed."});
+        STARTUPINFOW si{};
+        si.cb = sizeof(STARTUPINFOW);
+        si.hStdError = outWrite.Get();
+        si.hStdOutput = outWrite.Get();
+        si.hStdInput = inRead.Get();
+        si.dwFlags |= STARTF_USESTDHANDLES;
+
+        PROCESS_INFORMATION pi{};
+        if (!CreateProcessW(nullptr, cmdLine.data(), nullptr, nullptr, TRUE, CREATE_SUSPENDED, nullptr, nullptr, &si, &pi)) {
+            return std::unexpected(ExecutionError{ "LAUNCH_ERR", "CreateProcessW failed." });
         }
 
-        if (!AssignProcessToJobObject(m_jobObject, piProcInfo.hProcess)) {
-            TerminateProcess(piProcInfo.hProcess, 0);
-            CloseHandle(piProcInfo.hThread);
-            CloseHandle(piProcInfo.hProcess);
-            CloseHandle(m_jobObject);
-            m_jobObject = nullptr;
-            CloseHandle(m_hStdOutRead);
-            CloseHandle(hStdOutWrite);
-            CloseHandle(hStdInRead);
-            CloseHandle(m_hStdInWrite);
-            m_hStdOutRead = nullptr;
-            m_hStdInWrite = nullptr;
-            return std::unexpected(ExecutionError{"OS_ERR", "Failed to assign process to Job Object"});
+        ScopedHandle process(pi.hProcess);
+        ScopedHandle thread(pi.hThread);
+
+        if (!AssignProcessToJobObject(job.Get(), process.Get())) {
+            TerminateProcess(process.Get(), 1);
+            return std::unexpected(ExecutionError{ "OS_ERR", "Failed to assign process to Job Object." });
         }
 
-        ResumeThread(piProcInfo.hThread);
+        ResumeThread(thread.Get());
 
-        m_hChildProcess = piProcInfo.hProcess;
-        CloseHandle(piProcInfo.hThread);
-        CloseHandle(hStdOutWrite);
-        CloseHandle(hStdInRead);
+        m_hStdOutRead = outRead.Release();
+        m_hStdInWrite = inWrite.Release();
+        m_jobObject = job.Release();
+        m_hChildProcess = process.Release();
+
+        // Parent-side closures
+        outWrite.Reset();
+        inRead.Reset();
+        thread.Reset();
 
         m_running = true;
-        m_outputThread = std::jthread(&ProcessBridge::ReadOutputLoop, this, onOutput);
-
+        m_outputThread = std::jthread(&ProcessBridge::ReadOutputLoop, this, std::move(onOutput));
         return "Process started.";
     }
 
     void ProcessBridge::ReadOutputLoop(OutputCallback onOutput) {
-        std::array<char, 4096> buffer;
-        DWORD dwRead;
-        while (m_running && ReadFile(m_hStdOutRead, buffer.data(), static_cast<DWORD>(buffer.size() - 1), &dwRead, NULL) && dwRead > 0) {
-            buffer[dwRead] = '\0';
-            onOutput(std::string(buffer.data()));
+        std::array<char, 4096> buffer{};
+        DWORD read = 0;
+        while (m_running && m_hStdOutRead &&
+               ReadFile(m_hStdOutRead, buffer.data(), static_cast<DWORD>(buffer.size() - 1), &read, nullptr) &&
+               read > 0) {
+            buffer[read] = '\0';
+            onOutput(std::string(buffer.data(), buffer.data() + read));
         }
         m_running = false;
     }
 
     void ProcessBridge::SendInput(const std::string& input) {
         if (!m_running || !m_hStdInWrite) return;
-        DWORD dwWritten;
-        std::string payload = input + "\n";
-        WriteFile(m_hStdInWrite, payload.c_str(), static_cast<DWORD>(payload.length()), &dwWritten, NULL);
+        const std::string payload = input + "\n";
+        DWORD written = 0;
+        (void)WriteFile(m_hStdInWrite, payload.data(), static_cast<DWORD>(payload.size()), &written, nullptr);
     }
 
     void ProcessBridge::Terminate() {
         m_running = false;
+
+        if (m_hStdInWrite) { CloseHandle(m_hStdInWrite); m_hStdInWrite = nullptr; }
+        if (m_hStdOutRead) { CloseHandle(m_hStdOutRead); m_hStdOutRead = nullptr; }
+
         if (m_jobObject) {
-            CloseHandle(m_jobObject);
+            CloseHandle(m_jobObject); // kill-on-close
             m_jobObject = nullptr;
         }
+
         if (m_hChildProcess) {
             TerminateProcess(m_hChildProcess, 0);
             CloseHandle(m_hChildProcess);
             m_hChildProcess = nullptr;
         }
-        if (m_hStdInWrite) { CloseHandle(m_hStdInWrite); m_hStdInWrite = nullptr; }
-        if (m_hStdOutRead) { CloseHandle(m_hStdOutRead); m_hStdOutRead = nullptr; }
     }
+
 #else
     namespace {
+        class ScopedFd final {
+        public:
+            ScopedFd() = default;
+            explicit ScopedFd(int fd) noexcept : m_fd(fd) {}
+            ScopedFd(const ScopedFd&) = delete;
+            ScopedFd& operator=(const ScopedFd&) = delete;
+
+            ScopedFd(ScopedFd&& other) noexcept : m_fd(other.m_fd) {
+                other.m_fd = -1;
+            }
+
+            ScopedFd& operator=(ScopedFd&& other) noexcept {
+                if (this != &other) {
+                    Reset();
+                    m_fd = other.m_fd;
+                    other.m_fd = -1;
+                }
+                return *this;
+            }
+
+            ~ScopedFd() { Reset(); }
+
+            [[nodiscard]] int Get() const noexcept { return m_fd; }
+
+            [[nodiscard]] int Release() noexcept {
+                const int out = m_fd;
+                m_fd = -1;
+                return out;
+            }
+
+            void Reset(int fd = -1) noexcept {
+                if (m_fd != -1) {
+                    close(m_fd);
+                }
+                m_fd = fd;
+            }
+
+        private:
+            int m_fd{ -1 };
+        };
+
         void SigChldHandler(int) {
-            int savedErrno = errno;
+            const int saved = errno;
             while (waitpid(-1, nullptr, WNOHANG) > 0) {}
-            errno = savedErrno;
+            errno = saved;
         }
 
         void InstallSigChldHandler() {
-            static std::once_flag flag;
-            std::call_once(flag, []() {
-                struct sigaction sa {};
+            static std::once_flag once;
+            std::call_once(once, []() {
+                struct sigaction sa{};
                 sa.sa_handler = SigChldHandler;
                 sigemptyset(&sa.sa_mask);
                 sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
@@ -254,51 +321,50 @@ namespace Zeri::Engines::Defaults {
     }
 
     ExecutionOutcome ProcessBridge::Run(const std::string& path, const std::vector<std::string>& args, OutputCallback onOutput) {
-        if (pipe(m_stdoutPipe) != 0) return std::unexpected(ExecutionError{"OS_ERR", "Failed Out Pipe"});
-        if (pipe(m_stdinPipe) != 0) {
-            close(m_stdoutPipe[0]);
-            close(m_stdoutPipe[1]);
-            m_stdoutPipe[0] = -1;
-            m_stdoutPipe[1] = -1;
-            return std::unexpected(ExecutionError{"OS_ERR", "Failed In Pipe"});
+        if (m_running) {
+            return std::unexpected(ExecutionError{ "STATE_ERR", "A process is already running." });
         }
+
+        int outPipe[2]{ -1, -1 };
+        int inPipe[2]{ -1, -1 };
+
+        if (pipe(outPipe) != 0) {
+            return std::unexpected(ExecutionError{ "OS_ERR", "Failed to create stdout pipe." });
+        }
+        ScopedFd outRead(outPipe[0]);
+        ScopedFd outWrite(outPipe[1]);
+
+        if (pipe(inPipe) != 0) {
+            return std::unexpected(ExecutionError{ "OS_ERR", "Failed to create stdin pipe." });
+        }
+        ScopedFd inRead(inPipe[0]);
+        ScopedFd inWrite(inPipe[1]);
 
         InstallSigChldHandler();
 
-        pid_t pid = fork();
+        const pid_t pid = fork();
         if (pid < 0) {
-            close(m_stdoutPipe[0]);
-            close(m_stdoutPipe[1]);
-            close(m_stdinPipe[0]);
-            close(m_stdinPipe[1]);
-            m_stdoutPipe[0] = -1;
-            m_stdoutPipe[1] = -1;
-            m_stdinPipe[0] = -1;
-            m_stdinPipe[1] = -1;
-            return std::unexpected(ExecutionError{"OS_ERR", "fork() failed"});
+            return std::unexpected(ExecutionError{ "OS_ERR", "fork() failed." });
         }
 
         if (pid == 0) {
-            #ifdef __linux__
-                prctl(PR_SET_PDEATHSIG, SIGTERM);
-                if (getppid() == 1) _exit(1);
-            #endif
+#ifdef __linux__
+            prctl(PR_SET_PDEATHSIG, SIGTERM);
+            if (getppid() == 1) _exit(1);
+#endif
+            dup2(outWrite.Get(), STDOUT_FILENO);
+            dup2(outWrite.Get(), STDERR_FILENO);
+            dup2(inRead.Get(), STDIN_FILENO);
 
-            dup2(m_stdoutPipe[1], STDOUT_FILENO);
-            dup2(m_stdoutPipe[1], STDERR_FILENO);
-            dup2(m_stdinPipe[0], STDIN_FILENO);
-
-            close(m_stdoutPipe[0]);
-            close(m_stdoutPipe[1]);
-            close(m_stdinPipe[0]);
-            close(m_stdinPipe[1]);
+            outRead.Reset();
+            outWrite.Reset();
+            inRead.Reset();
+            inWrite.Reset();
 
             std::vector<char*> argv;
             argv.reserve(args.size() + 2);
             argv.push_back(const_cast<char*>(path.c_str()));
-            for (const auto& arg : args) {
-                argv.push_back(const_cast<char*>(arg.c_str()));
-            }
+            for (const auto& a : args) argv.push_back(const_cast<char*>(a.c_str()));
             argv.push_back(nullptr);
 
             execvp(path.c_str(), argv.data());
@@ -307,27 +373,34 @@ namespace Zeri::Engines::Defaults {
 
         m_childPid = static_cast<int>(pid);
 
-        close(m_stdoutPipe[1]);
-        close(m_stdinPipe[0]);
+        // parent keeps read stdout + write stdin
+        m_stdoutPipe[0] = outRead.Release();
         m_stdoutPipe[1] = -1;
         m_stdinPipe[0] = -1;
+        m_stdinPipe[1] = inWrite.Release();
+
+        outWrite.Reset();
+        inRead.Reset();
 
         m_running = true;
-        m_outputThread = std::jthread(&ProcessBridge::ReadOutputLoop, this, onOutput);
-
+        m_outputThread = std::jthread(&ProcessBridge::ReadOutputLoop, this, std::move(onOutput));
         return "Process started.";
     }
 
     void ProcessBridge::ReadOutputLoop(OutputCallback onOutput) {
         std::array<char, 4096> buffer{};
-        while (m_running) {
-            ssize_t bytesRead = read(m_stdoutPipe[0], buffer.data(), buffer.size() - 1);
+        while (m_running && m_stdoutPipe[0] != -1) {
+            const ssize_t bytesRead = read(m_stdoutPipe[0], buffer.data(), buffer.size() - 1);
             if (bytesRead > 0) {
                 buffer[static_cast<size_t>(bytesRead)] = '\0';
                 onOutput(std::string(buffer.data(), static_cast<size_t>(bytesRead)));
                 continue;
             }
-            if (bytesRead < 0 && errno == EINTR) continue;
+
+            if (bytesRead < 0 && errno == EINTR) {
+                continue;
+            }
+
             break;
         }
         m_running = false;
@@ -335,11 +408,13 @@ namespace Zeri::Engines::Defaults {
 
     void ProcessBridge::SendInput(const std::string& input) {
         if (!m_running || m_stdinPipe[1] == -1) return;
-        std::string payload = input + "\n";
-        const char* data = payload.c_str();
+
+        const std::string payload = input + "\n";
+        const char* data = payload.data();
         size_t remaining = payload.size();
+
         while (remaining > 0) {
-            ssize_t written = write(m_stdinPipe[1], data, remaining);
+            const ssize_t written = write(m_stdinPipe[1], data, remaining);
             if (written > 0) {
                 data += written;
                 remaining -= static_cast<size_t>(written);
@@ -352,15 +427,89 @@ namespace Zeri::Engines::Defaults {
 
     void ProcessBridge::Terminate() {
         m_running = false;
-        if (m_childPid > 0) {
-            kill(m_childPid, SIGTERM);
-            waitpid(m_childPid, nullptr, WNOHANG);
-            m_childPid = -1;
-        }
+
         if (m_stdinPipe[1] != -1) { close(m_stdinPipe[1]); m_stdinPipe[1] = -1; }
         if (m_stdoutPipe[0] != -1) { close(m_stdoutPipe[0]); m_stdoutPipe[0] = -1; }
+
+        if (m_childPid > 0) {
+            kill(m_childPid, SIGTERM);
+            (void)waitpid(m_childPid, nullptr, 0);
+            m_childPid = -1;
+        }
     }
 #endif
+
+    int ProcessBridge::ExecuteSync(
+        const std::string& executablePath,
+        const std::vector<std::string>& args
+    ) {
+#ifdef _WIN32
+        // Build command line string
+        std::string cmdLine = "\"" + executablePath + "\"";
+        for (const auto& arg : args) {
+            cmdLine += " \"" + arg + "\"";
+        }
+
+        STARTUPINFOA si{};
+        PROCESS_INFORMATION pi{};
+        si.cb = sizeof(si);
+        si.dwFlags = STARTF_USESHOWWINDOW;
+        si.wShowWindow = SW_HIDE;
+
+        if (!CreateProcessA(
+            nullptr,
+            cmdLine.data(),
+            nullptr,
+            nullptr,
+            FALSE,
+            CREATE_NO_WINDOW,
+            nullptr,
+            nullptr,
+            &si,
+            &pi
+        )) {
+            return -1;
+        }
+
+        WaitForSingleObject(pi.hProcess, INFINITE);
+
+        DWORD exitCode = 0;
+        GetExitCodeProcess(pi.hProcess, &exitCode);
+
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+
+        return static_cast<int>(exitCode);
+#else
+        pid_t pid = fork();
+        if (pid == -1) {
+            return -1;
+        }
+
+        if (pid == 0) {
+            // Child process
+            std::vector<char*> argv;
+            argv.push_back(const_cast<char*>(executablePath.c_str()));
+            for (const auto& arg : args) {
+                argv.push_back(const_cast<char*>(arg.c_str()));
+            }
+            argv.push_back(nullptr);
+
+            execvp(executablePath.c_str(), argv.data());
+            _exit(127); // execvp failed
+        }
+
+        // Parent process
+        int status = 0;
+        waitpid(pid, &status, 0);
+
+        if (WIFEXITED(status)) {
+            return WEXITSTATUS(status);
+        }
+
+        return -1;
+#endif
+}
 
 }
 

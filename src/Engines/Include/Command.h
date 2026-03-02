@@ -32,9 +32,10 @@ namespace Zeri::Engines {
         std::string rawInput;
         std::string commandName;
         std::vector<std::string> args;
-        std::map<std::string, std::string> flags; // --verbose -> "true"
+        std::map<std::string, std::string> flags;
         std::optional<std::pair<std::string, std::string>> assignment;
         std::optional<FunctionCall> functionCall;
+        std::optional<std::string> pipeInput;
 
         [[nodiscard]] bool empty() const {
             return type == InputType::Empty || commandName.empty();
