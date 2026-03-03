@@ -4,7 +4,7 @@
 #include "Engines/Include/MathContext.h"
 #include "Engines/Include/SandboxContext.h"
 #include "Engines/Include/SetupContext.h"
-#include "Ui/Include/TerminalUi.h"
+#include "Ui/Include/FtxUiTerminal.h"
 #include "Engines/Include/MetaParser.h"
 #include "Engines/Include/DefaultDispatcher.h"
 #include "Engines/Include/CachedDispatcher.h"
@@ -70,7 +70,7 @@ namespace {
         return nullptr;
     }
 
-    void HandleOutcome(const Zeri::Engines::ExecutionOutcome& outcome, Zeri::Ui::TerminalUi& terminal) {
+    void HandleOutcome(const Zeri::Engines::ExecutionOutcome& outcome, Zeri::Ui::ITerminal& terminal) {
         if (outcome.has_value()) {
             if (!outcome->empty()) terminal.WriteLine(outcome.value());
         } else {
@@ -81,7 +81,7 @@ namespace {
     [[nodiscard]] bool SwitchContext(
         const std::string& ctxName,
         Zeri::Core::RuntimeState& runtimeState,
-        Zeri::Ui::TerminalUi& terminal
+        Zeri::Ui::ITerminal& terminal
     ) {
         if (ctxName == "global") {
             auto* current = runtimeState.GetCurrentContext();
@@ -115,7 +115,7 @@ namespace {
         const std::string& stageInput,
         Zeri::Engines::Defaults::CachedDispatcher& dispatcher,
         Zeri::Core::RuntimeState& runtimeState,
-        Zeri::Ui::TerminalUi& terminal,
+        Zeri::Ui::ITerminal& terminal,
         std::optional<std::string>& pipedValue
     ) {
         auto dispatchResult = dispatcher.Dispatch(stageInput);
@@ -157,7 +157,7 @@ namespace {
 int main() {
     // Core Initialization
     Zeri::Core::RuntimeState runtimeState;
-    Zeri::Ui::TerminalUi terminal;
+    Zeri::Ui::FtxUiTerminal terminal;
     Zeri::Engines::Defaults::MetaParser parser;
     Zeri::Engines::Defaults::DefaultDispatcher baseDispatcher;
     Zeri::Engines::Defaults::CachedDispatcher dispatcher(parser, baseDispatcher);

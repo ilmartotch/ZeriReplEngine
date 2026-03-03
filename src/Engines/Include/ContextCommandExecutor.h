@@ -20,6 +20,5 @@ namespace Zeri::Engines::Defaults {
 }
 
 /*
-Header for `ContextCommandExecutor`.
 Handles / prefixed commands that activate contexts
 */

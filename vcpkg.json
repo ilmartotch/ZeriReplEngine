@@ -5,6 +5,7 @@
     "exprtk",
     "nlohmann-json",
     "replxx",
-    "lua"
+    "lua",
+    "ftxui"
   ]
 }

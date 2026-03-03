@@ -14,10 +14,14 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Define a macro for the project version for use min and max functions in Windows headers
+add_compile_definitions(NOMINMAX)
+
 find_package(Threads REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(replxx CONFIG REQUIRED)
 find_package(Lua REQUIRED)
+find_package(ftxui CONFIG REQUIRED)
 find_path(EXPRTK_INCLUDE_DIRS "exprtk.hpp")
 
 set(CORE_SOURCES
@@ -53,6 +57,7 @@ set(EXTENSION_SOURCES
 
 set(UI_SOURCES
     src/Ui/Source/TerminalUi.cpp
+    src/Ui/Source/FtxUiTerminal.cpp
 )
 
 set(MAIN_SOURCE
@@ -84,6 +89,9 @@ target_link_libraries(ZeriEngine PRIVATE
     nlohmann_json::nlohmann_json
     replxx::replxx
     ${LUA_LIBRARIES}
+    ftxui::screen
+    ftxui::dom
+    ftxui::component
 )
 
 if(MSVC)

@@ -7,18 +7,21 @@ namespace Zeri::Engines::Defaults {
         const Command& cmd,
         Zeri::Core::RuntimeState& state
     ) {
-        // /math cambiamo il contesto del sistema
+        // /math: switch active system context
         if (cmd.commandName == "math") {
             state.SetActiveContext("math");
             return "Context switched to: MATH";
         }
 
-        // Se l'input è un'espressione e siamo in math, valutiamola
+        // If input is an expression and active context is math, evaluate it.
         if (cmd.commandName == "@context_eval" && state.GetActiveContext() == "math") {
             return ExpressionExecutor::Evaluate(cmd.args[0], state);
         }
 
-        return std::unexpected(ExecutionError{"WrongContext", "Input non valido per il contesto: " + state.GetActiveContext()});
+        return std::unexpected(ExecutionError{
+            "WrongContext",
+            "Input non valido per il contesto: " + state.GetActiveContext()
+        });
     }
 
     ExecutionType ContextCommandExecutor::GetType() const {
