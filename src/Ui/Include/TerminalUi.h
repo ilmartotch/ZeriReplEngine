@@ -23,7 +23,13 @@ namespace Zeri::Ui {
         void Write(const std::string& text) override;
         void WriteLine(const std::string& text) override;
         void WriteError(const std::string& text) override;
+        void WriteSuccess(const std::string& text) override;
+        void WriteInfo(const std::string& text) override;
         [[nodiscard]] std::optional<std::string> ReadLine(const std::string& prompt) override;
+
+        // Wizard methods
+        [[nodiscard]] bool Confirm(const std::string& prompt, bool default_value = true) override;
+        [[nodiscard]] std::optional<int> SelectMenu(const std::string& title, const std::vector<std::string>& options) override;
 
     private:
         enum class ReplContext {
