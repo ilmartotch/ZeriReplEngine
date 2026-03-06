@@ -5,6 +5,7 @@
 #include <cctype>
 #include <cstdlib>
 #include <filesystem>
+#include <iostream>
 #include <print>
 #include <string_view>
 
@@ -20,22 +21,22 @@ namespace Zeri::Ui {
         };
 
         constexpr std::array<CommandSpec, 5> kGlobalCommands = {
-            CommandSpec{ "/help",  " Mostra help del contesto corrente" },
-            CommandSpec{ "/exit",  " Chiude la REPL" },
-            CommandSpec{ "/back",  " Torna al contesto precedente" },
-            CommandSpec{ "/set",   " <key> <value>" },
-            CommandSpec{ "/get",   " <key>" }
+            CommandSpec{ "/help", " Mostra help del contesto corrente" },
+            CommandSpec{ "/exit", " Chiude la REPL" },
+            CommandSpec{ "/back", " Torna al contesto precedente" },
+            CommandSpec{ "/set", " <key> <value>" },
+            CommandSpec{ "/get", " <key>" }
         };
 
         constexpr std::array<CommandSpec, 2> kMathCommands = {
-            CommandSpec{ "/calc",  " <a> <+|-|*|/> <b>" },
+            CommandSpec{ "/calc", " <a> <+|-|*|/> <b>" },
             CommandSpec{ "/logic", " <and|or|xor> <true|false> <true|false>" }
         };
 
         constexpr std::array<CommandSpec, 3> kSandboxCommands = {
-            CommandSpec{ "/list",  "" },
+            CommandSpec{ "/list", "" },
             CommandSpec{ "/build", " <moduleName>" },
-            CommandSpec{ "/run",   " <moduleName>" }
+            CommandSpec{ "/run", " <moduleName>" }
         };
 
         constexpr std::array<CommandSpec, 1> kSetupCommands = {
@@ -220,6 +221,38 @@ namespace Zeri::Ui {
 
     void TerminalUi::WriteError(const std::string& text) {
         std::println("\033[31mError: {}\033[0m", text);
+    }
+
+    void TerminalUi::WriteSuccess(const std::string& text) {
+        std::println("\033[32m[ZERI] {}\033[0m", text);
+    }
+
+    void TerminalUi::WriteInfo(const std::string& text) {
+        std::println("\033[34m[INFO] {}\033[0m", text);
+    }
+
+    bool TerminalUi::Confirm(const std::string& prompt, bool default_value) {
+        std::print("{} (y/n) [{}]: ", prompt, default_value ? "y" : "n");
+        std::string input;
+        if (!std::getline(std::cin, input)) return default_value;
+        if (input.empty()) return default_value;
+        return (input[0] == 'y' || input[0] == 'Y');
+    }
+
+    std::optional<int> TerminalUi::SelectMenu(const std::string& title, const std::vector<std::string>& options) {
+        std::println("\033[33m{}\033[0m", title);
+        for (size_t i = 0; i < options.size(); ++i) {
+            std::println("{}. {}", i + 1, options[i]);
+        }
+        std::print("Select option (1-{}): ", options.size());
+        
+        std::string input;
+        if (!std::getline(std::cin, input)) return std::nullopt;
+        try {
+            int val = std::stoi(input) - 1;
+            if (val >= 0 && val < static_cast<int>(options.size())) return val;
+        } catch (...) {}
+        return std::nullopt;
     }
 
     std::optional<std::string> TerminalUi::ReadEditorLine(const std::string& prompt, bool addToHistory) {

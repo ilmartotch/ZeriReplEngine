@@ -1,12 +1,16 @@
 #include "../Include/SetupContext.h"
 #include "../../Core/Include/RuntimeState.h"
+#include "../../Core/Include/Strings.h"
+#include <vector>
+#include <string>
 
 namespace Zeri::Engines::Defaults {
 
+    using namespace Zeri::Ui::Config;
+
     void SetupContext::OnEnter(Zeri::Ui::ITerminal& terminal) {
-        (void)terminal;
-        terminal.WriteLine("--- Configuration Wizard ---");
-        terminal.WriteLine("Type /help for commands.");
+        terminal.WriteInfo(std::string(Strings::SetupTitle));
+        terminal.WriteLine("Type /start to begin configuration.");
     }
 
     ExecutionOutcome SetupContext::HandleCommand(
@@ -28,35 +32,40 @@ namespace Zeri::Engines::Defaults {
 
         if (cmd.commandName == "start") {
             RunWizard(terminal, state);
-            return "Configuration complete. Returning to global context.";
+            return std::string(Strings::SetupComplete);
         }
 
-        return std::unexpected(ExecutionError{ "SETUP_ERR", "Unknown setup command. Use /help or /start." });
+        return std::unexpected(ExecutionError{ "SETUP_ERR", std::string(Strings::UnknownCmd) });
     }
 
     void SetupContext::RunWizard(Zeri::Ui::ITerminal& terminal, Zeri::Core::RuntimeState& state) {
-        terminal.WriteLine("\n[1/1] Preferred Code Editor");
-        terminal.WriteLine("1. Visual Studio Code (code)");
-        terminal.WriteLine("2. Notepad++ (notepad++)");
-        terminal.WriteLine("3. Sublime Text (subl)");
-        terminal.WriteLine("4. Custom/System Default");
+        std::vector<std::string> editors = {
+            "Visual Studio Code (code)",
+            "Notepad++ (notepad++)",
+            "Sublime Text (subl)",
+            "Custom/System Default"
+        };
 
-        auto choice = terminal.ReadLine("Select option (1-4): ");
+        auto choiceIdx = terminal.SelectMenu(std::string(Strings::SetupEditor), editors);
+        
         std::string ide = "default";
+        if (choiceIdx.has_value()) {
+            switch (*choiceIdx) {
+                case 0: ide = "code"; break;
+                case 1: ide = "notepad++"; break;
+                case 2: ide = "subl"; break;
+                default: ide = "default"; break;
+            }
+        }
 
-        if (choice == "1") ide = "code";
-        else if (choice == "2") ide = "notepad++";
-        else if (choice == "3") ide = "subl";
-
-        state.SetGlobalVariable("preferred_ide", ide);
-        terminal.WriteLine("IDE set to: " + ide);
+        if (terminal.Confirm("Do you want to set '" + ide + "' as your preferred editor?")) {
+            state.SetGlobalVariable("preferred_ide", ide);
+            terminal.WriteSuccess("IDE preference saved: " + ide);
+        } else {
+            terminal.WriteInfo(std::string(Strings::WizardCancel));
+        }
 
         state.PopContext();
     }
 
 }
-
-/*
-Implements the interactive wizard logic.
-Results are stored in the Global RuntimeState, making them accessible to the SandboxContext for the /edit command.
-*/
