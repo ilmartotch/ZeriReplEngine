@@ -22,7 +22,8 @@ namespace Zeri::Engines::Defaults {
                 "  /help                 Show this help\n"
                 "  /exit                 Exit REPL\n"
                 "  /set <key> <value>    Store variable\n"
-                "  /get <key>            Read variable\n";
+                "  /get <key>            Read variable\n"
+                "  /lua <script>         Execute inline Lua code\n";
         }
 
         auto scope = Zeri::Core::RuntimeState::VariableScope::Global;

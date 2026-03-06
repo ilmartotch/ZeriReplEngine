@@ -4,6 +4,8 @@
 #include <vector>
 #include <map>
 
+namespace Zeri::Ui { class ITerminal; }
+
 namespace Zeri::Core {
 
     struct SystemHealth {
@@ -24,9 +26,9 @@ namespace Zeri::Core {
     class SystemGuard {
     public:
         [[nodiscard]] static SystemHealth CheckEnvironment();
-        
-        // Suggests actions based on missing tools
-        static void PrintGuide(const SystemHealth& health);
+
+        /// Reports missing tools through the ITerminal abstraction.
+        static void PrintGuide(const SystemHealth& health, Zeri::Ui::ITerminal& terminal);
 
     private:
         [[nodiscard]] static bool ProbeCommand(const std::string& cmd);

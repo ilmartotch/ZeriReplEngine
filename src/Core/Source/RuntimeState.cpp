@@ -1,5 +1,8 @@
 #include "RuntimeState.h"
 #include "../../Engines/Include/Interface/IContext.h"
+#include <nlohmann/json.hpp>
+#include <fstream>
+#include <iostream>
 
 namespace {
 
@@ -92,6 +95,20 @@ namespace Zeri::Core {
 
     RuntimeState::RuntimeState() {
         m_moduleManager.StartBackgroundScan();
+
+        // Attempt to restore persisted state from disk
+        auto loadResult = LoadSession(kDefaultStatePath);
+        if (!loadResult.has_value()) {
+            // Silent fail on first run when no state file exists
+        }
+    }
+
+    RuntimeState::~RuntimeState() {
+        // Auto-save persisted variables on shutdown
+        auto saveResult = SaveSession(kDefaultStatePath);
+        if (!saveResult.has_value()) {
+            std::cerr << "[RuntimeState] Failed to save session: " << saveResult.error() << "\n";
+        }
     }
 
     Zeri::Modules::ModuleManager& RuntimeState::GetModuleManager() {
@@ -539,6 +556,80 @@ namespace Zeri::Core {
     bool RuntimeState::IsExitRequested() const {
         std::lock_guard<std::mutex> lock(m_lifecycleMutex);
         return m_exitRequested;
+    }
+
+    std::expected<void, std::string> RuntimeState::SaveSession(const std::filesystem::path& path) const {
+        std::shared_lock lock(m_varMutex);
+
+        nlohmann::json root = nlohmann::json::object();
+
+        for (const auto& [key, value] : m_persistedVariables) {
+            if (!value.has_value()) continue;
+
+            const auto& t = value.type();
+            if (t == typeid(std::string)) {
+                root[key] = std::any_cast<std::string>(value);
+            } else if (t == typeid(int)) {
+                root[key] = std::any_cast<int>(value);
+            } else if (t == typeid(double)) {
+                root[key] = std::any_cast<double>(value);
+            } else if (t == typeid(bool)) {
+                root[key] = std::any_cast<bool>(value);
+            } else if (t == typeid(long long)) {
+                root[key] = std::any_cast<long long>(value);
+            }
+            // Non-serializable types are silently skipped
+        }
+
+        try {
+            const auto parent = path.parent_path();
+            if (!parent.empty()) {
+                std::filesystem::create_directories(parent);
+            }
+
+            std::ofstream file(path);
+            if (!file.is_open()) {
+                return std::unexpected("Failed to open file for writing: " + path.string());
+            }
+
+            file << root.dump(2);
+            return {};
+        } catch (const std::exception& e) {
+            return std::unexpected(std::string("Save failed: ") + e.what());
+        }
+    }
+
+    std::expected<void, std::string> RuntimeState::LoadSession(const std::filesystem::path& path) {
+        if (!std::filesystem::exists(path)) {
+            return std::unexpected("State file does not exist: " + path.string());
+        }
+
+        try {
+            std::ifstream file(path);
+            if (!file.is_open()) {
+                return std::unexpected("Failed to open file for reading: " + path.string());
+            }
+
+            nlohmann::json root = nlohmann::json::parse(file);
+
+            std::unique_lock lock(m_varMutex);
+            for (const auto& [key, jsonVal] : root.items()) {
+                if (jsonVal.is_string()) {
+                    m_persistedVariables[key] = jsonVal.get<std::string>();
+                } else if (jsonVal.is_boolean()) {
+                    m_persistedVariables[key] = jsonVal.get<bool>();
+                } else if (jsonVal.is_number_integer()) {
+                    m_persistedVariables[key] = jsonVal.get<int>();
+                } else if (jsonVal.is_number_float()) {
+                    m_persistedVariables[key] = jsonVal.get<double>();
+                }
+                // Non-primitive JSON types are silently skipped
+            }
+
+            return {};
+        } catch (const std::exception& e) {
+            return std::unexpected(std::string("Load failed: ") + e.what());
+        }
     }
 
 }

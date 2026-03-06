@@ -4,7 +4,7 @@
 #include "Engines/Include/MathContext.h"
 #include "Engines/Include/SandboxContext.h"
 #include "Engines/Include/SetupContext.h"
-#include "Ui/Include/FtxUiTerminal.h"
+#include "Ui/Include/TerminalUi.h"
 #include "Engines/Include/MetaParser.h"
 #include "Engines/Include/DefaultDispatcher.h"
 #include "Engines/Include/CachedDispatcher.h"
@@ -86,6 +86,7 @@ namespace {
         if (ctxName == "global") {
             auto* current = runtimeState.GetCurrentContext();
             while (current && current->GetName() != "global") {
+                current->OnExit(terminal);
                 runtimeState.PopContext();
                 current = runtimeState.GetCurrentContext();
             }
@@ -157,7 +158,7 @@ namespace {
 int main() {
     // Core Initialization
     Zeri::Core::RuntimeState runtimeState;
-    Zeri::Ui::FtxUiTerminal terminal;
+    Zeri::Ui::TerminalUi terminal;
     Zeri::Engines::Defaults::MetaParser parser;
     Zeri::Engines::Defaults::DefaultDispatcher baseDispatcher;
     Zeri::Engines::Defaults::CachedDispatcher dispatcher(parser, baseDispatcher);
@@ -165,7 +166,7 @@ int main() {
     // System Health Check
     auto health = Zeri::Core::SystemGuard::CheckEnvironment();
     if (!health.IsReady()) {
-        Zeri::Core::SystemGuard::PrintGuide(health);
+        Zeri::Core::SystemGuard::PrintGuide(health, terminal);
     }
 
     // Bootstrapping (Root Context)

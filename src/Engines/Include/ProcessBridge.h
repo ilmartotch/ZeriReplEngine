@@ -23,14 +23,16 @@ namespace Zeri::Engines::Defaults {
         ~ProcessBridge() override;
 
         [[nodiscard]] ExecutionOutcome Run(
-            const std::string& executablePath,
+            const std::filesystem::path& executablePath,
             const std::vector<std::string>& args,
-            OutputCallback onOutput
+            OutputCallback onOutput,
+            const std::optional<std::filesystem::path>& cwd = std::nullopt
         ) override;
 
         [[nodiscard]] int ExecuteSync(
-            const std::string& executablePath,
-            const std::vector<std::string>& args
+            const std::filesystem::path& executablePath,
+            const std::vector<std::string>& args,
+            const std::optional<std::filesystem::path>& cwd = std::nullopt
         ) override;
 
         void SendInput(const std::string& input) override;

@@ -5,7 +5,7 @@ if (DEFINED ENV{VCPKG_ROOT})
 endif()
 
 project(ZeriEngine 
-    VERSION 0.3.0
+    VERSION 1.0.0
     DESCRIPTION "Modular REPL Orchestrator"
     LANGUAGES CXX
 )

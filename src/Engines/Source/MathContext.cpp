@@ -46,8 +46,8 @@ namespace Zeri::Engines::Defaults {
                 "  /logic <and|or|xor> <true|false> <true|false>\n"
                 "\n"
                 "Pipeline integration\n"
-                "  - If /calc is called with missing args, it tries __pipe_value\n"
-                "    as expression text: \"a <op> b\"\n"
+                "  - If /calc is called with missing args, it reads\n"
+                "    the piped value as expression text: \"a <op> b\"\n"
                 "\n"
                 "Examples\n"
                 "  /calc 2 * 8\n"
@@ -71,7 +71,7 @@ namespace Zeri::Engines::Defaults {
                     "MathArgs",
                     "Invalid arguments for /calc.",
                     "/calc",
-                    { "Usage: /calc <a> <+|-|*|/> <b>", "Or provide expression through __pipe_value." }
+                    { "Usage: /calc <a> <+|-|*|/> <b>", "Or provide expression via pipeline." }
                 });
             }
 
