@@ -3,6 +3,8 @@
 #include <string>
 #include <vector>
 #include <functional>
+#include <filesystem>
+#include <optional>
 #include "../../Engines/Include/ExecutionResult.h"
 
 namespace Zeri::Engines {
@@ -13,15 +15,30 @@ namespace Zeri::Engines {
 
         using OutputCallback = std::function<void(const std::string&)>;
 
+        /**
+         * @brief Launch a child process asynchronously with piped I/O.
+         * @param executablePath  Filesystem path to the executable (UTF-8 safe).
+         * @param args            Command-line arguments forwarded to the process.
+         * @param onOutput        Callback invoked on every chunk of stdout/stderr.
+         * @param cwd             Optional working directory for the child process.
+         */
         [[nodiscard]] virtual ExecutionOutcome Run(
-            const std::string& executablePath,
+            const std::filesystem::path& executablePath,
             const std::vector<std::string>& args,
-            OutputCallback onOutput
+            OutputCallback onOutput,
+            const std::optional<std::filesystem::path>& cwd = std::nullopt
         ) = 0;
 
+        /**
+         * @brief Launch a child process synchronously and return its exit code.
+         * @param executablePath  Filesystem path to the executable.
+         * @param args            Command-line arguments forwarded to the process.
+         * @param cwd             Optional working directory for the child process.
+         */
         [[nodiscard]] virtual int ExecuteSync(
-            const std::string& executablePath,
-            const std::vector<std::string>& args
+            const std::filesystem::path& executablePath,
+            const std::vector<std::string>& args,
+            const std::optional<std::filesystem::path>& cwd = std::nullopt
         ) = 0;
 
         virtual void SendInput(const std::string& input) = 0;
@@ -36,6 +53,8 @@ namespace Zeri::Engines {
 Captures output and redirects input in a thread-safe, cross-platform way.
 
 IProcessBridge defines the contract for process supervision.
-The OutputCallback allows the REPL to receive data from the child process asynchronously,
-which is essential for the multi-threaded "Bridge" architecture.
+- Run(): Asynchronous execution with output streaming via callback.
+- ExecuteSync(): Blocking execution returning exit code.
+- Both accept std::filesystem::path for type-safe, Unicode-aware executable paths,
+  and an optional cwd parameter to set the child's working directory.
 */

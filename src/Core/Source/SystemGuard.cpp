@@ -1,5 +1,5 @@
 #include "../Include/SystemGuard.h"
-#include <iostream>
+#include "../../Ui/Include/ITerminal.h"
 #include <array>
 #include <memory>
 #include <cstdio>
@@ -35,15 +35,15 @@ namespace Zeri::Core {
             return std::system(fullCmd.c_str()) == 0;
     }
 
-    void SystemGuard::PrintGuide(const SystemHealth& health) {
+    void SystemGuard::PrintGuide(const SystemHealth& health, Zeri::Ui::ITerminal& terminal) {
         if (health.IsReady()) return;
 
-        std::cout << "\n[!] SYSTEM CHECK FAILED [!]\n";
+        terminal.WriteError("SYSTEM CHECK FAILED");
         for (const auto& tool : health.missingTools) {
-            std::cout << " - Missing: " << tool << "\n";
+            terminal.WriteLine(" - Missing: " + tool);
         }
-        std::cout << "\nTo use the Sandbox features, please install the missing tools.\n";
-        std::cout << "Visit: https://cmake.org/download/ to get CMake.\n";
+        terminal.WriteLine("To use the Sandbox features, please install the missing tools.");
+        terminal.WriteLine("Visit: https://cmake.org/download/ to get CMake.");
     }
 
 }

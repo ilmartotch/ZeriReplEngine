@@ -10,6 +10,8 @@
 #include <functional>
 #include <optional>
 #include <atomic>
+#include <expected>
+#include <filesystem>
 #include "ContextManager.h"
 #include "../../Modules/Include/ModuleManager.h"
 #include "../../Engines/Include/Interface/IContext.h"
@@ -34,7 +36,7 @@ namespace Zeri::Core {
         using FunctionSignature = std::function<double(const std::vector<double>&)>;
 
         RuntimeState();
-        ~RuntimeState() = default;
+        ~RuntimeState();
 
         void SetVariable(VariableScope scope, const std::string& key, const std::any& value);
         bool SetVariable(VariableScope scope, const std::string& key, const std::any& value, OverwritePolicy policy);
@@ -87,7 +89,21 @@ namespace Zeri::Core {
         [[nodiscard]] Zeri::Modules::ModuleManager& GetModuleManager();
         [[nodiscard]] Zeri::Core::ContextManager& GetContextManager();
 
+        /**
+         * @brief Serialize persisted variables to a JSON file on disk.
+         * @param path Destination file path (e.g. ".zeri/state.json").
+         */
+        [[nodiscard]] std::expected<void, std::string> SaveSession(const std::filesystem::path& path) const;
+
+        /**
+         * @brief Load persisted variables from a JSON file on disk.
+         * @param path Source file path (e.g. ".zeri/state.json").
+         */
+        [[nodiscard]] std::expected<void, std::string> LoadSession(const std::filesystem::path& path);
+
     private:
+        static constexpr const char* kDefaultStatePath = ".zeri/state.json";
+
         std::vector<std::map<std::string, std::any>> m_localVariables;
         std::map<std::string, std::any> m_sessionVariables;
         std::map<std::string, std::any> m_globalVariables;

@@ -1,5 +1,6 @@
 #include "../Include/SandboxContext.h"
 #include "../../Core/Include/RuntimeState.h"
+#include <algorithm>
 #include <filesystem>
 #include <format>
 
@@ -58,21 +59,49 @@ namespace Zeri::Engines::Defaults {
     }
 
     ExecutionOutcome SandboxContext::BuildModule(const std::string& moduleName, Zeri::Core::RuntimeState& state, Zeri::Ui::ITerminal& terminal) {
-        (void)state;
-        terminal.WriteLine("Building module: " + moduleName);
-        
-        // Example execution
-        int eCode = m_bridge.ExecuteSync("cmake", { "--build", ".", "--target", moduleName });
+        auto modules = state.GetModuleManager().GetModules();
+        auto it = std::ranges::find_if(modules, [&](const auto& m) { return m.name == moduleName; });
+        if (it == modules.end()) {
+            return std::unexpected(ExecutionError{ "BUILD_NOT_FOUND", "Module not found: " + moduleName });
+        }
+
+        const fs::path modulePath(it->path);
+        terminal.WriteLine("Building module: " + moduleName + " in " + modulePath.string());
+
+        // Build in the module's own directory, not the REPL root
+        int eCode = m_bridge.ExecuteSync("cmake", { "--build", "." }, modulePath);
         if (eCode != 0) {
-            return std::unexpected(ExecutionError{ "BUILD_FAIL", "Failed to build module." });
+            return std::unexpected(ExecutionError{ "BUILD_FAIL", "Failed to build module (exit code: " + std::to_string(eCode) + ")." });
         }
         return "Build succeeded.";
     }
 
     ExecutionOutcome SandboxContext::RunModule(const std::string& moduleName, Zeri::Core::RuntimeState& state, Zeri::Ui::ITerminal& terminal) {
-        (void)state;
+        auto modules = state.GetModuleManager().GetModules();
+        auto it = std::ranges::find_if(modules, [&](const auto& m) { return m.name == moduleName; });
+        if (it == modules.end()) {
+            return std::unexpected(ExecutionError{ "RUN_NOT_FOUND", "Module not found: " + moduleName });
+        }
+
+        if (it->entryPoint.empty()) {
+            return std::unexpected(ExecutionError{ "RUN_NO_ENTRY", "Module has no entry point: " + moduleName });
+        }
+
+        const fs::path modulePath(it->path);
+        const fs::path entryPath = modulePath / it->entryPoint;
         terminal.WriteLine("Running module: " + moduleName);
-        return "Run completed.";
+
+        std::string capturedOutput;
+        auto outcome = m_bridge.Run(entryPath, {}, [&](const std::string& chunk) {
+            capturedOutput += chunk;
+            terminal.Write(chunk);
+        }, modulePath);
+
+        if (!outcome.has_value()) {
+            return outcome;
+        }
+
+        return capturedOutput.empty() ? "Module executed (no output)." : capturedOutput;
     }
 
 }

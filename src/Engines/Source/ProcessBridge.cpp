@@ -1,5 +1,6 @@
 #include "../Include/ProcessBridge.h"
 #include <array>
+#include <filesystem>
 #include <string>
 #include <string_view>
 
@@ -119,7 +120,12 @@ namespace Zeri::Engines::Defaults {
         }
     }
 
-    ExecutionOutcome ProcessBridge::Run(const std::string& path, const std::vector<std::string>& args, OutputCallback onOutput) {
+    ExecutionOutcome ProcessBridge::Run(
+        const std::filesystem::path& executablePath,
+        const std::vector<std::string>& args,
+        OutputCallback onOutput,
+        const std::optional<std::filesystem::path>& cwd
+    ) {
         if (m_running) {
             return std::unexpected(ExecutionError{ "STATE_ERR", "A process is already running." });
         }
@@ -170,8 +176,9 @@ namespace Zeri::Engines::Defaults {
             return std::unexpected(ExecutionError{ "OS_ERR", "Failed to configure Job Object." });
         }
 
-        const std::wstring widePath = Utf8ToWide(path);
-        if (widePath.empty() && !path.empty()) {
+        const std::string pathStr = executablePath.string();
+        const std::wstring widePath = Utf8ToWide(pathStr);
+        if (widePath.empty() && !pathStr.empty()) {
             return std::unexpected(ExecutionError{ "UTF8_ERR", "Invalid UTF-8 executable path." });
         }
 
@@ -185,6 +192,14 @@ namespace Zeri::Engines::Defaults {
             cmdLine.append(QuoteArgument(wideArg));
         }
 
+        // Resolve optional cwd to wide string for CreateProcessW
+        const wchar_t* wideCwd = nullptr;
+        std::wstring cwdWide;
+        if (cwd.has_value()) {
+            cwdWide = cwd->wstring();
+            wideCwd = cwdWide.c_str();
+        }
+
         STARTUPINFOW si{};
         si.cb = sizeof(STARTUPINFOW);
         si.hStdError = outWrite.Get();
@@ -193,7 +208,7 @@ namespace Zeri::Engines::Defaults {
         si.dwFlags |= STARTF_USESTDHANDLES;
 
         PROCESS_INFORMATION pi{};
-        if (!CreateProcessW(nullptr, cmdLine.data(), nullptr, nullptr, TRUE, CREATE_SUSPENDED, nullptr, nullptr, &si, &pi)) {
+        if (!CreateProcessW(nullptr, cmdLine.data(), nullptr, nullptr, TRUE, CREATE_SUSPENDED, nullptr, wideCwd, &si, &pi)) {
             return std::unexpected(ExecutionError{ "LAUNCH_ERR", "CreateProcessW failed." });
         }
 
@@ -320,7 +335,12 @@ namespace Zeri::Engines::Defaults {
         }
     }
 
-    ExecutionOutcome ProcessBridge::Run(const std::string& path, const std::vector<std::string>& args, OutputCallback onOutput) {
+    ExecutionOutcome ProcessBridge::Run(
+        const std::filesystem::path& executablePath,
+        const std::vector<std::string>& args,
+        OutputCallback onOutput,
+        const std::optional<std::filesystem::path>& cwd
+    ) {
         if (m_running) {
             return std::unexpected(ExecutionError{ "STATE_ERR", "A process is already running." });
         }
@@ -342,6 +362,8 @@ namespace Zeri::Engines::Defaults {
 
         InstallSigChldHandler();
 
+        const std::string pathStr = executablePath.string();
+
         const pid_t pid = fork();
         if (pid < 0) {
             return std::unexpected(ExecutionError{ "OS_ERR", "fork() failed." });
@@ -352,6 +374,11 @@ namespace Zeri::Engines::Defaults {
             prctl(PR_SET_PDEATHSIG, SIGTERM);
             if (getppid() == 1) _exit(1);
 #endif
+            // Change working directory if requested
+            if (cwd.has_value()) {
+                if (chdir(cwd->string().c_str()) != 0) _exit(126);
+            }
+
             dup2(outWrite.Get(), STDOUT_FILENO);
             dup2(outWrite.Get(), STDERR_FILENO);
             dup2(inRead.Get(), STDIN_FILENO);
@@ -363,11 +390,11 @@ namespace Zeri::Engines::Defaults {
 
             std::vector<char*> argv;
             argv.reserve(args.size() + 2);
-            argv.push_back(const_cast<char*>(path.c_str()));
+            argv.push_back(const_cast<char*>(pathStr.c_str()));
             for (const auto& a : args) argv.push_back(const_cast<char*>(a.c_str()));
             argv.push_back(nullptr);
 
-            execvp(path.c_str(), argv.data());
+            execvp(pathStr.c_str(), argv.data());
             _exit(127);
         }
 
@@ -440,23 +467,37 @@ namespace Zeri::Engines::Defaults {
 #endif
 
     int ProcessBridge::ExecuteSync(
-        const std::string& executablePath,
-        const std::vector<std::string>& args
+        const std::filesystem::path& executablePath,
+        const std::vector<std::string>& args,
+        const std::optional<std::filesystem::path>& cwd
     ) {
 #ifdef _WIN32
-        // Build command line string
-        std::string cmdLine = "\"" + executablePath + "\"";
+        const std::string pathStr = executablePath.string();
+        const std::wstring widePath = Utf8ToWide(pathStr);
+        if (widePath.empty() && !pathStr.empty()) return -1;
+
+        std::wstring cmdLine = QuoteArgument(widePath);
         for (const auto& arg : args) {
-            cmdLine += " \"" + arg + "\"";
+            const std::wstring wideArg = Utf8ToWide(arg);
+            if (wideArg.empty() && !arg.empty()) return -1;
+            cmdLine.push_back(L' ');
+            cmdLine.append(QuoteArgument(wideArg));
         }
 
-        STARTUPINFOA si{};
-        PROCESS_INFORMATION pi{};
-        si.cb = sizeof(si);
+        const wchar_t* wideCwd = nullptr;
+        std::wstring cwdWide;
+        if (cwd.has_value()) {
+            cwdWide = cwd->wstring();
+            wideCwd = cwdWide.c_str();
+        }
+
+        STARTUPINFOW si{};
+        si.cb = sizeof(STARTUPINFOW);
         si.dwFlags = STARTF_USESHOWWINDOW;
         si.wShowWindow = SW_HIDE;
 
-        if (!CreateProcessA(
+        PROCESS_INFORMATION pi{};
+        if (!CreateProcessW(
             nullptr,
             cmdLine.data(),
             nullptr,
@@ -464,42 +505,47 @@ namespace Zeri::Engines::Defaults {
             FALSE,
             CREATE_NO_WINDOW,
             nullptr,
-            nullptr,
+            wideCwd,
             &si,
             &pi
         )) {
             return -1;
         }
 
-        WaitForSingleObject(pi.hProcess, INFINITE);
+        ScopedHandle process(pi.hProcess);
+        ScopedHandle thread(pi.hThread);
+
+        WaitForSingleObject(process.Get(), INFINITE);
 
         DWORD exitCode = 0;
-        GetExitCodeProcess(pi.hProcess, &exitCode);
-
-        CloseHandle(pi.hProcess);
-        CloseHandle(pi.hThread);
+        GetExitCodeProcess(process.Get(), &exitCode);
 
         return static_cast<int>(exitCode);
 #else
+        const std::string pathStr = executablePath.string();
+
         pid_t pid = fork();
         if (pid == -1) {
             return -1;
         }
 
         if (pid == 0) {
-            // Child process
+            // Change working directory if requested
+            if (cwd.has_value()) {
+                if (chdir(cwd->string().c_str()) != 0) _exit(126);
+            }
+
             std::vector<char*> argv;
-            argv.push_back(const_cast<char*>(executablePath.c_str()));
+            argv.push_back(const_cast<char*>(pathStr.c_str()));
             for (const auto& arg : args) {
                 argv.push_back(const_cast<char*>(arg.c_str()));
             }
             argv.push_back(nullptr);
 
-            execvp(executablePath.c_str(), argv.data());
-            _exit(127); // execvp failed
+            execvp(pathStr.c_str(), argv.data());
+            _exit(127);
         }
 
-        // Parent process
         int status = 0;
         waitpid(pid, &status, 0);
 

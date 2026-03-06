@@ -1,6 +1,9 @@
 #pragma once
 
 #include "BaseContext.h"
+#include "BuiltinExecutor.h"
+#include "LuaExecutor.h"
+#include <memory>
 
 namespace Zeri::Engines::Defaults {
 
@@ -15,6 +18,10 @@ namespace Zeri::Engines::Defaults {
             Zeri::Core::RuntimeState& state,
             Zeri::Ui::ITerminal& terminal
         ) override;
+
+    private:
+        BuiltinExecutor m_builtinExecutor;
+        std::unique_ptr<LuaExecutor> m_luaExecutor;
     };
 
 }
