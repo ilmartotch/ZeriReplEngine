@@ -70,10 +70,12 @@ namespace Zeri::Engines::Defaults {
         } else if (prefix == '!') {
             cmd.type = InputType::SystemOp;
         } else {
-            return std::unexpected(ParseError{
-                "Invalid syntax. Input must start with '/', '$' or '!'.",
-                0
-            });
+            // No recognized prefix: treat as free-form expression.
+            // The active context decides whether it can handle this input.
+            cmd.type = InputType::Expression;
+            cmd.commandName = "@expr";
+            cmd.args.emplace_back(std::string(inputView));
+            return cmd;
         }
 
         std::array<std::byte, 4096> scratch{};

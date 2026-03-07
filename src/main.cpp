@@ -137,6 +137,7 @@ namespace {
         case Zeri::Engines::InputType::ContextSwitch:
             return SwitchContext(cmd.commandName, runtimeState, terminal);
 
+        case Zeri::Engines::InputType::Expression:
         case Zeri::Engines::InputType::Command: {
             auto* currentCtx = runtimeState.GetCurrentContext();
             if (!currentCtx) return false;
