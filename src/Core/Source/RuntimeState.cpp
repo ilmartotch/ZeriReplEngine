@@ -498,6 +498,18 @@ namespace Zeri::Core {
         return m_functionRevision.load();
     }
 
+    std::map<std::string, std::any> RuntimeState::GetCurrentLocalVariables() const {
+        std::shared_lock lock(m_varMutex);
+        if (m_localVariables.empty()) return {};
+        return m_localVariables.back();
+    }
+
+    std::map<std::string, RuntimeState::FunctionSignature> RuntimeState::GetCurrentLocalFunctions() const {
+        std::shared_lock lock(m_functionMutex);
+        if (m_localFunctions.empty()) return {};
+        return m_localFunctions.back();
+    }
+
     void RuntimeState::SetActiveContext(const std::string& contextName) {
         std::unique_lock lock(m_activeContextMutex);
         m_activeContext = contextName;

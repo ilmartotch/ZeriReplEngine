@@ -32,12 +32,17 @@ namespace Zeri::Engines {
             ReplContext context;
         };
 
-        static constexpr std::array<CommandSpec, 11> kCommands = {{
+        static constexpr std::array<CommandSpec, 16> kCommands = {{
             {"/help",   "Mostra help",                ReplContext::Global},
             {"/exit",   "Chiude la REPL",             ReplContext::Global},
             {"/back",   "Torna indietro",             ReplContext::Global},
             {"/set",    "<key> <value>",              ReplContext::Global},
             {"/get",    "<key>",                      ReplContext::Global},
+            {"/eval",   "<expr>",                     ReplContext::Math},
+            {"/fn",     "f(x) = espressione",         ReplContext::Math},
+            {"/vars",   "Mostra variabili",           ReplContext::Math},
+            {"/fns",    "Mostra funzioni",            ReplContext::Math},
+            {"/promote","<var> <scope>",              ReplContext::Math},
             {"/calc",   "<a> <op> <b>",               ReplContext::Math},
             {"/logic",  "<op> <v1> <v2>",             ReplContext::Math},
             {"/list",   "Mostra moduli",              ReplContext::Sandbox},

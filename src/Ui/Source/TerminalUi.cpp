@@ -28,7 +28,12 @@ namespace Zeri::Ui {
             CommandSpec{ "/get", " <key>" }
         };
 
-        constexpr std::array<CommandSpec, 2> kMathCommands = {
+        constexpr std::array<CommandSpec, 7> kMathCommands = {
+            CommandSpec{ "/eval", " <expr>" },
+            CommandSpec{ "/fn", " f(x) = espressione" },
+            CommandSpec{ "/vars", " Mostra variabili" },
+            CommandSpec{ "/fns", " Mostra funzioni" },
+            CommandSpec{ "/promote", " <var> <session|global|persisted>" },
             CommandSpec{ "/calc", " <a> <+|-|*|/> <b>" },
             CommandSpec{ "/logic", " <and|or|xor> <true|false> <true|false>" }
         };

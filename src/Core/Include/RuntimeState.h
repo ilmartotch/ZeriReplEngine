@@ -75,6 +75,9 @@ namespace Zeri::Core {
         [[nodiscard]] std::map<std::string, FunctionSignature> GetResolvedFunctions() const;
         [[nodiscard]] std::size_t GetFunctionRegistryRevision() const;
 
+        [[nodiscard]] std::map<std::string, std::any> GetCurrentLocalVariables() const;
+        [[nodiscard]] std::map<std::string, FunctionSignature> GetCurrentLocalFunctions() const;
+
         void SetActiveContext(const std::string& contextName);
         [[nodiscard]] std::string GetActiveContext() const;
 

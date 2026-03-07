@@ -11,6 +11,7 @@ namespace Zeri::Engines {
         Command,
         ContextSwitch,
         SystemOp,
+        Expression,
         Empty,
         Unknown
     };

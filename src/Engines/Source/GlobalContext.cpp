@@ -21,6 +21,17 @@ namespace Zeri::Engines::Defaults {
             return "Already at root context.";
         }
 
+        // Free-form expressions are not supported in global context
+        if (cmd.type == InputType::Expression) {
+            return std::unexpected(ExecutionError{
+                "ExpressionInGlobal",
+                "Free-form expressions are not supported in global context.",
+                cmd.args.empty() ? "" : cmd.args[0],
+                { "Switch to math context: $math",
+                  "Or evaluate inline:     $math | <expression>" }
+            });
+        }
+
         // Route /lua to the Lua execution engine
         if (cmd.commandName == "lua") {
             if (!m_luaExecutor) {

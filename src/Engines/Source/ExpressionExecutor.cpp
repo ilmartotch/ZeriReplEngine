@@ -148,6 +148,14 @@ namespace {
         return text.empty() ? "0" : text;
     }
 
+    // Names that are resolved by exprtk itself (constants, boolean keywords)
+    // and must not be looked up in RuntimeState.
+    const std::unordered_set<std::string> kBuiltinNames = {
+        "pi", "epsilon", "inf",
+        "euler", "phi", "tau", "sqrt2",
+        "true", "false"
+    };
+
     [[nodiscard]] std::unordered_set<std::string> ExtractIdentifiers(std::string_view expression) {
         std::unordered_set<std::string> identifiers;
 
@@ -258,7 +266,15 @@ namespace Zeri::Engines::Defaults {
             });
         }
 
-        const size_t assignmentPos = trimmed.find('=');
+        // Find standalone '=' that is not part of ==, <=, >=, !=
+        size_t assignmentPos = std::string::npos;
+        for (size_t idx = 0; idx < trimmed.size(); ++idx) {
+            if (trimmed[idx] != '=') continue;
+            if (idx + 1 < trimmed.size() && trimmed[idx + 1] == '=') { ++idx; continue; }
+            if (idx > 0 && (trimmed[idx - 1] == '<' || trimmed[idx - 1] == '>' || trimmed[idx - 1] == '!')) continue;
+            assignmentPos = idx;
+            break;
+        }
         const bool isAssignment = assignmentPos != std::string::npos;
         std::string variableName;
         std::string expressionText = trimmed;
@@ -270,9 +286,9 @@ namespace Zeri::Engines::Defaults {
             if (variableName.empty() || expressionText.empty() || !IsValidIdentifier(variableName)) {
                 return std::unexpected(ExecutionError{
                     "InvalidAssignment",
-                    "Assegnazione non valida",
+                    "Invalid assignment syntax.",
                     trimmed,
-                    { "Usa il formato: nome_variabile = espressione" }
+                    { "Format: variable_name = expression" }
                 });
             }
         }
@@ -287,14 +303,19 @@ namespace Zeri::Engines::Defaults {
             entry.identifiers = ExtractIdentifiers(expressionText);
             entry.functionRevision = functionRevision;
             entry.symbolTable.add_constants();
+            entry.symbolTable.add_constant("euler", 2.718281828459045);
+            entry.symbolTable.add_constant("phi",   1.618033988749895);
+            entry.symbolTable.add_constant("tau",   6.283185307179586);
+            entry.symbolTable.add_constant("sqrt2", 1.4142135623730951);
 
             for (const auto& identifier : entry.identifiers) {
+                if (kBuiltinNames.contains(identifier)) continue;
                 if (!state.HasVariable(identifier)) {
                     return std::unexpected(ExecutionError{
                         "MissingVariable",
-                        "Variabile non definita: " + identifier,
+                        "Undefined variable: " + identifier,
                         identifier,
-                        { "Definisci la variabile nello scope corrente o promuovila" }
+                        { "Define the variable first (e.g. " + identifier + " = <value>)" }
                     });
                 }
 
@@ -302,9 +323,9 @@ namespace Zeri::Engines::Defaults {
                 if (!value.has_value()) {
                     return std::unexpected(ExecutionError{
                         "InvalidVariableType",
-                        "Variabile non numerica: " + identifier,
+                        "Non-numeric variable: " + identifier,
                         identifier,
-                        { "Salva un valore numerico (int, float, double o stringa numerica)" }
+                        { "Store a numeric value (int, float, double or numeric string)" }
                     });
                 }
 
@@ -343,12 +364,13 @@ namespace Zeri::Engines::Defaults {
 
         auto& cacheEntry = cacheIt->second;
         for (const auto& identifier : cacheEntry.identifiers) {
+            if (kBuiltinNames.contains(identifier)) continue;
             if (!state.HasVariable(identifier)) {
                 return std::unexpected(ExecutionError{
                     "MissingVariable",
-                    "Variabile non definita: " + identifier,
+                    "Undefined variable: " + identifier,
                     identifier,
-                    { "Definisci la variabile nello scope corrente o promuovila" }
+                    { "Define the variable first (e.g. " + identifier + " = <value>)" }
                 });
             }
 
@@ -356,9 +378,9 @@ namespace Zeri::Engines::Defaults {
             if (!value.has_value()) {
                 return std::unexpected(ExecutionError{
                     "InvalidVariableType",
-                    "Variabile non numerica: " + identifier,
+                    "Non-numeric variable: " + identifier,
                     identifier,
-                    { "Salva un valore numerico (int, float, double o stringa numerica)" }
+                    { "Store a numeric value (int, float, double or numeric string)" }
                 });
             }
 
