@@ -100,4 +100,9 @@ else()
     target_compile_options(ZeriEngine PRIVATE -Wall -Wextra -Werror -pedantic)
 endif()
 
+# Link Psapi on Windows for GetProcessMemoryInfo (RAM monitor)
+if(WIN32)
+    target_link_libraries(ZeriEngine PRIVATE psapi)
+endif()
+
 message(STATUS "Project Zeri v${PROJECT_VERSION} configured successfully.")

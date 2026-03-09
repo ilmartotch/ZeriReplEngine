@@ -107,6 +107,8 @@ namespace Zeri::Engines::Defaults {
 }
 
 /*
+SandboxContext Implementation
+Handles sandbox modules commands like /list, /build, and /run.
 - /list: Fetches the manifest list from ModuleManager.
 - /build: Invokes the system 'cmake' via std::system. This is a simple bridge to the compiler.
 - /run: Uses ProcessBridge to execute the compiled binary and captures its output.

@@ -92,16 +92,8 @@ namespace Zeri::Core {
         [[nodiscard]] Zeri::Modules::ModuleManager& GetModuleManager();
         [[nodiscard]] Zeri::Core::ContextManager& GetContextManager();
 
-        /**
-         * @brief Serialize persisted variables to a JSON file on disk.
-         * @param path Destination file path (e.g. ".zeri/state.json").
-         */
         [[nodiscard]] std::expected<void, std::string> SaveSession(const std::filesystem::path& path) const;
 
-        /**
-         * @brief Load persisted variables from a JSON file on disk.
-         * @param path Source file path (e.g. ".zeri/state.json").
-         */
         [[nodiscard]] std::expected<void, std::string> LoadSession(const std::filesystem::path& path);
 
     private:
@@ -134,3 +126,17 @@ namespace Zeri::Core {
     };
 
 }
+
+/*
+RuntimeState manages the entire state of the REPL session.
+It holds variables and functions with different scopes (Local, Session, Global, Persisted),
+and manages the context stack and lifecycle.
+
+SaveSession:
+Serialize persisted variables to a JSON file on disk.
+path: Destination file path (e.g. ".zeri/state.json").
+
+LoadSession:
+Load persisted variables from a JSON file on disk.
+path: Source file path (e.g. ".zeri/state.json").
+*/

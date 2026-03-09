@@ -37,8 +37,9 @@ namespace Zeri::Core {
 }
 
 /*
-FILE DOCUMENTATION:
-SystemGuard Header.
+SystemGuard Header
+Utility to check system requirements and guide the user.
 Provides static methods to verify if CMake and compilers are available in the system PATH.
 This is crucial for the Sandbox execution model where we rely on external build tools.
+Reports missing tools through the ITerminal abstraction.
 */

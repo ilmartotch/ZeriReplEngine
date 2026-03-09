@@ -645,3 +645,10 @@ namespace Zeri::Core {
     }
 
 }
+
+/*
+RuntimeState Implementation
+Handles variable evaluation, context switching and execution state management.
+Additionally supports variable and policy merging on contexts, and handles the persistence 
+of the runtime state variables and functions in and across the sessions (SaveSession/LoadSession).
+*/

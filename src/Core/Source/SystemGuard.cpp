@@ -49,7 +49,6 @@ namespace Zeri::Core {
 }
 
 /*
-FILE DOCUMENTATION:
 SystemGuard Implementation.
 Uses std::system to 'probe' for commands by checking their exit codes.
 Redirects output to null to keep the REPL interface clean during the check.
