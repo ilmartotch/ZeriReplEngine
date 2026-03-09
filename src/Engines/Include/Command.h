@@ -48,3 +48,9 @@ namespace Zeri::Engines {
     };
 
 }
+
+/*
+Command defines the core structures for user input parsed by the system.
+- InputType distinguishes between commands (/cmd), switches ($ctx), logic and empty.
+- Command encapsulates the parsed data including pure inputs, arguments, flags, assignments, and pipes.
+*/

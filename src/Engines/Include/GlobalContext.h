@@ -25,3 +25,9 @@ namespace Zeri::Engines::Defaults {
     };
 
 }
+
+/*
+GlobalContext class declaration.
+Defines the main context execution behavior as a subclass of BaseContext.
+Holds instances of BuiltinExecutor and LuaExecutor for command evaluation in the global scope.
+*/

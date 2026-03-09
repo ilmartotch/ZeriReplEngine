@@ -558,3 +558,11 @@ namespace Zeri::Engines::Defaults {
     }
 
 }
+
+/*
+MathContext Implementation
+Handles math expressions and logic operations. 
+Uses exprtk internally for expression evaluation.
+Supports explicit slash commands (/calc, /logic, /eval, /fn), variables promotion and assignment,
+and user-defined functions definition.
+*/
