@@ -55,6 +55,17 @@ set(EXTENSION_SOURCES
     src/Extensions/Source/ExtensionManager.cpp
 )
 
+set(ZERILINK_SOURCES
+    src/ZeriLink/Source/ZeriWireProtocol.cpp
+    src/ZeriLink/Source/ProcessBridge.cpp
+)
+
+if(WIN32)
+    list(APPEND ZERILINK_SOURCES src/ZeriLink/Source/WindowsProcessHost.cpp)
+else()
+    list(APPEND ZERILINK_SOURCES src/ZeriLink/Source/PosixProcessHost.cpp)
+endif()
+
 set(UI_SOURCES
     src/Ui/Source/TerminalUi.cpp
     src/Ui/Source/FtxUiTerminal.cpp
@@ -70,6 +81,7 @@ add_executable(ZeriEngine
     ${MODULE_SOURCES}
     ${ENGINE_SOURCES}
     ${EXTENSION_SOURCES}
+    ${ZERILINK_SOURCES}
     ${UI_SOURCES}
 )
 
@@ -79,6 +91,7 @@ target_include_directories(ZeriEngine PRIVATE
     src/Modules/Include
     src/Engines/Include
     src/Extensions/Include
+    src/ZeriLink/Include
     src/Ui/Include
     ${EXPRTK_INCLUDE_DIRS}
     ${LUA_INCLUDE_DIR}
@@ -104,5 +117,13 @@ endif()
 if(WIN32)
     target_link_libraries(ZeriEngine PRIVATE psapi)
 endif()
+
+# Copy ZeriLink runtime sidecars to the output directory
+add_custom_command(TARGET ZeriEngine POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/src/ZeriLink/Runtime"
+        "$<TARGET_FILE_DIR:ZeriEngine>/Runtime"
+    COMMENT "Copying ZeriLink runtimes to output directory"
+)
 
 message(STATUS "Project Zeri v${PROJECT_VERSION} configured successfully.")
