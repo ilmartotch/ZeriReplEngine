@@ -6,7 +6,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
-#include <print>
+#include <format>
 #include <string_view>
 
 namespace Zeri::Ui {
@@ -217,27 +217,27 @@ namespace Zeri::Ui {
     }
 
     void TerminalUi::Write(const std::string& text) {
-        std::print("{}", text);
+        std::cout << std::format("{}", text);
     }
 
     void TerminalUi::WriteLine(const std::string& text) {
-        std::println("{}", text);
+        std::cout << std::format("{}\n", text);
     }
 
     void TerminalUi::WriteError(const std::string& text) {
-        std::println("\033[31mError: {}\033[0m", text);
+        std::cout << std::format("\033[31mError: {}\033[0m\n", text);
     }
 
     void TerminalUi::WriteSuccess(const std::string& text) {
-        std::println("\033[32m[ZERI] {}\033[0m", text);
+        std::cout << std::format("\033[32m[ZERI] {}\033[0m\n", text);
     }
 
     void TerminalUi::WriteInfo(const std::string& text) {
-        std::println("\033[34m[INFO] {}\033[0m", text);
+        std::cout << std::format("\033[34m[INFO] {}\033[0m\n", text);
     }
 
     bool TerminalUi::Confirm(const std::string& prompt, bool default_value) {
-        std::print("{} (y/n) [{}]: ", prompt, default_value ? "y" : "n");
+        std::cout << std::format("{} (y/n) [{}]: ", prompt, default_value ? "y" : "n");
         std::string input;
         if (!std::getline(std::cin, input)) return default_value;
         if (input.empty()) return default_value;
@@ -245,12 +245,12 @@ namespace Zeri::Ui {
     }
 
     std::optional<int> TerminalUi::SelectMenu(const std::string& title, const std::vector<std::string>& options) {
-        std::println("\033[33m{}\033[0m", title);
+        std::cout << std::format("\033[33m{}\033[0m\n", title);
         for (size_t i = 0; i < options.size(); ++i) {
-            std::println("{}. {}", i + 1, options[i]);
+            std::cout << std::format("{}. {}\n", i + 1, options[i]);
         }
-        std::print("Select option (1-{}): ", options.size());
-        
+        std::cout << std::format("Select option (1-{}): ", options.size());
+
         std::string input;
         if (!std::getline(std::cin, input)) return std::nullopt;
         try {
