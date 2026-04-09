@@ -16,8 +16,7 @@ namespace Zeri::Ui {
         virtual void WriteInfo(const std::string& text) = 0;
         
         [[nodiscard]] virtual std::optional<std::string> ReadLine(const std::string& prompt) = 0;
-        
-        // Wizard methods
+
         [[nodiscard]] virtual bool Confirm(const std::string& prompt, bool default_value = true) = 0;
         [[nodiscard]] virtual std::optional<int> SelectMenu(const std::string& title, const std::vector<std::string>& options) = 0;
     };
@@ -25,7 +24,15 @@ namespace Zeri::Ui {
 }
 
 /*
-Interface `ITerminal`.
-Abstracts the user interaction layer. This allows switching between standard console I/O,
-a GUI console, or a network socket without changing the core engine logic.
+ITerminal.h — Abstract user interaction layer.
+
+Responsabilità:
+  - Write/WriteLine/WriteError/WriteSuccess/WriteInfo: Output methods.
+  - ReadLine: Interactive input with prompt.
+  - Confirm/SelectMenu: Wizard interaction methods for guided flows.
+
+Allows switching between console I/O, bridge (headless), or GUI
+without changing the core engine logic.
+
+Dipendenze: nessuna (pure interface).
 */

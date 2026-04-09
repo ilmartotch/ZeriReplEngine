@@ -2,16 +2,16 @@
 
 namespace Zeri::Link {
 
-    ProcessBridge::ProcessBridge(std::unique_ptr<IProcessHost> host)
+    SidecarProcessBridge::SidecarProcessBridge(std::unique_ptr<IProcessHost> host)
         : m_host(std::move(host)) {}
 
-    ProcessBridge::~ProcessBridge() {
+    SidecarProcessBridge::~SidecarProcessBridge() {
         if (m_active.load()) {
             Shutdown();
         }
     }
 
-    bool ProcessBridge::Launch(
+    bool SidecarProcessBridge::Launch(
         const std::string& executable,
         const std::vector<std::string>& args,
         std::chrono::seconds timeout
@@ -44,7 +44,7 @@ namespace Zeri::Link {
         return true;
     }
 
-    void ProcessBridge::ExecuteCode(const std::string& jsonPayload, ResultCallback callback) {
+    void SidecarProcessBridge::ExecuteCode(const std::string& jsonPayload, ResultCallback callback) {
         if (!m_active.load()) return;
 
         {
@@ -70,12 +70,12 @@ namespace Zeri::Link {
         m_watchdogCv.notify_one();
     }
 
-    void ProcessBridge::SendInputResponse(const std::string& jsonPayload) {
+    void SidecarProcessBridge::SendInputResponse(const std::string& jsonPayload) {
         if (!m_active.load()) return;
         SendFrame({ MsgType::RES_INPUT, jsonPayload });
     }
 
-    void ProcessBridge::Shutdown() {
+    void SidecarProcessBridge::Shutdown() {
         bool expected = true;
         if (!m_active.compare_exchange_strong(expected, false)) {
             if (m_readerThread.joinable()) {
@@ -117,16 +117,16 @@ namespace Zeri::Link {
         }
     }
 
-    void ProcessBridge::SetInputRequestHandler(InputRequestCallback handler) {
+    void SidecarProcessBridge::SetInputRequestHandler(InputRequestCallback handler) {
         std::lock_guard lock(m_callbackMutex);
         m_inputHandler = std::move(handler);
     }
 
-    void ProcessBridge::SetWatchdogTimeout(std::chrono::seconds timeout) {
+    void SidecarProcessBridge::SetWatchdogTimeout(std::chrono::seconds timeout) {
         m_watchdogTimeout = timeout;
     }
 
-    void ProcessBridge::ReaderLoop(std::stop_token token) {
+    void SidecarProcessBridge::ReaderLoop(std::stop_token token) {
         std::array<std::byte, 4096> buffer{};
 
         while (!token.stop_requested()) {
@@ -141,7 +141,7 @@ namespace Zeri::Link {
         }
     }
 
-    void ProcessBridge::WatchdogLoop(std::stop_token token) {
+    void SidecarProcessBridge::WatchdogLoop(std::stop_token token) {
         while (!token.stop_requested()) {
             std::unique_lock lock(m_watchdogMutex);
 
@@ -178,7 +178,7 @@ namespace Zeri::Link {
         }
     }
 
-    void ProcessBridge::DispatchFrame(const ZeriFrame& frame) {
+    void SidecarProcessBridge::DispatchFrame(const ZeriFrame& frame) {
         switch (frame.type) {
 
         case MsgType::EXEC_RESULT: {
@@ -218,7 +218,7 @@ namespace Zeri::Link {
         }
     }
 
-    bool ProcessBridge::SendFrame(const ZeriFrame& frame) {
+    bool SidecarProcessBridge::SendFrame(const ZeriFrame& frame) {
         std::lock_guard lock(m_writeMutex);
         auto encoded = EncodeFrame(frame);
         return m_host->SendData(encoded);

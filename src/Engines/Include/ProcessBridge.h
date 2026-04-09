@@ -2,18 +2,9 @@
 
 #include "Interface/IProcessBridge.h"
 #include <atomic>
+#include <memory>
 #include <thread>
 #include <vector>
-
-#ifdef _WIN32
-    #ifndef WIN32_LEAN_AND_MEAN
-        #define WIN32_LEAN_AND_MEAN
-    #endif
-    #include <windows.h>
-#else
-    #include <sys/types.h>
-    #include <unistd.h>
-#endif
 
 namespace Zeri::Engines::Defaults {
 
@@ -26,6 +17,7 @@ namespace Zeri::Engines::Defaults {
             const std::filesystem::path& executablePath,
             const std::vector<std::string>& args,
             OutputCallback onOutput,
+            ErrorCallback onError,
             const std::optional<std::filesystem::path>& cwd = std::nullopt
         ) override;
 
@@ -35,31 +27,30 @@ namespace Zeri::Engines::Defaults {
             const std::optional<std::filesystem::path>& cwd = std::nullopt
         ) override;
 
+        [[nodiscard]] int WaitForExit() override;
+
         void SendInput(const std::string& input) override;
         void Terminate() override;
         [[nodiscard]] bool IsRunning() const override { return m_running; }
 
     private:
+        struct Impl;
+
         void ReadOutputLoop(OutputCallback onOutput);
+        void ReadErrorLoop(ErrorCallback onError);
 
         std::atomic<bool> m_running{ false };
+        std::atomic<int> m_lastExitCode{ -1 };
+        std::atomic<int> m_activeReadLoops{ 0 };
         std::jthread m_outputThread;
-
-#ifdef _WIN32
-        HANDLE m_hChildProcess{ nullptr };
-        HANDLE m_hStdInWrite{ nullptr };
-        HANDLE m_hStdOutRead{ nullptr };
-        HANDLE m_jobObject{ nullptr };
-#else
-        int m_childPid{ -1 };
-        int m_stdinPipe[2]{ -1, -1 };
-        int m_stdoutPipe[2]{ -1, -1 };
-#endif
+        std::jthread m_errorThread;
+        std::unique_ptr<Impl> m_impl;
     };
 
 }
 
 /*
-Uses platform-specific handles (HANDLE for Windows, file descriptors for POSIX).
-The m_running atomic flag and m_outputThread (jthread) ensure safe asynchronous output capture.
+ProcessBridge.h espone solo un'interfaccia C++ portabile, senza includere API native.
+I dettagli OS-specifici sono nascosti in un'implementazione privata (PIMPL) definita nel .cpp.
+In questo modo i consumer dell'header non dipendono da windows.h né da tipi POSIX.
 */

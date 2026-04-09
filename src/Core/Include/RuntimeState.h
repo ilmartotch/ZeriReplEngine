@@ -96,6 +96,8 @@ namespace Zeri::Core {
 
         [[nodiscard]] std::expected<void, std::string> LoadSession(const std::filesystem::path& path);
 
+        void ResetSession();
+
     private:
         static constexpr const char* kDefaultStatePath = ".zeri/state.json";
 

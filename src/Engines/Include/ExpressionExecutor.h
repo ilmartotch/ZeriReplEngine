@@ -11,14 +11,14 @@ namespace Zeri::Engines::Defaults {
     public:
         ExpressionExecutor();
 
-        // Valutazione rapida senza passare dal dispatcher
         [[nodiscard]] static ExecutionOutcome Evaluate(
             const std::string& expression,
             Zeri::Core::RuntimeState& state);
 
         [[nodiscard]] ExecutionOutcome Execute(
             const Command& cmd,
-            Zeri::Core::RuntimeState& state
+            Zeri::Core::RuntimeState& state,
+            Zeri::Ui::ITerminal& terminal
         ) override;
 
         [[nodiscard]] ExecutionType GetType() const override;

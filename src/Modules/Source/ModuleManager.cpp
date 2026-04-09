@@ -8,7 +8,6 @@ namespace fs = std::filesystem;
 namespace Zeri::Modules {
 
     ModuleManager::ModuleManager() {
-        // Ensure modules directory exists
         if (!fs::exists(m_modulesRoot)) {
             fs::create_directory(m_modulesRoot);
         }
@@ -23,9 +22,6 @@ namespace Zeri::Modules {
     void ModuleManager::StartBackgroundScan() {
         if (m_isScanning) return;
         m_isScanning = true;
-
-        // std::jthread automatically passes the stop_token as the first argument
-        // We avoid direct dispatch of the method pointer with stop_token with an explicit lambda
 
         m_scanThread = std::jthread([this](std::stop_token stoken) {
             ScanTask(stoken);
@@ -62,7 +58,6 @@ namespace Zeri::Modules {
                 }
             }
         } catch (const std::exception& e) {
-            // Error log
             std::cerr << "[ModuleManager] Exception during background scan: " << e.what() << "\n";
         } catch (...) {
             std::cerr << "[ModuleManager] Unknown exception during background scan.\n";
@@ -76,7 +71,6 @@ namespace Zeri::Modules {
         manifest.path = fs::absolute(dirPath).string();
 
         if (!fs::exists(manifestPath)) {
-            // Auto-detect based on folder name if manifest is missing
             manifest.name = dirPath.filename().string();
             manifest.type = "unknown";
             
@@ -89,7 +83,7 @@ namespace Zeri::Modules {
                             manifest.entryPoint = entry.path().filename().string();
                             break;
                         } else if (ext == ".dll" || ext == ".so" || ext == ".exe") {
-                            manifest.type = "cpp";
+                            manifest.type = "native";
                             manifest.entryPoint = entry.path().filename().string();
                             break;
                         }

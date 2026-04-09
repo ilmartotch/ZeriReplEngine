@@ -12,3 +12,14 @@ namespace Zeri::Engines::Defaults {
         return ExecutionType::Unknown;
     }
 }
+
+/*
+DefaultDispatcher.cpp — Implementation of concrete IDispatcher.
+
+Classify():
+  Maps InputType + command properties to ExecutionType. Recognises
+  ContextSwitch, SystemOp, Expression, @context_eval, .lua suffix,
+  and generic Command inputs.
+
+Dipendenze: IDispatcher (Command, ExecutionType).
+*/

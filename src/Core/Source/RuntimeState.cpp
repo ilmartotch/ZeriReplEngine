@@ -96,15 +96,12 @@ namespace Zeri::Core {
     RuntimeState::RuntimeState() {
         m_moduleManager.StartBackgroundScan();
 
-        // Attempt to restore persisted state from disk
         auto loadResult = LoadSession(kDefaultStatePath);
         if (!loadResult.has_value()) {
-            // Silent fail on first run when no state file exists
         }
     }
 
     RuntimeState::~RuntimeState() {
-        // Auto-save persisted variables on shutdown
         auto saveResult = SaveSession(kDefaultStatePath);
         if (!saveResult.has_value()) {
             std::cerr << "[RuntimeState] Failed to save session: " << saveResult.error() << "\n";
@@ -590,7 +587,6 @@ namespace Zeri::Core {
             } else if (t == typeid(long long)) {
                 root[key] = std::any_cast<long long>(value);
             }
-            // Non-serializable types are silently skipped
         }
 
         try {
@@ -635,12 +631,36 @@ namespace Zeri::Core {
                 } else if (jsonVal.is_number_float()) {
                     m_persistedVariables[key] = jsonVal.get<double>();
                 }
-                // Non-primitive JSON types are silently skipped
             }
 
             return {};
         } catch (const std::exception& e) {
             return std::unexpected(std::string("Load failed: ") + e.what());
+        }
+    }
+
+    void RuntimeState::ResetSession() {
+        {
+            std::unique_lock lock(m_varMutex);
+            m_localVariables.clear();
+            m_sessionVariables.clear();
+        }
+        {
+            std::unique_lock lock(m_functionMutex);
+            m_localFunctions.clear();
+            m_sessionFunctions.clear();
+            ++m_functionRevision;
+        }
+        {
+            std::scoped_lock lock(m_stackMutex, m_varMutex, m_functionMutex);
+            while (m_contextStack.size() > 1) {
+                m_contextStack.pop_back();
+                m_contextManager.Pop();
+            }
+            m_localVariables.clear();
+            m_localFunctions.clear();
+            m_localVariables.emplace_back();
+            m_localFunctions.emplace_back();
         }
     }
 
@@ -651,4 +671,9 @@ RuntimeState Implementation
 Handles variable evaluation, context switching and execution state management.
 Additionally supports variable and policy merging on contexts, and handles the persistence 
 of the runtime state variables and functions in and across the sessions (SaveSession/LoadSession).
+
+ResetSession:
+  Clears all local and session variables and functions. Pops the context
+  stack back to the root (global) context, preserving a single empty
+  local frame. Does not touch global or persisted state.
 */
