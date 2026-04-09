@@ -1,5 +1,7 @@
 out
 build
+build-release
+dist
 .vs
 vcpkg_installed
 docs
