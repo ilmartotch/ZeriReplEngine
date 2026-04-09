@@ -27,7 +27,6 @@ namespace Zeri::Ui {
         void WriteInfo(const std::string& text) override;
         [[nodiscard]] std::optional<std::string> ReadLine(const std::string& prompt) override;
 
-        // Wizard methods
         [[nodiscard]] bool Confirm(const std::string& prompt, bool default_value = true) override;
         [[nodiscard]] std::optional<int> SelectMenu(const std::string& title, const std::vector<std::string>& options) override;
 
@@ -58,5 +57,13 @@ namespace Zeri::Ui {
 }
 
 /*
-Concrete implementation of `ITerminal` for standard input/output streams (stdin/stdout).
+TerminalUi.h — Concrete ITerminal implementation via replxx (interactive console).
+
+Responsabilità:
+  - Interactive I/O with syntax highlighting, completions, and inline hints.
+  - History persistence to disk.
+  - Wizard methods (Confirm, SelectMenu) for guided flows.
+  - Context-aware completion/hint callbacks.
+
+Dipendenze: ITerminal, replxx.
 */

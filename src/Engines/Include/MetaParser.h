@@ -8,10 +8,6 @@
 
 namespace Zeri::Engines::Defaults {
 
-    /**
-     * @brief Advanced parser handling quoted strings and input classification.
-     * Replaces the old SimpleParser.
-     */
     class MetaParser : public IParser {
     public:
         [[nodiscard]] std::expected<Command, ParseError> Parse(const std::string& input) override;

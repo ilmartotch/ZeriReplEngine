@@ -13,6 +13,15 @@ namespace {
         return value;
     }
 
+    [[nodiscard]] std::string ToLower(std::string_view value) {
+        std::string result;
+        result.reserve(value.size());
+        for (char c : value) {
+            result.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+        }
+        return result;
+    }
+
     [[nodiscard]] std::optional<size_t> FindUnclosedQuotePosition(std::string_view input) {
         bool inQuotes = false;
         bool escape = false;
@@ -40,12 +49,37 @@ namespace {
         if (inQuotes) return lastQuotePos;
         return std::nullopt;
     }
+    [[nodiscard]] std::string_view StripComment(std::string_view input) {
+        bool inQuotes = false;
+        bool escape = false;
+        for (size_t i = 0; i < input.size(); ++i) {
+            char c = input[i];
+            if (escape) { escape = false; continue; }
+            if (c == '\\') { escape = true; continue; }
+            if (c == '"') { inQuotes = !inQuotes; continue; }
+            if (c == '#' && !inQuotes) {
+                auto stripped = input.substr(0, i);
+                while (!stripped.empty() && std::isspace(static_cast<unsigned char>(stripped.back()))) {
+                    stripped.remove_suffix(1);
+                }
+                return stripped;
+            }
+        }
+        return input;
+    }
 }
 
 namespace Zeri::Engines::Defaults {
 
     std::expected<Command, ParseError> MetaParser::Parse(const std::string& input) {
         std::string_view inputView{ input };
+        inputView = Trim(inputView);
+
+        if (inputView.empty()) {
+            return Command{ .type = InputType::Empty };
+        }
+
+        inputView = StripComment(inputView);
         inputView = Trim(inputView);
 
         if (inputView.empty()) {
@@ -70,8 +104,6 @@ namespace Zeri::Engines::Defaults {
         } else if (prefix == '!') {
             cmd.type = InputType::SystemOp;
         } else {
-            // No recognized prefix: treat as free-form expression.
-            // The active context decides whether it can handle this input.
             cmd.type = InputType::Expression;
             cmd.commandName = "@expr";
             cmd.args.emplace_back(std::string(inputView));
@@ -88,15 +120,22 @@ namespace Zeri::Engines::Defaults {
             return std::unexpected(ParseError{ "Missing command or context name after prefix.",1 });
         }
 
-        cmd.commandName.assign(tokens[0].begin(), tokens[0].end());
+        cmd.commandName = ToLower(std::string_view(tokens[0].data(), tokens[0].size()));
 
-        // Argument Parsing
+        std::string lastFlag;
         for (size_t i = 1; i < tokens.size(); ++i) {
             const auto& token = tokens[i];
             if (token.starts_with("--")) {
-                cmd.flags.emplace(std::string(token.begin() + 2, token.end()), "true");
+                std::string flagName(token.begin() + 2, token.end());
+                lastFlag = flagName;
+                cmd.flags[flagName] = "true";
             } else {
-                cmd.args.emplace_back(token.begin(), token.end());
+                if (!lastFlag.empty()) {
+                    cmd.flags[lastFlag] = std::string(token.begin(), token.end());
+                    lastFlag.clear();
+                } else {
+                    cmd.args.emplace_back(token.begin(), token.end());
+                }
             }
         }
 
@@ -162,8 +201,21 @@ namespace Zeri::Engines::Defaults {
 }
 
 /*
- - Trim function: trims the input string_view in the Parse method to remove unwanted spaces.
- - FindUnclosedQuotePosition function: Added to detect unclosed quotes in the input.
- - Parse method: checks for unclosed quotes and trims the input. Improperly formatted inputs are rejected with an error.
- - Tokenization and command parsing logic remains the same.
- */
+MetaParser.cpp — Primary parser for the meta-language.
+
+  - Trim: removes leading/trailing whitespace from input.
+  - StripComment: strips everything from the first unquoted # character to
+    the end of the line. Respects quoted strings so '#' inside quotes is
+    preserved. Satisfies the meta-language spec symbol semantics for #.
+  - FindUnclosedQuotePosition: detects unclosed quotes and returns the
+    position for caret-based error reporting.
+  - ToLower: case-folds a string_view to lowercase. Used to normalize
+    commandName after tokenization, satisfying the spec requirement that
+    commands and keywords are case-insensitive.
+  - Parse: Trim -> StripComment -> FindUnclosedQuotePosition -> prefix
+    detection (/ $ !) -> Tokenize -> ToLower(commandName) -> flag/arg split,
+    with support for '--flag value' (value binds to the most recent flag,
+    defaulting to 'true' when no value follows).
+  - Tokenize: PMR-backed tokenizer with quote handling, escape sequences,
+    and @ variable prefix support.
+*/

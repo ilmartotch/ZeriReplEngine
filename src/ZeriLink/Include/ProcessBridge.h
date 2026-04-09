@@ -12,18 +12,18 @@
 
 namespace Zeri::Link {
 
-    class ProcessBridge {
+    class SidecarProcessBridge {
     public:
         using ResultCallback = std::function<void(const ZeriFrame&)>;
         using InputRequestCallback = std::function<void(const std::string&)>;
 
-        explicit ProcessBridge(std::unique_ptr<IProcessHost> host);
-        ~ProcessBridge();
+        explicit SidecarProcessBridge(std::unique_ptr<IProcessHost> host);
+        ~SidecarProcessBridge();
 
-        ProcessBridge(const ProcessBridge&) = delete;
-        ProcessBridge& operator=(const ProcessBridge&) = delete;
-        ProcessBridge(ProcessBridge&&) = delete;
-        ProcessBridge& operator=(ProcessBridge&&) = delete;
+        SidecarProcessBridge(const SidecarProcessBridge&) = delete;
+        SidecarProcessBridge& operator=(const SidecarProcessBridge&) = delete;
+        SidecarProcessBridge(SidecarProcessBridge&&) = delete;
+        SidecarProcessBridge& operator=(SidecarProcessBridge&&) = delete;
 
         [[nodiscard]] bool Launch(
             const std::string& executable,
@@ -70,7 +70,7 @@ namespace Zeri::Link {
 }
 
 /*
-ProcessBridge owns an IProcessHost (dependency injection) and a FrameDecoder,
+SidecarProcessBridge owns an IProcessHost (dependency injection) and a FrameDecoder,
 coordinating the full lifecycle of a sidecar process: launch with handshake,
 bidirectional frame exchange, watchdog timeout, and clean shutdown.
 

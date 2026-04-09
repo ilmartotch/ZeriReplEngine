@@ -3,7 +3,11 @@
 
 namespace Zeri::Engines::Defaults {
 
-    ExecutionOutcome BuiltinExecutor::Execute(const Command& cmd, Zeri::Core::RuntimeState& state) {
+    ExecutionOutcome BuiltinExecutor::Execute(
+        const Command& cmd,
+        Zeri::Core::RuntimeState& state,
+        Zeri::Ui::ITerminal&
+    ) {
         if (cmd.commandName == "exit") {
             state.RequestExit();
             return "Exiting...";
@@ -11,19 +15,37 @@ namespace Zeri::Engines::Defaults {
 
         if (cmd.commandName == "help") {
             return
-                "Zeri REPL Help\n"
-                "================\n"
-                "Core syntax\n"
-                "  /<command>            Execute a command in current context\n"
-                "  $<context>            Switch context (global, math, sandbox, setup)\n"
-                "  <stage1> | <stage2>   Pipeline across stages\n"
+                "Zeri REPL — Available Commands\n"
                 "\n"
-                "Global built-in commands\n"
-                "  /help                 Show this help\n"
-                "  /exit                 Exit REPL\n"
-                "  /set <key> <value>    Store variable\n"
-                "  /get <key>            Read variable\n"
-                "  /lua <script>         Execute inline Lua code\n";
+                "Syntax:\n"
+                "/<command> Execute a command in the current context\n"
+                "$<context> Switch context (global, math, sandbox, setup)\n"
+                "!<shell_command> Execute a system shell command\n"
+                "<expr> Evaluate an expression (context-dependent)\n"
+                "<stage1> | <stage2> Pipeline output across stages\n"
+                "# comment Inline comment (ignored by parser)\n"
+                "\n"
+                "Global Commands:\n"
+                "/help — Show this help\n"
+                "/context — List available contexts\n"
+                "/status — Show session status\n"
+                "/reset — Reset session (clear variables, return to global)\n"
+                "/clear — Clear the screen\n"
+                "/exit — Exit the REPL\n"
+                "/back — Return to the previous context\n"
+                "/save — Save session state to disk\n"
+                "/set <key> <value> — Store a variable in the current scope\n"
+                "/get <key> — Read a variable from the current scope\n"
+                "/lua <script> — Execute inline Lua code\n"
+                "\n"
+                "Contexts:\n"
+                "$code — Scripting language dispatch hub\n"
+                "$math — Mathematical expression engine\n"
+                "$sandbox — Module development environment\n"
+                "$setup — Configuration wizard\n"
+                "$global — Return to root context\n"
+                "\n"
+                "Type /help inside a context for context-specific commands.";
         }
 
         auto scope = Zeri::Core::RuntimeState::VariableScope::Global;
@@ -98,9 +120,19 @@ namespace Zeri::Engines::Defaults {
 }
 
 /*
-Implementation of `BuiltinExecutor`.
-Contains logic for:
-- `exit`: Sets the exit flag in RuntimeState.
-- `set`/`get`: Manipulates the RuntimeState variable map.
-- `help`: Returns static help text.
+BuiltinExecutor.cpp — Handles global built-in commands.
+
+Routes:
+  - /exit: Sets the exit flag in RuntimeState.
+  - /help: Returns formatted help text listing all syntax forms, global
+    commands (including /status, /reset, /clear), and available contexts.
+  - /set: Writes a variable to the current scope (local or global).
+  - /get: Reads a variable from the current scope.
+
+QA Changes:
+  - /help text reformatted with structured sections (Syntax, Global Commands,
+    Contexts) and consistent description alignment.
+  - Added /status, /reset, /clear entries to Global Commands section.
+  - /status and /reset are routed in HandleGlobalCommand (main.cpp) before
+    reaching BuiltinExecutor; they appear here only in help text.
 */

@@ -6,6 +6,12 @@ namespace Zeri::Engines {
     enum class ExecutionType {
         Builtin,
         LuaScript,
+        PythonScript,
+        JsScript,
+        RubyScript,
+        CppRepl,
+        RustRepl,
+        ShellScript,
         SystemProcess,
         Expression,
         ContextCommand,

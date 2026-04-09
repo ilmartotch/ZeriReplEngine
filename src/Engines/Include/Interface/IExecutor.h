@@ -4,6 +4,7 @@
 #include "../Command.h"
 #include "../ExecutionResult.h"
 #include "../../../Core/Include/RuntimeState.h"
+#include "../../../Ui/Include/ITerminal.h"
 
 namespace Zeri::Engines {
 
@@ -13,7 +14,8 @@ namespace Zeri::Engines {
 
         [[nodiscard]] virtual ExecutionOutcome Execute(
             const Command& cmd, 
-            Zeri::Core::RuntimeState& state
+            Zeri::Core::RuntimeState& state,
+            Zeri::Ui::ITerminal& terminal
         ) = 0;
 
         [[nodiscard]] virtual ExecutionType GetType() const = 0;
@@ -26,6 +28,7 @@ namespace Zeri::Engines {
 /*
 Contract for any "Black Box" capable of executing code.
 The `Execute` method receives the `RuntimeState` reference, allowing the executor to modify the application's
-memory or context side-effects. `GetType` is used by the ExtensionManager to register the executor against
+memory or context side-effects, and the active `ITerminal` reference to emit output during execution without
+constructor-level terminal coupling. `GetType` is used by the ExtensionManager to register the executor against
 a specific `ExecutionType`.
 */

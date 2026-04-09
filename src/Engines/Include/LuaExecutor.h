@@ -1,44 +1,41 @@
 #pragma once
 
 #include "Interface/IExecutor.h"
-#include "../../Ui/Include/ITerminal.h"
-#include <memory>
-#include <string>
+#include "../../Core/Include/SystemGuard.h"
+#include "ProcessBridge.h"
 
-struct lua_State;
+#include <string>
 
 namespace Zeri::Engines::Defaults {
 
     class LuaExecutor final : public IExecutor {
     public:
-        explicit LuaExecutor(Zeri::Ui::ITerminal& terminal);
-        ~LuaExecutor() override;
+        explicit LuaExecutor(const Zeri::Core::ScriptRuntime& runtime);
 
         [[nodiscard]] ExecutionOutcome Execute(
             const Command& cmd,
-            Zeri::Core::RuntimeState& state
+            Zeri::Core::RuntimeState& state,
+            Zeri::Ui::ITerminal& terminal
         ) override;
 
-        [[nodiscard]] ExecutionType GetType() const override;
+        [[nodiscard]] ExecutionType GetType() const override {
+            return ExecutionType::LuaScript;
+        }
 
     private:
-        struct LuaStateDeleter {
-            void operator()(lua_State* state) const noexcept;
-        };
-
-        struct LuaBindingContext {
-            Zeri::Core::RuntimeState* state{ nullptr };
-            Zeri::Ui::ITerminal* terminal{ nullptr };
-        };
-
-        static int LuaPrint(lua_State* L);
-        static int LuaSet(lua_State* L);
-        static int LuaGet(lua_State* L);
-
-        [[nodiscard]] bool BindZeriApi(lua_State* L, LuaBindingContext& bindingCtx) const;
-
-        std::unique_ptr<lua_State, LuaStateDeleter> m_luaState;
-        Zeri::Ui::ITerminal& m_terminal;
+        Zeri::Engines::Defaults::ProcessBridge m_bridge;
+        std::string m_binary;
     };
 
 }
+
+/*
+LuaExecutor.h — Executor for Lua scripts via external process bridge.
+
+Responsabilità:
+  - Receives a ScriptRuntime with the resolved luajit binary path.
+  - Execute(): Runs Lua code via ProcessBridge with `-e` flag.
+  - Streams stdout/stderr to ITerminal in real time.
+
+Dipendenze: IExecutor, ProcessBridge, SystemGuard (ScriptRuntime).
+*/

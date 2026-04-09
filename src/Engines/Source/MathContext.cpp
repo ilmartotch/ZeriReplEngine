@@ -77,8 +77,6 @@ namespace {
         return text.empty() ? "0" : text;
     }
 
-    // Shared state for compiled user functions. The exprtk expression holds
-    // references into paramStorage, so both must stay alive together.
     struct CompiledUserFunction {
         std::string name;
         std::vector<std::string> paramNames;
@@ -88,7 +86,6 @@ namespace {
         std::vector<double> paramStorage;
     };
 
-    // Find the first standalone '=' that is not part of ==, <=, >=, !=.
     [[nodiscard]] std::size_t FindAssignmentOperator(std::string_view text) {
         for (std::size_t i = 0; i < text.size(); ++i) {
             if (text[i] != '=') continue;
@@ -102,17 +99,9 @@ namespace {
 
 namespace Zeri::Engines::Defaults {
 
-    // ── Lifecycle ──────────────────────────────────────────────────────────
-
     void MathContext::OnEnter(Zeri::Ui::ITerminal& terminal) {
-        terminal.WriteLine("--- Math Engine Activated ---");
-        terminal.WriteLine("Supports free-form expressions: type any math directly.");
-        terminal.WriteLine("  Variables  : x = 5 | sin(x) + 1");
-        terminal.WriteLine("  Functions  : /fn f(x) = x*sin(x)  then  f(3.14)");
-        terminal.WriteLine("Type /help for full documentation.");
+        terminal.WriteInfo("Math Engine activated — type expressions directly or /help for commands.");
     }
-
-    // ── Main Dispatch ──────────────────────────────────────────────────────
 
     ExecutionOutcome MathContext::HandleCommand(
         const Command& cmd,
@@ -121,7 +110,6 @@ namespace Zeri::Engines::Defaults {
     ) {
         (void)terminal;
 
-        // Free-form expression (no prefix)
         if (cmd.type == InputType::Expression) {
             if (cmd.args.empty()) {
                 return std::unexpected(ExecutionError{
@@ -132,7 +120,6 @@ namespace Zeri::Engines::Defaults {
             return HandleExpression(cmd.args[0], state);
         }
 
-        // Slash commands
         if (cmd.commandName == "help")    return HandleHelp();
         if (cmd.commandName == "calc")    return HandleCalc(cmd);
         if (cmd.commandName == "logic")   return HandleLogic(cmd);
@@ -158,16 +145,12 @@ namespace Zeri::Engines::Defaults {
         });
     }
 
-    // ── Expression Evaluation ──────────────────────────────────────────────
-
     ExecutionOutcome MathContext::HandleExpression(
         const std::string& expr,
         Zeri::Core::RuntimeState& state
     ) {
         return ExpressionExecutor::Evaluate(expr, state);
     }
-
-    // ── /fn — User-defined function registration ───────────────────────────
 
     ExecutionOutcome MathContext::HandleDefineFunction(
         const Command& cmd,
@@ -183,7 +166,6 @@ namespace Zeri::Engines::Defaults {
             });
         }
 
-        // Reconstruct the definition string from tokenized args
         const std::string fullDef = JoinArgs(cmd.args);
 
         const std::size_t eqPos = FindAssignmentOperator(fullDef);
@@ -208,7 +190,6 @@ namespace Zeri::Engines::Defaults {
             });
         }
 
-        // Parse signature: name(param1, param2, ...)
         const auto parenOpen = signature.find('(');
         const auto parenClose = signature.rfind(')');
         if (parenOpen == std::string::npos || parenClose == std::string::npos || parenClose <= parenOpen) {
@@ -248,7 +229,6 @@ namespace Zeri::Engines::Defaults {
             }
         }
 
-        // Compile with exprtk
         auto compiled = std::make_shared<CompiledUserFunction>();
         compiled->name = fnName;
         compiled->paramNames = params;
@@ -304,8 +284,6 @@ namespace Zeri::Engines::Defaults {
         return std::format("[FunctionDefined] {}({}) = {}", fnName, paramList, body);
     }
 
-    // ── /vars — List numeric variables in the current scope ────────────────
-
     ExecutionOutcome MathContext::HandleListVariables(Zeri::Core::RuntimeState& state) {
         const auto localVars = state.GetCurrentLocalVariables();
         if (localVars.empty()) {
@@ -325,8 +303,6 @@ namespace Zeri::Engines::Defaults {
         return result;
     }
 
-    // ── /fns — List user-defined and resolved functions ────────────────────
-
     ExecutionOutcome MathContext::HandleListFunctions(Zeri::Core::RuntimeState& state) {
         const auto localFns = state.GetCurrentLocalFunctions();
         const auto allFns = state.GetResolvedFunctions();
@@ -340,7 +316,6 @@ namespace Zeri::Engines::Defaults {
             }
         }
 
-        // Show promoted/session/global functions that are not local
         bool hasPromoted = false;
         for (const auto& [name, _] : allFns) {
             if (!localFns.contains(name)) {
@@ -363,8 +338,6 @@ namespace Zeri::Engines::Defaults {
                   "  Constants: pi euler phi tau sqrt2 inf epsilon";
         return result;
     }
-
-    // ── /promote — Move a local variable to a broader scope ────────────────
 
     ExecutionOutcome MathContext::HandlePromote(
         const Command& cmd,
@@ -407,28 +380,35 @@ namespace Zeri::Engines::Defaults {
         return std::format("[Promoted] {} -> {}", varName, scopeName);
     }
 
-    // ── /help — Comprehensive documentation ────────────────────────────────
+
 
     ExecutionOutcome MathContext::HandleHelp() {
         return
-            "Math Context Help\n"
-            "=================\n"
+            "Math Context — Available Commands\n"
             "\n"
+            "Global Commands:\n"
+            "  /help                    — Show help for the active context\n"
+            "  /context                 — List available contexts\n"
+            "  /back                    — Return to previous context\n"
+            "  /save                    — Save session state to disk\n"
+            "  /exit                    — Exit the REPL\n"
+            "\n"
+            "Math Commands:\n"
             "Free-form expressions (type directly, no prefix needed):\n"
-            "  2 + 3 * sin(pi/4)        Arithmetic with trig\n"
-            "  x = 42                    Variable assignment\n"
-            "  result = x^2 + log(x)     Computed assignment\n"
-            "  f(3.14)                   Call user-defined function\n"
+            "  2 + 3 * sin(pi/4)        — Arithmetic with trig functions\n"
+            "  x = 42                    — Variable assignment\n"
+            "  result = x^2 + log(x)     — Computed assignment\n"
+            "  f(3.14)                   — Call a user-defined function\n"
             "\n"
             "Commands:\n"
-            "  /eval <expr>         Explicit expression evaluation\n"
-            "  /fn <sig> = <body>   Define function (e.g. /fn f(x) = x*sin(x))\n"
-            "  /define              Alias for /fn\n"
-            "  /vars                List variables in current scope\n"
-            "  /fns                 List defined and available functions\n"
-            "  /promote <var> <sc>  Promote variable (session|global|persisted)\n"
-            "  /calc <a> <op> <b>   Legacy arithmetic (/calc 2 * 8)\n"
-            "  /logic <op> <v1> <v2> Boolean logic (and|or|xor true|false)\n"
+            "  /eval <expr>             — Explicit expression evaluation\n"
+            "  /fn <sig> = <body>       — Define function (e.g. /fn f(x) = x*sin(x))\n"
+            "  /define                  — Alias for /fn\n"
+            "  /vars                    — List variables in current scope\n"
+            "  /fns                     — List defined and available functions\n"
+            "  /promote <var> <scope>   — Promote variable (session|global|persisted)\n"
+            "  /calc <a> <op> <b>       — Legacy arithmetic (e.g. /calc 2 * 8)\n"
+            "  /logic <op> <v1> <v2>    — Boolean logic (and|or|xor true|false)\n"
             "\n"
             "Built-in functions (exprtk):\n"
             "  Trig:    sin cos tan asin acos atan atan2\n"
@@ -439,20 +419,17 @@ namespace Zeri::Engines::Defaults {
             "  Other:   min max clamp mod if(cond, t, f)\n"
             "\n"
             "Constants:\n"
-            "  pi = 3.14159...   euler = 2.71828...   phi = 1.61803...\n"
-            "  tau = 6.28318...  sqrt2 = 1.41421...   inf   epsilon\n"
+            "  pi = 3.14159...  euler = 2.71828...  phi = 1.61803...\n"
+            "  tau = 6.28318...  sqrt2 = 1.41421...  inf  epsilon\n"
             "\n"
             "Variable scopes:\n"
-            "  Default: local (session-only, lost on context exit).\n"
-            "  /promote x session    Persist for REPL session lifetime.\n"
-            "  /promote x persisted  Persist to disk across sessions.\n"
+            "  Default: local (lost on context exit)\n"
+            "  /promote x session     — Persist for REPL session lifetime\n"
+            "  /promote x persisted   — Persist to disk across sessions\n"
             "\n"
             "Pipeline:\n"
-            "  $math | x = 5 | sin(x) + 1\n"
-            "  /set expr \"10 + 5\" | /calc\n";
+            "  $math | x = 5 | sin(x) + 1";
     }
-
-    // ── /calc — Backward-compatible basic arithmetic ───────────────────────
 
     ExecutionOutcome MathContext::HandleCalc(const Command& cmd) {
         std::vector<std::string> effectiveArgs = cmd.args;
@@ -515,8 +492,6 @@ namespace Zeri::Engines::Defaults {
         return std::format("{} {} {} = {}", lhs, op, rhs, result);
     }
 
-    // ── /logic — Backward-compatible boolean logic ─────────────────────────
-
     ExecutionOutcome MathContext::HandleLogic(const Command& cmd) {
         if (cmd.args.size() < 3) {
             return std::unexpected(ExecutionError{
@@ -560,9 +535,13 @@ namespace Zeri::Engines::Defaults {
 }
 
 /*
-MathContext Implementation
-Handles math expressions and logic operations. 
-Uses exprtk internally for expression evaluation.
-Supports explicit slash commands (/calc, /logic, /eval, /fn), variables promotion and assignment,
-and user-defined functions definition.
+MathContext.cpp — Mathematical expression engine.
+
+Handles math expressions and logic operations via exprtk.
+Supports explicit slash commands (/calc, /logic, /eval, /fn, /vars, /fns,
+/promote), variable promotion and assignment, and user-defined functions.
+
+QA Changes:
+  - OnEnter uses WriteInfo for single-line context header.
+  - /help reformatted with structured "command — description" layout.
 */

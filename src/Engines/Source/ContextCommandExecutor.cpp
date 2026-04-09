@@ -5,15 +5,14 @@ namespace Zeri::Engines::Defaults {
 
     ExecutionOutcome ContextCommandExecutor::Execute(
         const Command& cmd,
-        Zeri::Core::RuntimeState& state
+        Zeri::Core::RuntimeState& state,
+        Zeri::Ui::ITerminal&
     ) {
-        // /math: switch active system context
         if (cmd.commandName == "math") {
             state.SetActiveContext("math");
             return "Context switched to: MATH";
         }
 
-        // If input is an expression and active context is math, evaluate it.
         if (cmd.commandName == "@context_eval" && state.GetActiveContext() == "math") {
             return ExpressionExecutor::Evaluate(cmd.args[0], state);
         }

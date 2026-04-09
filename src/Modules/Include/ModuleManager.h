@@ -16,10 +16,8 @@ namespace Zeri::Modules {
         ModuleManager();
         ~ModuleManager();
 
-        // Starts the background scanning thread
         void StartBackgroundScan();
 
-        // Thread-safe retrieval of found modules
         [[nodiscard]] std::vector<ModuleManifest> GetModules() const;
         [[nodiscard]] bool IsScanning() const;
 
@@ -29,7 +27,7 @@ namespace Zeri::Modules {
 
         std::map<std::string, ModuleManifest> m_modules;
         mutable std::mutex m_mutex;
-        
+
         std::jthread m_scanThread;
         std::atomic<bool> m_isScanning{ false };
         const std::string m_modulesRoot = "modules";
@@ -38,7 +36,17 @@ namespace Zeri::Modules {
 }
 
 /*
-Manages the lifecycle of user modules.
-It uses std::jthread (C++20) which automatically joins on destruction, ensuring safe thread cleanup.
-The scanning logic is completely decoupled from the main thread to ensure fast startup times.
+ModuleManager.h — Background-scanned module registry.
+
+Responsabilità:
+  - StartBackgroundScan(): Launches a jthread that iterates `modules/`
+    directory, parses manifests (JSON or auto-detect) and populates the map.
+  - GetModules(): Thread-safe snapshot of discovered modules.
+  - IsScanning(): Atomic flag for scan-in-progress status.
+
+Uses std::jthread (C++20) for automatic join on destruction, ensuring
+safe thread cleanup. Scanning is decoupled from the main thread for
+fast startup times.
+
+Dipendenze: ModuleManifest, filesystem, nlohmann_json (in .cpp).
 */

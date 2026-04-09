@@ -42,16 +42,13 @@ namespace Zeri::Engines {
         std::string_view query = input;
 
         if (trigger == '$') {
-            // Context suggestions
             for (const auto& ctx : kContexts) {
                 if (FuzzyMatch(ctx, query)) {
                     result.push_back({std::string(ctx), "Switch context"});
                 }
             }
         } else if (trigger == '/') {
-            // Command suggestions based on current context
             for (const auto& cmd : kCommands) {
-                // Show global commands OR commands specific to the current context
                 if (cmd.context == ReplContext::Global || cmd.context == context) {
                     if (FuzzyMatch(cmd.command, query)) {
                         result.push_back({std::string(cmd.command), std::string(cmd.usageHint)});
@@ -59,7 +56,6 @@ namespace Zeri::Engines {
                 }
             }
         } else {
-            // Default: try matching commands without prefix if it's just text
             for (const auto& cmd : kCommands) {
                 if ((cmd.context == ReplContext::Global || cmd.context == context) && FuzzyMatch(cmd.command, input)) {
                     result.push_back({std::string(cmd.command), std::string(cmd.usageHint)});
@@ -92,4 +88,17 @@ namespace Zeri::Engines {
     }
 
 }
+
+/*
+CompletionEngine.cpp — Standalone completion and hint generation.
+
+GetCompletions():
+  Returns context-filtered command suggestions based on prefix ($, /, text).
+  Uses FuzzyMatch for substring search.
+
+GetHint():
+  Returns the first matching suffix for inline hint display.
+
+Dipendenze: CompletionEngine.h (kCommands, kContexts arrays).
+*/
 

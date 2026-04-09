@@ -37,3 +37,15 @@ namespace Zeri::Engines::Defaults {
         std::size_t m_maxEntries;
     };
 }
+
+/*
+CachedDispatcher.h — LRU-cached dispatcher wrapping IParser + IDispatcher.
+
+Responsabilità:
+  - Dispatch(): Parses input via IParser, classifies via IDispatcher,
+    caches results in an LRU map bounded by maxEntries.
+  - Clear(): Empties the cache entirely.
+  - SetMaxEntries(): Adjusts capacity, evicting oldest entries if needed.
+
+Dipendenze: IParser, IDispatcher.
+*/

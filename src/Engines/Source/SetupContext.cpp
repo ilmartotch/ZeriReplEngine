@@ -21,13 +21,24 @@ namespace Zeri::Engines::Defaults {
 
         if (cmd.commandName == "help") {
             return
-                "Setup Context Help\n"
-                "------------------\n"
-                "Commands\n"
-                "  /start     Run setup wizard\n"
+                "Setup Context — Available Commands\n"
                 "\n"
-                "Example\n"
-                "  $setup | /start\n";
+                "Global Commands:\n"
+                "  /help                    — Show help for the active context\n"
+                "  /context                 — List available contexts\n"
+                "  /back                    — Return to previous context\n"
+                "  /save                    — Save session state to disk\n"
+                "  /exit                    — Exit the REPL\n"
+                "\n"
+                "Setup Commands:\n"
+                "  /start                   — Run the configuration wizard\n"
+                "\n"
+                "The wizard guides you through:\n"
+                "  1. Preferred code editor selection\n"
+                "  2. IDE configuration save\n"
+                "\n"
+                "Example:\n"
+                "  $setup | /start          — Enter setup and start wizard";
         }
 
         if (cmd.commandName == "start") {
@@ -69,3 +80,15 @@ namespace Zeri::Engines::Defaults {
     }
 
 }
+
+/*
+SetupContext.cpp — Configuration wizard context.
+
+  - /start: Launches the interactive wizard (SelectMenu + Confirm) for
+    setting the preferred editor. Saves to global variable "preferred_ide".
+  - /help: Formatted list of setup-specific commands.
+  - RunWizard: drives the wizard flow and pops the context on completion.
+
+QA Changes:
+  - /help reformatted with "command — description" layout.
+*/

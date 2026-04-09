@@ -4,14 +4,6 @@
 
 namespace Zeri::Engines::Defaults {
 
-    /**
-     * @brief Full-featured math computation engine.
-     *
-     * Supports free-form expression evaluation via exprtk, variable assignment,
-     * user-defined functions, variable promotion across scopes, and backward-
-     * compatible /calc and /logic commands. Acts as a Julia-style sandbox for
-     * numerical computation within the REPL.
-     */
     class MathContext : public BaseContext {
     public:
         void OnEnter(Zeri::Ui::ITerminal& terminal) override;
@@ -36,3 +28,15 @@ namespace Zeri::Engines::Defaults {
     };
 
 }
+
+/*
+MathContext.h — Full-featured math computation engine.
+
+Responsabilità:
+  - Free-form expression evaluation via exprtk.
+  - Variable assignment, user-defined functions, scope promotion.
+  - Backward-compatible /calc and /logic commands.
+  - Acts as a Julia-style sandbox for numerical computation within the REPL.
+
+Dipendenze: BaseContext, RuntimeState (via ExpressionExecutor).
+*/

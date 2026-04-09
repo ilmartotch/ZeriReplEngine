@@ -14,11 +14,13 @@ namespace Zeri::Engines {
         virtual ~IProcessBridge() = default;
 
         using OutputCallback = std::function<void(const std::string&)>;
+        using ErrorCallback = std::function<void(const std::string&)>;
 
         [[nodiscard]] virtual ExecutionOutcome Run(
             const std::filesystem::path& executablePath,
             const std::vector<std::string>& args,
             OutputCallback onOutput,
+            ErrorCallback onError,
             const std::optional<std::filesystem::path>& cwd = std::nullopt
         ) = 0;
 
@@ -27,6 +29,8 @@ namespace Zeri::Engines {
             const std::vector<std::string>& args,
             const std::optional<std::filesystem::path>& cwd = std::nullopt
         ) = 0;
+
+        [[nodiscard]] virtual int WaitForExit() = 0;
 
         virtual void SendInput(const std::string& input) = 0;
         virtual void Terminate() = 0;
@@ -51,6 +55,9 @@ executablePath: Filesystem path to the executable (UTF-8 safe).
 args: Command-line arguments forwarded to the process.
 onOutput: Callback invoked on every chunk of stdout/stderr.
 cwd: Optional working directory for the child process.
+
+WaitForExit:
+Block until the active child process terminates and return its exit code.
 
 ExecuteSync:
 Launch a child process synchronously and return its exit code.

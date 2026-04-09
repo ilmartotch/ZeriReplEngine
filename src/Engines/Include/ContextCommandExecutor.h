@@ -8,7 +8,8 @@ namespace Zeri::Engines::Defaults {
     public:
         [[nodiscard]] ExecutionOutcome Execute(
             const Command& cmd,
-            Zeri::Core::RuntimeState& state
+            Zeri::Core::RuntimeState& state,
+            Zeri::Ui::ITerminal& terminal
         ) override;
 
         [[nodiscard]] ExecutionType GetType() const override;

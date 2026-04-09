@@ -50,3 +50,14 @@ namespace Zeri::Engines::Defaults {
         }
     }
 }
+
+/*
+CachedDispatcher.cpp — Implementation of LRU-cached dispatcher.
+
+Dispatch():
+  Checks the in-memory cache first (O(1) lookup). On cache miss, parses
+  via IParser, classifies via IDispatcher, stores result. FIFO eviction
+  keeps cache bounded by m_maxEntries.
+
+Dipendenze: IParser, IDispatcher.
+*/

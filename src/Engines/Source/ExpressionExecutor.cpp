@@ -12,10 +12,6 @@
 #include <unordered_set>
 #include <vector>
 
-// Disable only the MSVC C4702 (non-executable code) warning emitted by exprtk.hpp.
-// The warning would be promoted to an error by /WX; the rest of the warnings remain active.
-// https://learn.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-4-c4702?view=msvc-170
-
 #ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable:4702)
@@ -148,8 +144,6 @@ namespace {
         return text.empty() ? "0" : text;
     }
 
-    // Names that are resolved by exprtk itself (constants, boolean keywords)
-    // and must not be looked up in RuntimeState.
     const std::unordered_set<std::string> kBuiltinNames = {
         "pi", "epsilon", "inf",
         "euler", "phi", "tau", "sqrt2",
@@ -215,9 +209,9 @@ namespace Zeri::Engines::Defaults {
 
     ExecutionOutcome ExpressionExecutor::Execute(
         const Command& cmd,
-        Zeri::Core::RuntimeState& state
+        Zeri::Core::RuntimeState& state,
+        Zeri::Ui::ITerminal&
     ) {
-        // Per ora gestiamo solo il caso /math -> @context_eval <expr>
         if (cmd.commandName == "@context_eval") {
             if (cmd.args.empty()) {
                 return std::unexpected(ExecutionError{
@@ -243,7 +237,6 @@ namespace Zeri::Engines::Defaults {
     }
 
     ExecutionOutcome ExpressionExecutor::EvaluateFunction(const FunctionCall& fc) const {
-        // Stub minimale: nessuna funzione registrata
         return std::unexpected(ExecutionError{
             "FunctionNotImplemented",
             "Funzione non implementata: " + fc.name,
@@ -266,7 +259,6 @@ namespace Zeri::Engines::Defaults {
             });
         }
 
-        // Find standalone '=' that is not part of ==, <=, >=, !=
         size_t assignmentPos = std::string::npos;
         for (size_t idx = 0; idx < trimmed.size(); ++idx) {
             if (trimmed[idx] != '=') continue;
@@ -399,3 +391,21 @@ namespace Zeri::Engines::Defaults {
     }
 
 }
+
+/*
+ExpressionExecutor.cpp — Mathematical expression evaluator via exprtk.
+
+Responsabilità:
+  - Parses and evaluates mathematical expressions with variable binding.
+  - Supports assignment (x = expr), bare evaluation, and RuntimeState
+    variable/function integration.
+  - Caches compiled exprtk expressions for repeated evaluation.
+  - Thread-safe via g_expressionCacheMutex.
+
+Note:
+  MSVC C4702 warning is suppressed around exprtk.hpp include because
+  exprtk emits unreachable-code warnings that would be promoted to errors
+  by /WX. See: https://learn.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-4-c4702
+
+Dipendenze: ExpressionExecutor.h, exprtk, RuntimeState.
+*/

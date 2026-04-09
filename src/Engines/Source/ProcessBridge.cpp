@@ -1,12 +1,20 @@
 #include "../Include/ProcessBridge.h"
+#include "../../ZeriLink/Include/ScopedHandle.h"
 #include <array>
 #include <filesystem>
+#include <mutex>
 #include <string>
 #include <string_view>
 
-#ifndef _WIN32
+#ifdef _WIN32
+    #ifndef WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
+    #endif
+    #include <windows.h>
+#else
     #include <cerrno>
     #include <csignal>
+    #include <unistd.h>
     #include <sys/wait.h>
     #ifdef __linux__
         #include <sys/prctl.h>
@@ -15,7 +23,22 @@
 
 namespace Zeri::Engines::Defaults {
 
-    ProcessBridge::ProcessBridge() = default;
+    struct ProcessBridge::Impl {
+#ifdef _WIN32
+        Zeri::Link::ScopedHandle childProcess;
+        Zeri::Link::ScopedHandle stdInWrite;
+        Zeri::Link::ScopedHandle stdOutRead;
+        Zeri::Link::ScopedHandle stdErrRead;
+        Zeri::Link::ScopedHandle jobObject;
+#else
+        int childPid{ -1 };
+        Zeri::Link::ScopedFd stdinWrite;
+        Zeri::Link::ScopedFd stdoutRead;
+        Zeri::Link::ScopedFd stderrRead;
+#endif
+    };
+
+    ProcessBridge::ProcessBridge() : m_impl(std::make_unique<Impl>()) {}
 
     ProcessBridge::~ProcessBridge() {
         Terminate();
@@ -23,46 +46,7 @@ namespace Zeri::Engines::Defaults {
 
 #ifdef _WIN32
     namespace {
-        class ScopedHandle final {
-        public:
-            ScopedHandle() = default;
-            explicit ScopedHandle(HANDLE h) noexcept : m_handle(h) {}
-            ScopedHandle(const ScopedHandle&) = delete;
-            ScopedHandle& operator=(const ScopedHandle&) = delete;
-
-            ScopedHandle(ScopedHandle&& other) noexcept : m_handle(other.m_handle) {
-                other.m_handle = nullptr;
-            }
-
-            ScopedHandle& operator=(ScopedHandle&& other) noexcept {
-                if (this != &other) {
-                    Reset();
-                    m_handle = other.m_handle;
-                    other.m_handle = nullptr;
-                }
-                return *this;
-            }
-
-            ~ScopedHandle() { Reset(); }
-
-            [[nodiscard]] HANDLE Get() const noexcept { return m_handle; }
-
-            [[nodiscard]] HANDLE Release() noexcept {
-                HANDLE tmp = m_handle;
-                m_handle = nullptr;
-                return tmp;
-            }
-
-            void Reset(HANDLE h = nullptr) noexcept {
-                if (m_handle != nullptr) {
-                    CloseHandle(m_handle);
-                }
-                m_handle = h;
-            }
-
-        private:
-            HANDLE m_handle{ nullptr };
-        };
+        using Zeri::Link::ScopedHandle;
 
         [[nodiscard]] std::wstring Utf8ToWide(std::string_view input) {
             if (input.empty()) return {};
@@ -124,6 +108,7 @@ namespace Zeri::Engines::Defaults {
         const std::filesystem::path& executablePath,
         const std::vector<std::string>& args,
         OutputCallback onOutput,
+        ErrorCallback onError,
         const std::optional<std::filesystem::path>& cwd
     ) {
         if (m_running) {
@@ -137,6 +122,8 @@ namespace Zeri::Engines::Defaults {
 
         ScopedHandle outRead;
         ScopedHandle outWrite;
+        ScopedHandle errRead;
+        ScopedHandle errWrite;
         ScopedHandle inRead;
         ScopedHandle inWrite;
         ScopedHandle job;
@@ -151,6 +138,18 @@ namespace Zeri::Engines::Defaults {
 
         if (!SetHandleInformation(outRead.Get(), HANDLE_FLAG_INHERIT, 0)) {
             return std::unexpected(ExecutionError{ "OS_ERR", "Failed to set stdout pipe inheritance." });
+        }
+
+        HANDLE errReadRaw = nullptr;
+        HANDLE errWriteRaw = nullptr;
+        if (!CreatePipe(&errReadRaw, &errWriteRaw, &saAttr, 0)) {
+            return std::unexpected(ExecutionError{ "OS_ERR", "Failed to create stderr pipe." });
+        }
+        errRead.Reset(errReadRaw);
+        errWrite.Reset(errWriteRaw);
+
+        if (!SetHandleInformation(errRead.Get(), HANDLE_FLAG_INHERIT, 0)) {
+            return std::unexpected(ExecutionError{ "OS_ERR", "Failed to set stderr pipe inheritance." });
         }
 
         HANDLE inReadRaw = nullptr;
@@ -192,7 +191,6 @@ namespace Zeri::Engines::Defaults {
             cmdLine.append(QuoteArgument(wideArg));
         }
 
-        // Resolve optional cwd to wide string for CreateProcessW
         const wchar_t* wideCwd = nullptr;
         std::wstring cwdWide;
         if (cwd.has_value()) {
@@ -202,7 +200,7 @@ namespace Zeri::Engines::Defaults {
 
         STARTUPINFOW si{};
         si.cb = sizeof(STARTUPINFOW);
-        si.hStdError = outWrite.Get();
+        si.hStdError = errWrite.Get();
         si.hStdOutput = outWrite.Get();
         si.hStdInput = inRead.Get();
         si.dwFlags |= STARTF_USESTDHANDLES;
@@ -222,123 +220,89 @@ namespace Zeri::Engines::Defaults {
 
         ResumeThread(thread.Get());
 
-        m_hStdOutRead = outRead.Release();
-        m_hStdInWrite = inWrite.Release();
-        m_jobObject = job.Release();
-        m_hChildProcess = process.Release();
+        m_impl->stdOutRead.Reset(outRead.Release());
+        m_impl->stdErrRead.Reset(errRead.Release());
+        m_impl->stdInWrite.Reset(inWrite.Release());
+        m_impl->jobObject.Reset(job.Release());
+        m_impl->childProcess.Reset(process.Release());
 
-        // Parent-side closures
         outWrite.Reset();
+        errWrite.Reset();
         inRead.Reset();
         thread.Reset();
 
+        m_lastExitCode = -1;
+        m_activeReadLoops = 2;
         m_running = true;
         m_outputThread = std::jthread(&ProcessBridge::ReadOutputLoop, this, std::move(onOutput));
+        m_errorThread = std::jthread(&ProcessBridge::ReadErrorLoop, this, std::move(onError));
         return "Process started.";
     }
 
     void ProcessBridge::ReadOutputLoop(OutputCallback onOutput) {
         std::array<char, 4096> buffer{};
         DWORD read = 0;
-        while (m_running && m_hStdOutRead &&
-               ReadFile(m_hStdOutRead, buffer.data(), static_cast<DWORD>(buffer.size() - 1), &read, nullptr) &&
+        while (m_running && m_impl->stdOutRead.IsValid() &&
+               ReadFile(m_impl->stdOutRead.Get(), buffer.data(), static_cast<DWORD>(buffer.size() - 1), &read, nullptr) &&
                read > 0) {
             buffer[read] = '\0';
             onOutput(std::string(buffer.data(), buffer.data() + read));
         }
-        m_running = false;
+        if (m_activeReadLoops.fetch_sub(1) == 1) {
+            m_running = false;
+        }
+    }
+
+    void ProcessBridge::ReadErrorLoop(ErrorCallback onError) {
+        std::array<char, 4096> buffer{};
+        DWORD read = 0;
+        while (m_running && m_impl->stdErrRead.IsValid() &&
+               ReadFile(m_impl->stdErrRead.Get(), buffer.data(), static_cast<DWORD>(buffer.size() - 1), &read, nullptr) &&
+               read > 0) {
+            buffer[read] = '\0';
+            onError(std::string(buffer.data(), buffer.data() + read));
+        }
+        if (m_activeReadLoops.fetch_sub(1) == 1) {
+            m_running = false;
+        }
     }
 
     void ProcessBridge::SendInput(const std::string& input) {
-        if (!m_running || !m_hStdInWrite) return;
+        if (!m_running || !m_impl->stdInWrite.IsValid()) return;
         const std::string payload = input + "\n";
         DWORD written = 0;
-        (void)WriteFile(m_hStdInWrite, payload.data(), static_cast<DWORD>(payload.size()), &written, nullptr);
+        (void)WriteFile(m_impl->stdInWrite.Get(), payload.data(), static_cast<DWORD>(payload.size()), &written, nullptr);
     }
 
     void ProcessBridge::Terminate() {
         m_running = false;
 
-        if (m_hStdInWrite) { CloseHandle(m_hStdInWrite); m_hStdInWrite = nullptr; }
-        if (m_hStdOutRead) { CloseHandle(m_hStdOutRead); m_hStdOutRead = nullptr; }
+        m_impl->stdInWrite.Reset();
+        m_impl->stdOutRead.Reset();
+        m_impl->stdErrRead.Reset();
 
-        if (m_jobObject) {
-            CloseHandle(m_jobObject); // kill-on-close
-            m_jobObject = nullptr;
+        if (m_impl->jobObject.IsValid()) {
+            m_impl->jobObject.Reset();
         }
 
-        if (m_hChildProcess) {
-            TerminateProcess(m_hChildProcess, 0);
-            CloseHandle(m_hChildProcess);
-            m_hChildProcess = nullptr;
+        if (m_impl->childProcess.IsValid()) {
+            TerminateProcess(m_impl->childProcess.Get(), 0);
+            (void)WaitForSingleObject(m_impl->childProcess.Get(), INFINITE);
+            m_lastExitCode = 0;
+            m_impl->childProcess.Reset();
         }
     }
 
 #else
     namespace {
-        class ScopedFd final {
-        public:
-            ScopedFd() = default;
-            explicit ScopedFd(int fd) noexcept : m_fd(fd) {}
-            ScopedFd(const ScopedFd&) = delete;
-            ScopedFd& operator=(const ScopedFd&) = delete;
-
-            ScopedFd(ScopedFd&& other) noexcept : m_fd(other.m_fd) {
-                other.m_fd = -1;
-            }
-
-            ScopedFd& operator=(ScopedFd&& other) noexcept {
-                if (this != &other) {
-                    Reset();
-                    m_fd = other.m_fd;
-                    other.m_fd = -1;
-                }
-                return *this;
-            }
-
-            ~ScopedFd() { Reset(); }
-
-            [[nodiscard]] int Get() const noexcept { return m_fd; }
-
-            [[nodiscard]] int Release() noexcept {
-                const int out = m_fd;
-                m_fd = -1;
-                return out;
-            }
-
-            void Reset(int fd = -1) noexcept {
-                if (m_fd != -1) {
-                    close(m_fd);
-                }
-                m_fd = fd;
-            }
-
-        private:
-            int m_fd{ -1 };
-        };
-
-        void SigChldHandler(int) {
-            const int saved = errno;
-            while (waitpid(-1, nullptr, WNOHANG) > 0) {}
-            errno = saved;
-        }
-
-        void InstallSigChldHandler() {
-            static std::once_flag once;
-            std::call_once(once, []() {
-                struct sigaction sa{};
-                sa.sa_handler = SigChldHandler;
-                sigemptyset(&sa.sa_mask);
-                sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
-                sigaction(SIGCHLD, &sa, nullptr);
-            });
-        }
+        using Zeri::Link::ScopedFd;
     }
 
     ExecutionOutcome ProcessBridge::Run(
         const std::filesystem::path& executablePath,
         const std::vector<std::string>& args,
         OutputCallback onOutput,
+        ErrorCallback onError,
         const std::optional<std::filesystem::path>& cwd
     ) {
         if (m_running) {
@@ -346,6 +310,7 @@ namespace Zeri::Engines::Defaults {
         }
 
         int outPipe[2]{ -1, -1 };
+        int errPipe[2]{ -1, -1 };
         int inPipe[2]{ -1, -1 };
 
         if (pipe(outPipe) != 0) {
@@ -354,13 +319,17 @@ namespace Zeri::Engines::Defaults {
         ScopedFd outRead(outPipe[0]);
         ScopedFd outWrite(outPipe[1]);
 
+        if (pipe(errPipe) != 0) {
+            return std::unexpected(ExecutionError{ "OS_ERR", "Failed to create stderr pipe." });
+        }
+        ScopedFd errRead(errPipe[0]);
+        ScopedFd errWrite(errPipe[1]);
+
         if (pipe(inPipe) != 0) {
             return std::unexpected(ExecutionError{ "OS_ERR", "Failed to create stdin pipe." });
         }
         ScopedFd inRead(inPipe[0]);
         ScopedFd inWrite(inPipe[1]);
-
-        InstallSigChldHandler();
 
         const std::string pathStr = executablePath.string();
 
@@ -374,17 +343,18 @@ namespace Zeri::Engines::Defaults {
             prctl(PR_SET_PDEATHSIG, SIGTERM);
             if (getppid() == 1) _exit(1);
 #endif
-            // Change working directory if requested
             if (cwd.has_value()) {
                 if (chdir(cwd->string().c_str()) != 0) _exit(126);
             }
 
             dup2(outWrite.Get(), STDOUT_FILENO);
-            dup2(outWrite.Get(), STDERR_FILENO);
+            dup2(errWrite.Get(), STDERR_FILENO);
             dup2(inRead.Get(), STDIN_FILENO);
 
             outRead.Reset();
             outWrite.Reset();
+            errRead.Reset();
+            errWrite.Reset();
             inRead.Reset();
             inWrite.Reset();
 
@@ -398,26 +368,27 @@ namespace Zeri::Engines::Defaults {
             _exit(127);
         }
 
-        m_childPid = static_cast<int>(pid);
-
-        // parent keeps read stdout + write stdin
-        m_stdoutPipe[0] = outRead.Release();
-        m_stdoutPipe[1] = -1;
-        m_stdinPipe[0] = -1;
-        m_stdinPipe[1] = inWrite.Release();
+        m_impl->childPid = static_cast<int>(pid);
+        m_impl->stdoutRead.Reset(outRead.Release());
+        m_impl->stderrRead.Reset(errRead.Release());
+        m_impl->stdinWrite.Reset(inWrite.Release());
 
         outWrite.Reset();
+        errWrite.Reset();
         inRead.Reset();
 
+        m_lastExitCode = -1;
+        m_activeReadLoops = 2;
         m_running = true;
         m_outputThread = std::jthread(&ProcessBridge::ReadOutputLoop, this, std::move(onOutput));
+        m_errorThread = std::jthread(&ProcessBridge::ReadErrorLoop, this, std::move(onError));
         return "Process started.";
     }
 
     void ProcessBridge::ReadOutputLoop(OutputCallback onOutput) {
         std::array<char, 4096> buffer{};
-        while (m_running && m_stdoutPipe[0] != -1) {
-            const ssize_t bytesRead = read(m_stdoutPipe[0], buffer.data(), buffer.size() - 1);
+        while (m_running && m_impl->stdoutRead.IsValid()) {
+            const ssize_t bytesRead = read(m_impl->stdoutRead.Get(), buffer.data(), buffer.size() - 1);
             if (bytesRead > 0) {
                 buffer[static_cast<size_t>(bytesRead)] = '\0';
                 onOutput(std::string(buffer.data(), static_cast<size_t>(bytesRead)));
@@ -430,18 +401,41 @@ namespace Zeri::Engines::Defaults {
 
             break;
         }
-        m_running = false;
+        if (m_activeReadLoops.fetch_sub(1) == 1) {
+            m_running = false;
+        }
+    }
+
+    void ProcessBridge::ReadErrorLoop(ErrorCallback onError) {
+        std::array<char, 4096> buffer{};
+        while (m_running && m_impl->stderrRead.IsValid()) {
+            const ssize_t bytesRead = read(m_impl->stderrRead.Get(), buffer.data(), buffer.size() - 1);
+            if (bytesRead > 0) {
+                buffer[static_cast<size_t>(bytesRead)] = '\0';
+                onError(std::string(buffer.data(), static_cast<size_t>(bytesRead)));
+                continue;
+            }
+
+            if (bytesRead < 0 && errno == EINTR) {
+                continue;
+            }
+
+            break;
+        }
+        if (m_activeReadLoops.fetch_sub(1) == 1) {
+            m_running = false;
+        }
     }
 
     void ProcessBridge::SendInput(const std::string& input) {
-        if (!m_running || m_stdinPipe[1] == -1) return;
+        if (!m_running || !m_impl->stdinWrite.IsValid()) return;
 
         const std::string payload = input + "\n";
         const char* data = payload.data();
         size_t remaining = payload.size();
 
         while (remaining > 0) {
-            const ssize_t written = write(m_stdinPipe[1], data, remaining);
+            const ssize_t written = write(m_impl->stdinWrite.Get(), data, remaining);
             if (written > 0) {
                 data += written;
                 remaining -= static_cast<size_t>(written);
@@ -455,16 +449,62 @@ namespace Zeri::Engines::Defaults {
     void ProcessBridge::Terminate() {
         m_running = false;
 
-        if (m_stdinPipe[1] != -1) { close(m_stdinPipe[1]); m_stdinPipe[1] = -1; }
-        if (m_stdoutPipe[0] != -1) { close(m_stdoutPipe[0]); m_stdoutPipe[0] = -1; }
+        m_impl->stdinWrite.Reset();
+        m_impl->stdoutRead.Reset();
+        m_impl->stderrRead.Reset();
 
-        if (m_childPid > 0) {
-            kill(m_childPid, SIGTERM);
-            (void)waitpid(m_childPid, nullptr, 0);
-            m_childPid = -1;
+        if (m_impl->childPid > 0) {
+            kill(m_impl->childPid, SIGTERM);
+            (void)waitpid(m_impl->childPid, nullptr, 0);
+            m_lastExitCode = 0;
+            m_impl->childPid = -1;
         }
     }
 #endif
+
+    int ProcessBridge::WaitForExit() {
+#ifdef _WIN32
+        if (!m_impl->childProcess.IsValid()) {
+            return m_lastExitCode.load();
+        }
+
+        (void)WaitForSingleObject(m_impl->childProcess.Get(), INFINITE);
+        DWORD exitCode = 0;
+        if (!GetExitCodeProcess(m_impl->childProcess.Get(), &exitCode)) {
+            m_lastExitCode = -1;
+        } else {
+            m_lastExitCode = static_cast<int>(exitCode);
+        }
+
+        m_running = false;
+        m_impl->childProcess.Reset();
+        return m_lastExitCode.load();
+#else
+        if (m_impl->childPid <= 0) {
+            return m_lastExitCode.load();
+        }
+
+        int status = 0;
+        pid_t result = -1;
+        do {
+            result = waitpid(m_impl->childPid, &status, 0);
+        } while (result == -1 && errno == EINTR);
+
+        if (result == -1) {
+            m_lastExitCode = -1;
+        } else if (WIFEXITED(status)) {
+            m_lastExitCode = WEXITSTATUS(status);
+        } else if (WIFSIGNALED(status)) {
+            m_lastExitCode = 128 + WTERMSIG(status);
+        } else {
+            m_lastExitCode = -1;
+        }
+
+        m_running = false;
+        m_impl->childPid = -1;
+        return m_lastExitCode.load();
+#endif
+    }
 
     int ProcessBridge::ExecuteSync(
         const std::filesystem::path& executablePath,
@@ -530,7 +570,6 @@ namespace Zeri::Engines::Defaults {
         }
 
         if (pid == 0) {
-            // Change working directory if requested
             if (cwd.has_value()) {
                 if (chdir(cwd->string().c_str()) != 0) _exit(126);
             }
@@ -555,13 +594,14 @@ namespace Zeri::Engines::Defaults {
 
         return -1;
 #endif
-}
+    }
 
 }
 
 /*
-The Windows version uses Anonymous Pipes to capture the child process's streams.
-It launches the process using CreateProcessW and monitors the output in a dedicated thread.
-Sending input is performed by writing to the write-end of the input pipe.
-This architecture allows the REPL to remain responsive while the child process runs.
+ProcessBridge usa una PIMPL per isolare completamente i dettagli di piattaforma dall'header pubblico.
+Il file header non include più windows.h né tipi POSIX, quindi i consumer restano portabili.
+Nel source vengono usati i wrapper RAII condivisi di ZeriLink (ScopedHandle/ScopedFd) per gestire risorse native.
+La logica Run/SendInput/Terminate mantiene il comportamento esistente ma centralizza lo stato OS in Impl.
+La gestione I/O asincrona ora separa stdout e stderr con pipe e thread dedicati, inoltrando i flussi su callback distinti.
 */
