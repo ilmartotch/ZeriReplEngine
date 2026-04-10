@@ -1,50 +1,230 @@
 package ui
 
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+)
+
 type CompletionEntry struct {
 	Command  string
 	Synopsis string
 }
 
-var SlashCommands = []CompletionEntry{
-	{"/help", "Show available commands"},
-	{"/clear", "Clear the chat history"},
-	{"/exit", "Exit Zeri"},
-	{"/context", "List available contexts"},
-	{"/back", "Return to previous context"},
-	{"/reset", "Reset the current session"},
-	{"/status", "Show engine diagnostics"},
+type helpCatalogContextEntry struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
 }
 
-var ContextCommands = []CompletionEntry{
-    {"$code", "Scripting language dispatch hub"},
-	{"$customCommand", "Custom user command scope"},
-	{"$math", "Mathematical expression engine"},
-	{"$sandbox", "Module development environment"},
-	{"$setup", "Configuration wizard"},
-	{"$global", "Return to root context"},
+type helpCatalogCommandEntry struct {
+	Command  string `json:"command"`
+	Synopsis string `json:"synopsis"`
 }
 
-var SandboxCommands = []CompletionEntry{
- {"/open", "Open a file in the configured IDE"},
-	{"/set-ide", "Set the preferred IDE"},
-	{"/watch", "Watch a path for changes"},
-	{"/list", "List all available modules"},
-	{"/build", "Build a module using CMake"},
-	{"/run", "Run a compiled module"},
+type helpCatalogData struct {
+	Contexts  []helpCatalogContextEntry            `json:"contexts"`
+	Reachable map[string][]string                  `json:"reachable"`
+	Commands  map[string][]helpCatalogCommandEntry `json:"commands"`
 }
 
-var CodeCommands = []CompletionEntry{
-	{"/lua", "Enter Lua context"},
-	{"/python", "Enter Python context"},
-	{"/js", "Enter JavaScript context"},
-	{"/ts", "Enter TypeScript context"},
-	{"/ruby", "Enter Ruby context"},
+var (
+	helpCatalogOnce sync.Once
+	helpCatalog     helpCatalogData
+)
+
+func defaultHelpCatalog() helpCatalogData {
+	return helpCatalogData{
+		Contexts: []helpCatalogContextEntry{
+			{Name: "global", Description: "Root command context"},
+			{Name: "code", Description: "Scripting language dispatch hub"},
+			{Name: "customcommand", Description: "Custom user command scope"},
+			{Name: "js", Description: "JavaScript scripting editor and executor"},
+			{Name: "ts", Description: "TypeScript scripting editor and executor"},
+			{Name: "lua", Description: "Lua scripting editor and executor"},
+			{Name: "python", Description: "Python scripting editor and executor"},
+			{Name: "ruby", Description: "Ruby scripting editor and executor"},
+			{Name: "math", Description: "Mathematical expression engine"},
+			{Name: "sandbox", Description: "Module development environment"},
+			{Name: "setup", Description: "Configuration wizard"},
+		},
+		Reachable: map[string][]string{
+			"global": {"global", "code", "customcommand", "math", "sandbox", "setup"},
+			"code": {"global", "lua", "python", "js", "ts", "ruby"},
+			"default": {"global"},
+		},
+		Commands: map[string][]helpCatalogCommandEntry{
+			"global": {
+				{Command: "/help", Synopsis: "Show help for the active context"},
+				{Command: "/copy last", Synopsis: "Copy the latest non-user output message"},
+				{Command: "/copy all", Synopsis: "Copy the full visible message history"},
+				{Command: "/clear", Synopsis: "Clear chat history"},
+				{Command: "/exit", Synopsis: "Exit the REPL"},
+				{Command: "/context", Synopsis: "List reachable contexts"},
+				{Command: "/back", Synopsis: "Return to previous context"},
+				{Command: "/reset", Synopsis: "Reset the current session"},
+				{Command: "/status", Synopsis: "Show engine diagnostics"},
+				{Command: "/save", Synopsis: "Save session state to disk"},
+			},
+			"sandbox": {
+				{Command: "/open", Synopsis: "Open a file in the configured IDE"},
+				{Command: "/set-ide", Synopsis: "Set the preferred IDE"},
+				{Command: "/watch", Synopsis: "Show current sandbox process status"},
+				{Command: "/list", Synopsis: "List all available modules"},
+				{Command: "/build", Synopsis: "Build a module using CMake"},
+				{Command: "/run", Synopsis: "Run a compiled module"},
+			},
+			"math": {
+				{Command: "/eval", Synopsis: "Evaluate an expression"},
+				{Command: "/fn", Synopsis: "Define a function"},
+				{Command: "/vars", Synopsis: "List variables"},
+				{Command: "/fns", Synopsis: "List functions"},
+				{Command: "/promote", Synopsis: "Promote a variable scope"},
+				{Command: "/calc", Synopsis: "Run a quick arithmetic command"},
+				{Command: "/logic", Synopsis: "Run a boolean logic command"},
+			},
+			"setup": {
+				{Command: "/start", Synopsis: "Run the configuration wizard"},
+			},
+			"script": {
+				{Command: "/new", Synopsis: "Create a script"},
+				{Command: "/edit", Synopsis: "Edit an existing script"},
+				{Command: "/show", Synopsis: "Show a saved script"},
+				{Command: "/run", Synopsis: "Run a script or last buffer"},
+				{Command: "/list", Synopsis: "List saved scripts"},
+				{Command: "/delete", Synopsis: "Delete a saved script"},
+			},
+		},
+	}
+}
+
+func loadHelpCatalog() helpCatalogData {
+	catalog := defaultHelpCatalog()
+	path, ok := resolveHelpCatalogPath()
+	if !ok {
+		return catalog
+	}
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return catalog
+	}
+
+	if err = json.Unmarshal(raw, &catalog); err != nil {
+		return defaultHelpCatalog()
+	}
+
+	return catalog
+}
+
+func resolveHelpCatalogPath() (string, bool) {
+	start, err := os.Getwd()
+	if err != nil {
+		return "", false
+	}
+
+	current := start
+	for {
+		candidate := filepath.Join(current, "help", "help_catalog.json")
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, true
+		}
+
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+
+	return "", false
+}
+
+func getHelpCatalog() helpCatalogData {
+	helpCatalogOnce.Do(func() {
+		helpCatalog = loadHelpCatalog()
+	})
+	return helpCatalog
+}
+
+func normaliseContextName(activeContext string) string {
+	name := strings.TrimSpace(strings.TrimPrefix(activeContext, "$"))
+	if name == "" {
+		return "global"
+	}
+	return strings.ToLower(name)
+}
+
+func commandGroupForContext(ctx string) string {
+	switch ctx {
+	case "js", "ts", "lua", "python", "ruby":
+		return "script"
+	default:
+		return ctx
+	}
+}
+
+func commandsForGroup(group string) []CompletionEntry {
+	catalog := getHelpCatalog()
+	entries, ok := catalog.Commands[group]
+	if !ok {
+		return nil
+	}
+
+	result := make([]CompletionEntry, 0, len(entries))
+	for _, entry := range entries {
+		result = append(result, CompletionEntry{Command: entry.Command, Synopsis: entry.Synopsis})
+	}
+	return result
+}
+
+func contextDescriptions() map[string]string {
+	catalog := getHelpCatalog()
+	result := make(map[string]string, len(catalog.Contexts))
+	for _, entry := range catalog.Contexts {
+		result[strings.ToLower(entry.Name)] = entry.Description
+	}
+	return result
+}
+
+func SlashCommandsForContext(activeContext string) []CompletionEntry {
+	ctx := normaliseContextName(activeContext)
+	pool := make([]CompletionEntry, 0, 16)
+	pool = append(pool, commandsForGroup("global")...)
+
+	group := commandGroupForContext(ctx)
+	if group != "global" {
+		pool = append(pool, commandsForGroup(group)...)
+	}
+
+	return pool
+}
+
+func ContextCommandsForContext(activeContext string) []CompletionEntry {
+	ctx := normaliseContextName(activeContext)
+	catalog := getHelpCatalog()
+	descriptions := contextDescriptions()
+
+	reachable, ok := catalog.Reachable[ctx]
+	if !ok {
+		reachable = catalog.Reachable["default"]
+	}
+
+	result := make([]CompletionEntry, 0, len(reachable))
+	for _, name := range reachable {
+		normalized := strings.ToLower(name)
+		synopsis, ok := descriptions[normalized]
+		if !ok {
+			continue
+		}
+		result = append(result, CompletionEntry{Command: "$" + normalized, Synopsis: synopsis})
+	}
+	return result
 }
 
 /*
- * CHANGES & RATIONALE
- *
- * What changed:
+ * What:
  *   - Updated SandboxCommands to reflect current SandboxContext commands:
  *     /open, /set-ide, /watch, /list, /build, /run.
  *   - Added CodeCommands for ScriptHub context routing commands.

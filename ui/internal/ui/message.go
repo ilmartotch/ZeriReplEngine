@@ -3,26 +3,31 @@ package ui
 type MessageRole int
 
 const (
-	RoleUser   MessageRole = iota
+	RoleUser MessageRole = iota
 	RoleZeri
 	RoleSystem
+	RoleScriptExecution
+	RoleCodeView
 )
 
 type ChatMessage struct {
-	Role      MessageRole
-	Content   string
+	Role MessageRole
+	Label string
+	Content string
 	Timestamp string
 }
 
 /*
- * CHANGES & RATIONALE
- * -------------------
- * [message.go]
- *
- * What changed:
+ * What:
  *   - Defines the ChatMessage model and MessageRole enum.
  *   - Three roles: User (right-aligned bubbles), Zeri (left-aligned
  *     with blue border), System (centred italic).
+ *   - Added RoleScriptExecution for rendered script execution blocks in
+ *     REPL history.
+ *   - Added RoleCodeView for persistent markers emitted when temporary
+ *     code preview panels are closed.
+ *   - Added Label field to ChatMessage for mode-specific visual tags
+ *     (for example: [main.js], [$js]).
  *   - Timestamp field stores "HH:MM" for display next to bubbles.
  *
  * Why:

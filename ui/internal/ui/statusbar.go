@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-   "runtime"
 	"strings"
 
 	lg "charm.land/lipgloss/v2"
@@ -16,7 +15,7 @@ func RenderStatusBar(termWidth int, context string, connected bool, memMB uint64
 	var parts []string
 	parts = append(parts, volt.Render("◆ Zeri"))
 
- if memMB == 0 {
+	if memMB == 0 {
 		parts = append(parts, grey.Render("RAM: —"))
 	} else {
 		parts = append(parts, grey.Render(fmt.Sprintf("RAM: %d MB", memMB)))
@@ -42,7 +41,7 @@ func RenderStatusBar(termWidth int, context string, connected bool, memMB uint64
 		parts = append(parts, connStr)
 	}
 
-  parts = append(parts, grey.Render(platformShortcutHint()))
+	parts = append(parts, grey.Render("Use /help for commands and shortcuts"))
 
 	content := " " + strings.Join(parts, sep) + " "
 
@@ -51,17 +50,6 @@ func RenderStatusBar(termWidth int, context string, connected bool, memMB uint64
 		Render(content)
 
 	return bar
-}
-
-func platformShortcutHint() string {
-	switch runtime.GOOS {
-	case "linux":
-		return "Ctrl+C copy • Ctrl+X cut • Ctrl+V paste • /exit to quit (wl-clipboard/xclip/xsel required)"
-	case "darwin":
-		return "Ctrl+C copy • Ctrl+X cut • Ctrl+V paste • /exit to quit"
-	default:
-		return "Ctrl+C copy • Ctrl+X cut • Ctrl+V paste • /exit to quit"
-	}
 }
 
 /*

@@ -1,4 +1,5 @@
 #include "Core/Include/RuntimeState.h"
+#include "Core/Include/HelpCatalog.h"
 #include "Core/Include/SystemGuard.h"
 #include "Engines/Include/GlobalContext.h"
 #include "Engines/Include/CustomCommandContext.h"
@@ -30,24 +31,10 @@
 #include <optional>
 
 namespace {
-    struct ContextSpec {
-        std::string_view name;
-        std::string_view description;
-    };
-
-    constexpr std::array<ContextSpec, 11> kAvailableContexts = {{
-        { "global", "Root command context" },
-        { "code", "Scripting language dispatch hub" },
-        { "customCommand", "Custom user command scope" },
-        { "js", "JavaScript scripting editor and executor" },
-        { "ts", "TypeScript scripting editor and executor" },
-        { "lua", "Lua scripting editor and executor" },
-        { "python", "Python scripting editor and executor" },
-        { "ruby", "Ruby scripting editor and executor" },
-        { "math", "Mathematical expression engine" },
-        { "sandbox", "Module development environment" },
-        { "setup", "Configuration wizard" }
-    }};
+    [[nodiscard]] bool CanReachContext(std::string_view from, std::string_view target) {
+        const auto reachable = Zeri::Core::HelpCatalog::Instance().ReachableFrom(from);
+        return std::ranges::find(reachable, std::string(target)) != reachable.end();
+    }
 
     [[nodiscard]] std::string_view Trim(std::string_view value) {
         auto isSpace = [](unsigned char c) { return std::isspace(c) != 0; };
@@ -182,6 +169,16 @@ namespace {
             return false;
         }
 
+        const auto* current = runtimeState.GetCurrentContext();
+        const std::string currentName = current ? ToLower(current->GetName()) : std::string{ "global" };
+        if (!CanReachContext(currentName, normalized)) {
+            terminal.WriteError(
+                "Context switch not allowed from $" + currentName + " to $" + normalized +
+                ". Use /context to list reachable contexts."
+            );
+            return false;
+        }
+
         auto nextContext = BuildContext(normalized);
         if (!nextContext) {
             terminal.WriteError("Unknown context: " + ctxName);
@@ -209,21 +206,26 @@ namespace {
     ) {
         if (cmd.commandName == "context") {
             const auto* current = runtimeState.GetCurrentContext();
-            const std::string currentName = current ? current->GetName() : "global";
+            const std::string currentName = ToLower(current ? current->GetName() : "global");
+            const auto reachable = Zeri::Core::HelpCatalog::Instance().ReachableFrom(currentName);
 
-            std::string result = "Available contexts:\n";
-            for (const auto& context : kAvailableContexts) {
+            std::string result = "Reachable contexts from $" + currentName + ":\n";
+            for (const auto& contextName : reachable) {
+                const auto* context = Zeri::Core::HelpCatalog::Instance().FindContext(contextName);
+                if (context == nullptr) {
+                    continue;
+                }
                 result += "  $";
-                result += context.name;
+                result += context->name;
                 result += " — ";
-                result += context.description;
-                if (context.name == currentName) {
+                result += context->description;
+                if (ToLower(context->name) == currentName) {
                     result += " [active]";
                 }
                 result += '\n';
             }
 
-            result += "\nUse $<context> to switch environment.";
+            result += "\nUse $<context> to switch to a reachable context.";
             terminal.WriteLine(result);
             return true;
         }

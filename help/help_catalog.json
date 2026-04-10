@@ -1,0 +1,66 @@
+{
+  "contexts": [
+    { "name": "global", "description": "Root command context" },
+    { "name": "code", "description": "Scripting language dispatch hub" },
+    { "name": "customcommand", "description": "Custom user command scope" },
+    { "name": "js", "description": "JavaScript scripting editor and executor" },
+    { "name": "ts", "description": "TypeScript scripting editor and executor" },
+    { "name": "lua", "description": "Lua scripting editor and executor" },
+    { "name": "python", "description": "Python scripting editor and executor" },
+    { "name": "ruby", "description": "Ruby scripting editor and executor" },
+    { "name": "math", "description": "Mathematical expression engine" },
+    { "name": "sandbox", "description": "Module development environment" },
+    { "name": "setup", "description": "Configuration wizard" }
+  ],
+  "reachable": {
+    "global": ["global", "code", "customcommand", "math", "sandbox", "setup"],
+    "code": ["global", "lua", "python", "js", "ts", "ruby"],
+    "default": ["global"]
+  },
+  "commands": {
+    "global": [
+      { "command": "/help", "synopsis": "Show help for the active context" },
+      { "command": "/copy last", "synopsis": "Copy the latest non-user output message" },
+      { "command": "/copy all", "synopsis": "Copy the full visible message history" },
+      { "command": "/context", "synopsis": "List reachable contexts" },
+      { "command": "/back", "synopsis": "Return to previous context" },
+      { "command": "/save", "synopsis": "Save session state to disk" },
+      { "command": "/status", "synopsis": "Show engine diagnostics" },
+      { "command": "/reset", "synopsis": "Reset the current session" },
+      { "command": "/clear", "synopsis": "Clear chat history" },
+      { "command": "/exit", "synopsis": "Exit the REPL" },
+      { "command": "/set", "synopsis": "Store a variable in the current scope" },
+      { "command": "/get", "synopsis": "Read a variable from the current scope" },
+      { "command": "/lua", "synopsis": "Execute inline Lua code" }
+    ],
+    "code": [],
+    "math": [
+      { "command": "/eval", "synopsis": "Evaluate an expression" },
+      { "command": "/fn", "synopsis": "Define a function" },
+      { "command": "/vars", "synopsis": "List variables" },
+      { "command": "/fns", "synopsis": "List functions" },
+      { "command": "/promote", "synopsis": "Promote a variable scope" },
+      { "command": "/calc", "synopsis": "Run a quick arithmetic command" },
+      { "command": "/logic", "synopsis": "Run a boolean logic command" }
+    ],
+    "sandbox": [
+      { "command": "/open", "synopsis": "Open a file in the configured IDE" },
+      { "command": "/set-ide", "synopsis": "Set the preferred IDE" },
+      { "command": "/watch", "synopsis": "Show current sandbox process status" },
+      { "command": "/list", "synopsis": "List all available modules" },
+      { "command": "/build", "synopsis": "Build a module using CMake" },
+      { "command": "/run", "synopsis": "Run a compiled module" }
+    ],
+    "setup": [
+      { "command": "/start", "synopsis": "Run the configuration wizard" }
+    ],
+    "script": [
+      { "command": "/new", "synopsis": "Create a script" },
+      { "command": "/edit", "synopsis": "Edit an existing script" },
+      { "command": "/show", "synopsis": "Show a saved script" },
+      { "command": "/run", "synopsis": "Run a script or last buffer" },
+      { "command": "/list", "synopsis": "List saved scripts" },
+      { "command": "/delete", "synopsis": "Delete a saved script" }
+    ]
+  }
+}

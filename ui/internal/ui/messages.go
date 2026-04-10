@@ -34,6 +34,28 @@ func wordwrap(s string, limit int) string {
 	return result.String()
 }
 
+func RenderCodeViewHistoryMessage(msg ChatMessage, maxWidth int) string {
+	contentWidth := maxWidth - 10
+	if contentWidth < 10 {
+		contentWidth = 10
+	}
+
+	label := msg.Label
+	if strings.TrimSpace(label) == "" {
+		label = "[code view]"
+	}
+
+	body := lg.NewStyle().
+		Foreground(ColourIndustrialGrey).
+		Render(wordwrap(msg.Content, contentWidth))
+
+	return lg.NewStyle().
+		Border(lg.RoundedBorder()).
+		BorderForeground(ColourDarkViolet).
+		Padding(0, 1).
+		Render(lg.JoinVertical(lg.Left, lg.NewStyle().Foreground(ColourVolt).Bold(true).Render(label), body))
+}
+
 func RenderZeriMessage(msg ChatMessage, maxWidth int, activeContext string) string {
 	labelText := "◆ Zeri"
 	if activeContext != "" && activeContext != "global" {
@@ -84,6 +106,44 @@ func RenderSystemMessage(msg ChatMessage, termWidth int) string {
 		Render(line)
 }
 
+func RenderScriptExecutionMessage(msg ChatMessage, maxWidth int) string {
+	contentWidth := maxWidth - 10
+	if contentWidth < 10 {
+		contentWidth = 10
+	}
+
+	label := msg.Label
+	if strings.TrimSpace(label) == "" {
+		label = "[$script]"
+	}
+
+	output := msg.Content
+	if strings.TrimSpace(output) == "" {
+		output = "(no output)"
+	}
+
+	header := lg.NewStyle().
+		Foreground(ColourWhite).
+		Background(ColourElectricBlue).
+		Bold(true).
+		Padding(0, 1).
+		Render(label)
+
+	body := lg.NewStyle().
+		Foreground(ColourWhite).
+		Render(wordwrap(output, contentWidth))
+
+	ts := lg.NewStyle().Foreground(ColourIndustrialGrey).Render(msg.Timestamp)
+
+	panel := lg.NewStyle().
+		Border(lg.RoundedBorder()).
+		BorderForeground(ColourElectricBlue).
+		Padding(0, 1).
+		Render(lg.JoinVertical(lg.Left, header+" "+ts, body))
+
+	return panel
+}
+
 func RenderAllMessages(messages []ChatMessage, maxWidth int, activeContext string) string {
 	if len(messages) == 0 {
 		return ""
@@ -97,6 +157,10 @@ func RenderAllMessages(messages []ChatMessage, maxWidth int, activeContext strin
 			parts = append(parts, RenderUserMessage(msg, maxWidth))
 		case RoleSystem:
 			parts = append(parts, RenderSystemMessage(msg, maxWidth))
+		case RoleScriptExecution:
+			parts = append(parts, RenderScriptExecutionMessage(msg, maxWidth))
+		case RoleCodeView:
+			parts = append(parts, RenderCodeViewHistoryMessage(msg, maxWidth))
 		}
 	}
 	return strings.Join(parts, "\n\n")
@@ -112,6 +176,14 @@ func RenderAllMessages(messages []ChatMessage, maxWidth int, activeContext strin
  *     Label shows "◆ Zeri::math" when context != "global".
  *   - RenderAllMessages accepts activeContext and forwards it to
  *     RenderZeriMessage for context-aware label rendering.
+ *   - Added RenderScriptExecutionMessage for dedicated script execution
+ *     history blocks with prominent labels and bordered output content.
+ *   - Added RenderCodeViewHistoryMessage for persistent markers generated
+ *     when temporary code preview panels are closed in REPL mode.
+ *   - RenderAllMessages now handles RoleScriptExecution separately from
+ *     normal RoleZeri output to keep script runs visually distinct.
+ *   - RenderAllMessages now handles RoleCodeView to display code-view
+ *     lifecycle markers in dedicated styled blocks.
  *
  * Why:
  *   - When the user switches context ($math, $sandbox), the Zeri
