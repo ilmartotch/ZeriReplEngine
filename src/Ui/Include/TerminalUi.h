@@ -30,14 +30,21 @@ namespace Zeri::Ui {
         [[nodiscard]] bool Confirm(const std::string& prompt, bool default_value = true) override;
         [[nodiscard]] std::optional<int> SelectMenu(const std::string& title, const std::vector<std::string>& options) override;
 
-    private:
         enum class ReplContext {
             Global,
+            Code,
+            CustomCommand,
+            Js,
+            Ts,
+            Lua,
+            Python,
+            Ruby,
             Math,
             Sandbox,
             Setup
         };
 
+    private:
         [[nodiscard]] std::optional<std::string> ReadEditorLine(const std::string& prompt, bool addToHistory);
         [[nodiscard]] std::optional<std::string> ReadBlock();
 

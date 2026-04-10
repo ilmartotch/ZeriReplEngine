@@ -70,7 +70,7 @@ namespace Zeri::Engines::Defaults {
     }
 
     void RubyContext::OnEnter(Zeri::Ui::ITerminal& terminal) {
-        terminal.WriteInfo("Ruby context active. Use /new, /run, /list, /edit, /show, /delete.");
+        terminal.WriteInfo("Ruby context active. Use /new <name>, /run, /list, /edit <name>, /show <name>, /delete <name>.");
     }
 
     ExecutionOutcome RubyContext::HandleCommand(
@@ -88,17 +88,23 @@ namespace Zeri::Engines::Defaults {
         }
 
         if (cmd.commandName == "new") {
-            std::optional<std::string> scriptName;
-            if (const auto saveIt = cmd.flags.find("save"); saveIt != cmd.flags.end()) {
-                if (saveIt->second.empty() || saveIt->second == "true") {
-                    return std::unexpected(ExecutionError{
-                        "RUBY_NEW_SAVE_NAME_MISSING",
-                        "Missing script name for /new --save.",
-                        cmd.rawInput,
-                        { "Usage: /new --save <name>" }
-                    });
-                }
-                scriptName = saveIt->second;
+            if (cmd.args.empty()) {
+                return std::unexpected(ExecutionError{
+                    "RUBY_NEW_NAME_MISSING",
+                    "Missing script name for /new.",
+                    cmd.rawInput,
+                    { "Usage: /new <name>" }
+                });
+            }
+
+            const std::string scriptName = cmd.args[0];
+            if (const auto existing = LoadScript(state, "ruby", scriptName); existing.has_value()) {
+                return std::unexpected(ExecutionError{
+                    "RUBY_NEW_ALREADY_EXISTS",
+                    "Script already exists: " + scriptName,
+                    cmd.rawInput,
+                    { "Use /edit <name> to modify it or choose a new script name." }
+                });
             }
 
             auto editor = std::make_unique<Zeri::Engines::ScriptEditorContext>(m_executor, "ruby", scriptName);
@@ -109,9 +115,7 @@ namespace Zeri::Engines::Defaults {
                 active->OnEnter(terminal);
             }
 
-            return scriptName.has_value()
-                ? "Ruby editor opened for script: " + *scriptName
-                : "Ruby editor opened.";
+            return "Ruby editor opened for script: " + scriptName;
         }
 
         if (cmd.commandName == "run") {

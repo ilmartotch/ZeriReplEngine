@@ -56,6 +56,7 @@ endif()
 
 set(CORE_SOURCES
     src/Core/Source/ContextManager.cpp
+    src/Core/Source/HelpCatalog.cpp
     src/Core/Source/RuntimeState.cpp
     src/Core/Source/SystemGuard.cpp
     src/Core/Source/VariableScope.cpp

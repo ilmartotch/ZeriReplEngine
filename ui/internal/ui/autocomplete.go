@@ -18,14 +18,7 @@ func (a *AutocompleteModel) Filter(partial string) {
 	a.Filtered = a.Filtered[:0]
 
 	if strings.HasPrefix(partial, "/") {
-		var pool []CompletionEntry
-		pool = append(pool, SlashCommands...)
-     switch a.ActiveContext {
-		case "sandbox":
-			pool = append(pool, SandboxCommands...)
-     case "code":
-			pool = append(pool, CodeCommands...)
-		}
+      pool := SlashCommandsForContext(a.ActiveContext)
 
 		if partial == "/" {
 			a.Filtered = make([]CompletionEntry, len(pool))
@@ -38,11 +31,12 @@ func (a *AutocompleteModel) Filter(partial string) {
 			}
 		}
 	} else if strings.HasPrefix(partial, "$") {
+     contextCommands := ContextCommandsForContext(a.ActiveContext)
 		if partial == "$" {
-			a.Filtered = make([]CompletionEntry, len(ContextCommands))
-			copy(a.Filtered, ContextCommands)
+          a.Filtered = make([]CompletionEntry, len(contextCommands))
+			copy(a.Filtered, contextCommands)
 		} else {
-			for _, cmd := range ContextCommands {
+           for _, cmd := range contextCommands {
 				if strings.HasPrefix(strings.ToLower(cmd.Command), lower) {
 					a.Filtered = append(a.Filtered, cmd)
 				}

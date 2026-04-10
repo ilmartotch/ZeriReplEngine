@@ -1,5 +1,8 @@
 #include "../Include/BuiltinExecutor.h"
 #include "../Include/Interface/IContext.h"
+#include "../../Core/Include/HelpCatalog.h"
+
+#include <string>
 
 namespace Zeri::Engines::Defaults {
 
@@ -14,38 +17,46 @@ namespace Zeri::Engines::Defaults {
         }
 
         if (cmd.commandName == "help") {
-            return
-                "Zeri REPL — Available Commands\n"
-                "\n"
-                "Syntax:\n"
-                "/<command> Execute a command in the current context\n"
-                "$<context> Switch context (global, math, sandbox, setup)\n"
-                "!<shell_command> Execute a system shell command\n"
-                "<expr> Evaluate an expression (context-dependent)\n"
-                "<stage1> | <stage2> Pipeline output across stages\n"
-                "# comment Inline comment (ignored by parser)\n"
-                "\n"
-                "Global Commands:\n"
-                "/help — Show this help\n"
-                "/context — List available contexts\n"
-                "/status — Show session status\n"
-                "/reset — Reset session (clear variables, return to global)\n"
-                "/clear — Clear the screen\n"
-                "/exit — Exit the REPL\n"
-                "/back — Return to the previous context\n"
-                "/save — Save session state to disk\n"
-                "/set <key> <value> — Store a variable in the current scope\n"
-                "/get <key> — Read a variable from the current scope\n"
-                "/lua <script> — Execute inline Lua code\n"
-                "\n"
-                "Contexts:\n"
-                "$code — Scripting language dispatch hub\n"
-                "$math — Mathematical expression engine\n"
-                "$sandbox — Module development environment\n"
-                "$setup — Configuration wizard\n"
-                "$global — Return to root context\n"
-                "\n"
-                "Type /help inside a context for context-specific commands.";
+            std::string output;
+            output += "Zeri REPL — Available Commands\n";
+            output += "\n";
+            output += "Syntax:\n";
+            output += "/<command> Execute a command in the current context\n";
+            output += "$<context> Switch context using reachable targets from /context\n";
+            output += "!<shell_command> Execute a system shell command\n";
+            output += "<expr> Evaluate an expression (context-dependent)\n";
+            output += "<stage1> | <stage2> Pipeline output across stages\n";
+            output += "# comment Inline comment (ignored by parser)\n";
+            output += "\n";
+            output += "Global Commands:\n";
+
+            const auto& globalCommands = Zeri::Core::HelpCatalog::Instance().CommandsForGroup("global");
+            for (const auto& command : globalCommands) {
+                output += "  ";
+                output += command.command;
+                output += " — ";
+                output += command.synopsis;
+                output += "\n";
+            }
+
+            output += "\n";
+            output += "Contexts:\n";
+            const auto reachable = Zeri::Core::HelpCatalog::Instance().ReachableFrom("global");
+            for (const auto& contextName : reachable) {
+                const auto* context = Zeri::Core::HelpCatalog::Instance().FindContext(contextName);
+                if (context == nullptr) {
+                    continue;
+                }
+
+                output += "  $";
+                output += context->name;
+                output += " — ";
+                output += context->description;
+                output += "\n";
+            }
+
+            output += "\nType /help inside a context for context-specific commands.";
+            return output;
         }
 
         auto scope = Zeri::Core::RuntimeState::VariableScope::Global;

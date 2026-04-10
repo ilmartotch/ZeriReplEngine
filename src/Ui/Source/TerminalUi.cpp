@@ -1,4 +1,5 @@
 #include "../Include/TerminalUi.h"
+#include "../../Core/Include/HelpCatalog.h"
 
 #include <algorithm>
 #include <array>
@@ -23,44 +24,67 @@ namespace Zeri::Ui {
         constexpr std::string_view kContinuationPrompt = "| ";
 
         struct CommandSpec {
-            std::string_view command;
-            std::string_view usageHint;
+            std::string command;
+            std::string usageHint;
         };
 
-        constexpr std::array<CommandSpec, 8> kGlobalCommands = {
-            CommandSpec{ "/help", " — Show help for current context" },
-            CommandSpec{ "/context", " — List available contexts" },
-            CommandSpec{ "/exit", " — Exit the REPL" },
-            CommandSpec{ "/back", " — Return to previous context" },
-            CommandSpec{ "/save", " — Save session state to disk" },
-            CommandSpec{ "/set", " <key> <value>" },
-            CommandSpec{ "/get", " <key>" },
-            CommandSpec{ "/lua", " <script>" }
-        };
+        [[nodiscard]] std::string CatalogKeyForContext(Zeri::Ui::TerminalUi::ReplContext context) {
+            switch (context) {
+            case Zeri::Ui::TerminalUi::ReplContext::Global:
+                return "global";
+            case Zeri::Ui::TerminalUi::ReplContext::Code:
+                return "code";
+            case Zeri::Ui::TerminalUi::ReplContext::CustomCommand:
+                return "customcommand";
+            case Zeri::Ui::TerminalUi::ReplContext::Js:
+            case Zeri::Ui::TerminalUi::ReplContext::Ts:
+            case Zeri::Ui::TerminalUi::ReplContext::Lua:
+            case Zeri::Ui::TerminalUi::ReplContext::Python:
+            case Zeri::Ui::TerminalUi::ReplContext::Ruby:
+                return "script";
+            case Zeri::Ui::TerminalUi::ReplContext::Math:
+                return "math";
+            case Zeri::Ui::TerminalUi::ReplContext::Sandbox:
+                return "sandbox";
+            case Zeri::Ui::TerminalUi::ReplContext::Setup:
+                return "setup";
+            }
+            return "global";
+        }
 
-        constexpr std::array<CommandSpec, 7> kMathCommands = {
-            CommandSpec{ "/eval", " <expr>" },
-            CommandSpec{ "/fn", " f(x) = expression" },
-            CommandSpec{ "/vars", " — List variables" },
-            CommandSpec{ "/fns", " — List functions" },
-            CommandSpec{ "/promote", " <var> <session|global|persisted>" },
-            CommandSpec{ "/calc", " <a> <+|-|*|/> <b>" },
-            CommandSpec{ "/logic", " <and|or|xor> <true|false> <true|false>" }
-        };
+        [[nodiscard]] std::vector<CommandSpec> CommandSpecsForGroup(std::string_view group) {
+            std::vector<CommandSpec> result;
+            const auto& entries = Zeri::Core::HelpCatalog::Instance().CommandsForGroup(group);
+            result.reserve(entries.size());
+            for (const auto& entry : entries) {
+                result.push_back(CommandSpec{ entry.command, " — " + entry.synopsis });
+            }
+            return result;
+        }
 
-        constexpr std::array<CommandSpec, 3> kSandboxCommands = {
-            CommandSpec{ "/list", " — List available modules" },
-            CommandSpec{ "/build", " <moduleName>" },
-            CommandSpec{ "/run", " <moduleName>" }
-        };
+        [[nodiscard]] std::vector<CommandSpec> CommandSpecsForActiveContext(Zeri::Ui::TerminalUi::ReplContext context) {
+            std::vector<CommandSpec> result = CommandSpecsForGroup("global");
+            const auto contextKey = CatalogKeyForContext(context);
+            if (contextKey == "global") {
+                return result;
+            }
 
-        constexpr std::array<CommandSpec, 1> kSetupCommands = {
-            CommandSpec{ "/start", " — Start configuration wizard" }
-        };
+            auto specific = CommandSpecsForGroup(contextKey);
+            result.insert(result.end(), specific.begin(), specific.end());
+            return result;
+        }
 
-        constexpr std::array<std::string_view, 4> kContextCandidates = {
-            "$global", "$math", "$sandbox", "$setup"
-        };
+        [[nodiscard]] std::vector<std::string> ReachableContextCandidates(Zeri::Ui::TerminalUi::ReplContext context) {
+            const auto contextKey = CatalogKeyForContext(context);
+            const auto reachable = Zeri::Core::HelpCatalog::Instance().ReachableFrom(contextKey);
+
+            std::vector<std::string> result;
+            result.reserve(reachable.size());
+            for (const auto& target : reachable) {
+                result.push_back("$" + target);
+            }
+            return result;
+        }
 
         [[nodiscard]] std::string_view Trim(std::string_view value) {
             auto isSpace = [](unsigned char c) { return std::isspace(c) != 0; };
@@ -324,15 +348,17 @@ namespace Zeri::Ui {
             return std::nullopt;
         }
 
+        template <typename T>
         [[nodiscard]] std::optional<std::string_view> FindUniqueCommandByPrefix(
             std::string_view prefix,
-            const std::vector<std::string_view>& pool
+            const T& pool
         ) {
             std::string_view found{};
             std::size_t count = 0;
             for (auto cmd : pool) {
-                if (StartsWith(cmd, prefix)) {
-                    found = cmd;
+                const std::string_view candidate = cmd;
+                if (StartsWith(candidate, prefix)) {
+                    found = candidate;
                     ++count;
                     if (count > 1) return std::nullopt;
                 }
@@ -565,26 +591,14 @@ namespace Zeri::Ui {
         const std::string_view first = st.tokens.front();
 
         if (!token.empty() && token.front() == '$') {
-            AddMatches(token, kContextCandidates, completions);
+            const auto reachable = ReachableContextCandidates(m_activeContext);
+            AddMatches(token, reachable, completions);
         }
 
         const bool editingFirstToken = (st.tokens.size() == 1 && !st.atNewToken);
         if (editingFirstToken && first.front() == '/') {
-            AddCommandMatches(token, kGlobalCommands, completions);
-
-            switch (m_activeContext) {
-            case ReplContext::Math:
-                AddCommandMatches(token, kMathCommands, completions);
-                break;
-            case ReplContext::Sandbox:
-                AddCommandMatches(token, kSandboxCommands, completions);
-                break;
-            case ReplContext::Setup:
-                AddCommandMatches(token, kSetupCommands, completions);
-                break;
-            case ReplContext::Global:
-                break;
-            }
+            const auto commandPool = CommandSpecsForActiveContext(m_activeContext);
+            AddCommandMatches(token, commandPool, completions);
         }
 
         if (!st.tokens.empty() && first == "/logic") {
@@ -637,12 +651,13 @@ namespace Zeri::Ui {
         contextLen = static_cast<int>(st.activeToken.size());
 
         if (st.tokens.empty()) {
-            hints.emplace_back(" Type /help, $math, $sandbox, $setup");
+            hints.emplace_back(" Type /help, $code, $math, $sandbox, $setup");
             return hints;
         }
 
         if (st.tokens.front().front() == '$' && st.tokens.size() == 1 && !st.atNewToken) {
-            if (auto unique = FindUniqueCommandByPrefix(st.activeToken, { "$global", "$math", "$sandbox", "$setup" }); unique.has_value()) {
+            const auto reachable = ReachableContextCandidates(m_activeContext);
+            if (auto unique = FindUniqueCommandByPrefix(st.activeToken, reachable); unique.has_value()) {
                 hints.emplace_back(std::string(unique.value().substr(st.activeToken.size())));
             }
             return hints;
@@ -660,27 +675,14 @@ namespace Zeri::Ui {
             }
         };
 
-        pushUsage(FindHint(cmd, kGlobalCommands));
-        switch (m_activeContext) {
-        case ReplContext::Math:
-            pushUsage(FindHint(cmd, kMathCommands));
-            break;
-        case ReplContext::Sandbox:
-            pushUsage(FindHint(cmd, kSandboxCommands));
-            break;
-        case ReplContext::Setup:
-            pushUsage(FindHint(cmd, kSetupCommands));
-            break;
-        case ReplContext::Global:
-            break;
-        }
+        const auto commandPool = CommandSpecsForActiveContext(m_activeContext);
+        pushUsage(FindHint(cmd, commandPool));
 
         if (st.tokens.size() == 1 && !st.atNewToken) {
             std::vector<std::string_view> pool;
-            for (const auto& c : kGlobalCommands) pool.push_back(c.command);
-            if (m_activeContext == ReplContext::Math) for (const auto& c : kMathCommands) pool.push_back(c.command);
-            if (m_activeContext == ReplContext::Sandbox) for (const auto& c : kSandboxCommands) pool.push_back(c.command);
-            if (m_activeContext == ReplContext::Setup) for (const auto& c : kSetupCommands) pool.push_back(c.command);
+            for (const auto& c : commandPool) {
+                pool.push_back(c.command);
+            }
 
             if (auto unique = FindUniqueCommandByPrefix(st.activeToken, pool); unique.has_value() && unique.value().size() > st.activeToken.size()) {
                 hints.emplace_back(std::string(unique.value().substr(st.activeToken.size())));
@@ -731,6 +733,34 @@ namespace Zeri::Ui {
     void TerminalUi::UpdateActiveContextFromPrompt(std::string_view prompt) {
         const auto normalizedPrompt = ToLower(prompt);
 
+        if (normalizedPrompt.find("code") != std::string::npos) {
+            m_activeContext = ReplContext::Code;
+            return;
+        }
+        if (normalizedPrompt.find("customcommand") != std::string::npos || normalizedPrompt.find("::custom") != std::string::npos) {
+            m_activeContext = ReplContext::CustomCommand;
+            return;
+        }
+        if (normalizedPrompt.find("::js") != std::string::npos) {
+            m_activeContext = ReplContext::Js;
+            return;
+        }
+        if (normalizedPrompt.find("::ts") != std::string::npos) {
+            m_activeContext = ReplContext::Ts;
+            return;
+        }
+        if (normalizedPrompt.find("::lua") != std::string::npos) {
+            m_activeContext = ReplContext::Lua;
+            return;
+        }
+        if (normalizedPrompt.find("::python") != std::string::npos) {
+            m_activeContext = ReplContext::Python;
+            return;
+        }
+        if (normalizedPrompt.find("::ruby") != std::string::npos) {
+            m_activeContext = ReplContext::Ruby;
+            return;
+        }
         if (normalizedPrompt.find("math") != std::string::npos) {
             m_activeContext = ReplContext::Math;
             return;
