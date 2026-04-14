@@ -19,6 +19,10 @@ func (r *RealYuumiClient) SetProgram(p *tea.Program) {
 	r.program = p
 }
 
+func (r *RealYuumiClient) SetClient(client *yuumi.Client) {
+	r.client = client
+}
+
 func (r *RealYuumiClient) ConnectCmd() tea.Cmd {
 	return func() tea.Msg {
 		if r.client != nil {
