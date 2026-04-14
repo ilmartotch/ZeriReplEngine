@@ -14,24 +14,24 @@ type CompletionEntry struct {
 }
 
 type helpCatalogContextEntry struct {
-	Name        string `json:"name"`
+	Name string `json:"name"`
 	Description string `json:"description"`
 }
 
 type helpCatalogCommandEntry struct {
-	Command  string `json:"command"`
+	Command string `json:"command"`
 	Synopsis string `json:"synopsis"`
 }
 
 type helpCatalogData struct {
-	Contexts  []helpCatalogContextEntry            `json:"contexts"`
-	Reachable map[string][]string                  `json:"reachable"`
-	Commands  map[string][]helpCatalogCommandEntry `json:"commands"`
+	Contexts []helpCatalogContextEntry `json:"contexts"`
+	Reachable map[string][]string `json:"reachable"`
+	Commands map[string][]helpCatalogCommandEntry `json:"commands"`
 }
 
 var (
 	helpCatalogOnce sync.Once
-	helpCatalog     helpCatalogData
+	helpCatalog helpCatalogData
 )
 
 func defaultHelpCatalog() helpCatalogData {
@@ -57,6 +57,7 @@ func defaultHelpCatalog() helpCatalogData {
 		Commands: map[string][]helpCatalogCommandEntry{
 			"global": {
 				{Command: "/help", Synopsis: "Show help for the active context"},
+               {Command: "/runtime-status", Synopsis: "Open Runtime Center with runtime diagnostics"},
 				{Command: "/copy last", Synopsis: "Copy the latest non-user output message"},
 				{Command: "/copy all", Synopsis: "Copy the full visible message history"},
 				{Command: "/clear", Synopsis: "Clear chat history"},

@@ -1,1 +1,5 @@
-{}
+{
+  "js::scripts::__deleted__::es": false,
+  "js::scripts::__registry__": "es",
+  "js::scripts::es": "const nome = prompt(\"Inserisci il tuo nome:\");\nconsole.log(\"Ciao \" + nome);"
+}

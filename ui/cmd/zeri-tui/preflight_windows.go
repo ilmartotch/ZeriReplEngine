@@ -20,9 +20,10 @@ func checkVSRedist() *PreflightError {
 		lazy := windows.NewLazySystemDLL(dll)
 		if err := lazy.Load(); err != nil {
 			return &PreflightError{
-				Check:   "Visual C++ Redistributable",
-				Message: dll + " non trovato sul sistema.",
-				Hint:    "Scarica e installa Microsoft Visual C++ Redistributable: https://aka.ms/vs/17/release/vc_redist.x64.exe",
+                Code: "VC_REDIST_MISSING",
+				Check: "Visual C++ Redistributable",
+                Message: dll + " was not found on the system.",
+				Hint: "Install Microsoft Visual C++ Redistributable: https://aka.ms/vs/17/release/vc_redist.x64.exe",
 			}
 		}
 	}

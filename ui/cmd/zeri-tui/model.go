@@ -7,6 +7,7 @@ import (
 	"yuumi/internal/bridge"
 	"yuumi/internal/system"
 	"yuumi/internal/ui"
+	"yuumi/pkg/yuumi"
 
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
@@ -36,6 +37,7 @@ const (
 	newCommandPrefix = "/new"
 	editCommandPrefix = "/edit"
 	showCommandPrefix = "/show"
+   runtimeStatusCommand = "/runtime-status"
 )
 
 type ScriptEditorIntent int
@@ -98,12 +100,22 @@ type AppModel struct {
 	pendingScriptIntent ScriptEditorIntent
 	pendingBridgeRequest PendingBridgeRequest
 	codePreview CodePreviewState
+	runtimeCenterVisible bool
+	runtimeCenter RuntimeCenterState
+	startupLogPath string
 
 	bridge bridge.YuumiClient
+  runner *yuumi.Runner
+	client *yuumi.Client
 	ready bool
 	bridgeConnected bool
 	memoryMB uint64
 	lastStatusTick  time.Time
+   startupInProgress bool
+	startupFailed bool
+	startupStage string
+	startupErrors []string
+	startupSpinnerIndex int
 }
 
 func newAppModel(b bridge.YuumiClient) AppModel {
@@ -137,15 +149,17 @@ func newAppModel(b bridge.YuumiClient) AppModel {
 		bridge: b,
 		historyIndex: -1,
 		activeContext: "global",
+       startupInProgress: true,
+		startupStage: "Initializing workspace...",
 	}
 }
 
 func (m AppModel) Init() tea.Cmd {
-	return tea.Batch(
-		m.bridge.ConnectCmd(),
-		tickStatusCmd(),
-		m.input.Focus(),
-	)
+   cmds := []tea.Cmd{tickStatusCmd(), m.input.Focus()}
+	if m.bridge != nil {
+		cmds = append(cmds, m.bridge.ConnectCmd())
+	}
+	return tea.Batch(cmds...)
 }
 
 func (m *AppModel) autocompleteHeight() int {
@@ -180,6 +194,14 @@ func (m *AppModel) recalculateLayout() {
 
 func (m *AppModel) refreshViewport() {
 	content := ui.RenderAllMessages(m.messages, m.width-4, m.activeContext)
+  if m.codePreview.Visible {
+		panel := m.renderCodePreviewPanel()
+		if content == "" {
+			content = panel
+		} else {
+			content = content + "\n\n" + panel
+		}
+	}
 	m.viewport.SetContent(content)
 	m.viewport.GotoBottom()
 }
@@ -216,12 +238,22 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleKeyPress(msg)
 
 	case tea.MouseMsg:
-		var cmd tea.Cmd
-		m.viewport, cmd = m.viewport.Update(msg)
-		return m, cmd
+		if m.handleAutocompleteMouse(msg) {
+			return m, nil
+		}
+		mouse := msg.Mouse()
+		if mouse.Button == tea.MouseWheelUp || mouse.Button == tea.MouseWheelDown {
+			var cmd tea.Cmd
+			m.viewport, cmd = m.viewport.Update(msg)
+			return m, cmd
+		}
+		return m, nil
 
 	case statusTickMsg:
 		m.memoryMB = system.GetProcessMemoryMB()
+		if m.startupInProgress {
+			m.startupSpinnerIndex = (m.startupSpinnerIndex + 1) % 4
+		}
 		return m, tickStatusCmd()
 
 	case bridge.ConnectedMsg:
@@ -253,6 +285,37 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.autocomplete.ActiveContext = m.activeContext
 		m.refreshViewport()
+		return m, nil
+
+	case startupPhaseMsg:
+		m.startupStage = msg.Title
+		return m, nil
+
+	case startupFailedMsg:
+		m.startupInProgress = false
+		m.startupFailed = true
+		m.startupErrors = append([]string{}, msg.Errors...)
+       m.startupLogPath = strings.TrimSpace(msg.LogPath)
+		if m.startupLogPath != "" {
+			m.startupErrors = append(m.startupErrors, "Detailed startup diagnostics saved to: "+m.startupLogPath)
+		}
+		m.bridgeConnected = false
+		return m, nil
+
+	case startupReadyMsg:
+		m.runner = msg.Runner
+		m.client = msg.Client
+		m.startupInProgress = false
+		m.startupFailed = false
+		m.startupStage = "Environment ready"
+		m.startupErrors = nil
+       m.startupLogPath = strings.TrimSpace(msg.LogPath)
+       _ = msg.Warnings
+		m.recalculateLayout()
+		m.refreshViewport()
+		if m.bridge != nil {
+			return m, m.bridge.ConnectCmd()
+		}
 		return m, nil
 
 	}
@@ -297,6 +360,9 @@ func (m AppModel) updateScriptEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case statusTickMsg:
 		m.memoryMB = system.GetProcessMemoryMB()
+		if m.startupInProgress {
+			m.startupSpinnerIndex = (m.startupSpinnerIndex + 1) % 4
+		}
 		return m, tickStatusCmd()
 
 	case bridge.ConnectedMsg:
@@ -349,14 +415,30 @@ func (m AppModel) viewREPL() tea.View {
 	pad := lg.NewStyle().Padding(1, 2)
 
 	header := ui.RenderHeader(m.width, m.height)
+   if m.startupInProgress || m.startupFailed {
+		statusBar := ui.RenderStatusBar(m.width, m.activeContext, m.bridgeConnected, m.memoryMB)
+		startupPanel := m.renderStartupPanel()
+		full := lg.JoinVertical(lg.Left, header, startupPanel, statusBar)
+		v := tea.NewView(pad.Render(full))
+		v.AltScreen = true
+		v.MouseMode = tea.MouseModeCellMotion
+		return v
+	}
+	if m.runtimeCenterVisible {
+		statusBar := ui.RenderStatusBar(m.width, m.activeContext, m.bridgeConnected, m.memoryMB)
+		runtimePanel := m.renderRuntimeCenterModal()
+		full := lg.JoinVertical(lg.Left, header, runtimePanel, statusBar)
+		v := tea.NewView(pad.Render(full))
+		v.AltScreen = true
+		v.MouseMode = tea.MouseModeCellMotion
+		return v
+	}
+
 	chatArea := m.viewport.View()
 	statusBar := ui.RenderStatusBar(m.width, m.activeContext, m.bridgeConnected, m.memoryMB)
 	inputSection := m.renderInputArea()
 
 	sections := []string{header, chatArea, inputSection}
-	if m.codePreview.Visible {
-		sections = append(sections, m.renderCodePreviewPanel())
-	}
 	if m.autocomplete.Visible {
 		sections = append(sections, m.autocomplete.View(m.width-4))
 	}
@@ -366,13 +448,60 @@ func (m AppModel) viewREPL() tea.View {
 
 	v := tea.NewView(pad.Render(full))
 	v.AltScreen = true
-	v.MouseMode = tea.MouseModeNone
+	v.MouseMode = tea.MouseModeCellMotion
 	return v
+}
+
+func (m AppModel) renderStartupPanel() string {
+	spinnerFrames := []string{"⠋", "⠙", "⠹", "⠸"}
+	frame := spinnerFrames[m.startupSpinnerIndex%len(spinnerFrames)]
+	statusText := frame + " " + strings.TrimSpace(m.startupStage)
+
+	if m.startupFailed {
+		statusText = "✖ Startup failed"
+	}
+
+	titleStyle := lg.NewStyle().Foreground(ui.ColourVolt).Bold(true)
+	statusStyle := lg.NewStyle().Foreground(ui.ColourWhite)
+	if m.startupFailed {
+		statusStyle = lg.NewStyle().Foreground(ui.ColourErrorRed).Bold(true)
+	}
+
+	lines := []string{titleStyle.Render("Zeri initialization"), statusStyle.Render(statusText)}
+	for _, line := range m.startupErrors {
+		lines = append(lines, lg.NewStyle().Foreground(ui.ColourErrorRed).Render(line))
+	}
+	if len(m.startupErrors) > 0 {
+		lines = append(lines, lg.NewStyle().Foreground(ui.ColourIndustrialGrey).Render("Tip: run terminal as administrator or install missing runtimes manually, then restart Zeri."))
+	}
+
+	panelWidth := m.width - 4
+	if panelWidth < 40 {
+		panelWidth = 40
+	}
+
+	return lg.NewStyle().
+		Border(lg.RoundedBorder()).
+		BorderForeground(ui.ColourElectricBlue).
+		Padding(1, 2).
+		Width(panelWidth).
+		Render(strings.Join(lines, "\n"))
+}
+
+func (m *AppModel) CloseRuntimeResources() {
+	if m.client != nil {
+		_ = m.client.Close()
+		m.client = nil
+	}
+	if m.runner != nil {
+		m.runner.Stop()
+		m.runner = nil
+	}
 }
 
 func (m AppModel) viewScriptEditor() tea.View {
 	v := tea.NewView(m.scriptEditor.View())
-	v.AltScreen = true
+  v.AltScreen = false
 	v.MouseMode = tea.MouseModeNone
 	return v
 }
@@ -436,6 +565,23 @@ func (m *AppModel) addSystemMessage(content string) {
 
 func (m AppModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
+	if m.startupInProgress || m.startupFailed {
+		if key == "ctrl+c" {
+			return m, tea.Quit
+		}
+		return m, nil
+	}
+
+	if m.runtimeCenterVisible {
+        if key == "esc" || key == "escape" {
+			m.runtimeCenterVisible = false
+			return m, nil
+		}
+       if key == "ctrl+c" {
+			return m, tea.Quit
+		}
+		return m, nil
+	}
 
 	if key == "ctrl+c" {
 		current := strings.TrimSpace(m.input.Value())
@@ -459,10 +605,30 @@ func (m AppModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.addSystemMessage("Paste failed: " + err.Error())
 			return m, nil
 		}
-
-		if pasted != "" {
-			m.input.SetValue(m.input.Value() + pasted)
+		if pasted == "" {
+			return m, nil
 		}
+		var inputCmd tea.Cmd
+		m.input, inputCmd = m.input.Update(tea.PasteMsg{Content: pasted})
+		lines := strings.Count(m.input.Value(), "\n") + 1
+		if lines < 1 {
+			lines = 1
+		}
+		if lines > 5 {
+			lines = 5
+		}
+		if lines != m.input.Height() {
+			m.input.SetHeight(lines)
+			m.recalculateLayout()
+		}
+		val := m.input.Value()
+		m.isCommandMode = strings.HasPrefix(val, "/") || strings.HasPrefix(val, "$")
+		if m.isCommandMode {
+			m.autocomplete.Filter(val)
+		} else {
+			m.autocomplete.Dismiss()
+		}
+		return m, inputCmd
 	}
 
 	if key == "ctrl+x" {
@@ -525,10 +691,23 @@ func (m AppModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	if !m.autocomplete.Visible {
+      line := m.input.Line()
+		lastLine := m.input.LineCount() - 1
+		if lastLine < 0 {
+			lastLine = 0
+		}
 		switch key {
-		case "up":
-			return m.handleHistoryUp()
+       case "up":
+			if line == 0 {
+				return m.handleHistoryUp()
+			}
 		case "down":
+			if line >= lastLine {
+				return m.handleHistoryDown()
+			}
+		case "ctrl+up":
+			return m.handleHistoryUp()
+        case "ctrl+down":
 			return m.handleHistoryDown()
 		case "pgup":
 			var cmd tea.Cmd
@@ -570,6 +749,43 @@ func (m AppModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, cmd
+}
+
+func (m *AppModel) handleAutocompleteMouse(msg tea.MouseMsg) bool {
+	if !m.autocomplete.Visible || len(m.autocomplete.Filtered) == 0 {
+		return false
+	}
+
+	mouse := msg.Mouse()
+	row := m.autocompleteRowFromMouseY(mouse.Y)
+	if row < 0 || row >= len(m.autocomplete.Filtered) {
+		return false
+	}
+
+	m.autocomplete.SelectedIndex = row
+
+	if click, ok := msg.(tea.MouseClickMsg); ok && click.Button == tea.MouseLeft {
+		entry := m.autocomplete.Filtered[row]
+		m.input.SetValue(entry.Command)
+		m.autocomplete.Dismiss()
+		m.recalculateLayout()
+	}
+
+	return true
+}
+
+func (m AppModel) autocompleteRowFromMouseY(mouseY int) int {
+	if !m.autocomplete.Visible || len(m.autocomplete.Filtered) == 0 {
+		return -1
+	}
+
+	topPadding := 1
+	headerHeight := lg.Height(ui.RenderHeader(m.width, m.height))
+	chatHeight := lg.Height(m.viewport.View())
+	inputHeight := lg.Height(m.renderInputArea())
+	autocompleteTop := topPadding + headerHeight + chatHeight + inputHeight
+	firstRowY := autocompleteTop + 1
+	return mouseY - firstRowY
 }
 
 func (m AppModel) handleSubmit() (tea.Model, tea.Cmd) {
@@ -744,6 +960,7 @@ func (m *AppModel) handlePendingBridgeData(content string) {
 			ScriptName: req.ScriptName,
 			Content: content,
 		}
+        m.refreshViewport()
 	default:
 		m.addZeriMessage(content)
 	}
@@ -945,6 +1162,11 @@ func (m AppModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 	case cmd == "/reset":
 		m.pendingReset = true
 		m.addSystemMessage("Reset will clear all variables and return to global context.\nType 'y' to confirm, anything else to cancel.")
+		return m, nil
+  case cmd == runtimeStatusCommand:
+		m.addUserMessage(cmd)
+		m.runtimeCenter = buildRuntimeCenterState(m.startupLogPath)
+		m.runtimeCenterVisible = true
 		return m, nil
 	case strings.HasPrefix(cmd, newCommandPrefix):
 		if !m.isCodeContextActive() {

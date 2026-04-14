@@ -210,7 +210,7 @@ namespace Zeri::Core {
         };
 
         addRuntime("lua", { "luajit" }, false, "luajit");
-        addRuntime("python", { "python3" }, false, "python3");
+        addRuntime("python", { "python3", "python" }, false, "python3");
         addRuntime("js", { "bun" });
         addRuntime("ruby", { "ruby" }, true);
 

@@ -6,23 +6,25 @@ import (
 	"path/filepath"
 )
 
-// PreflightError is a structured check failure with a user-facing hint.
 type PreflightError struct {
-	Check   string
+    Code string
+	Check string
 	Message string
-	Hint    string
+	Hint string
 }
 
 func (e *PreflightError) Error() string {
+   code := e.Code
+	if code == "" {
+		code = "PREFLIGHT_ERROR"
+	}
 	if e.Hint != "" {
-		return fmt.Sprintf("[ZERI] Controllo: %s\n       %s\n       Suggerimento: %s",
+        return fmt.Sprintf("[ZERI][%s] Check: %s\n %s\n Hint: %s", code,
 			e.Check, e.Message, e.Hint)
 	}
-	return fmt.Sprintf("[ZERI] Controllo: %s\n       %s", e.Check, e.Message)
+  return fmt.Sprintf("[ZERI][%s] Check: %s\n %s", code, e.Check, e.Message)
 }
 
-// socketPathFromPipe derives the UDS socket path from the pipe name,
-// matching the logic in pkg/yuumi/transport_unix.go.
 func socketPathFromPipe(pipeName string) string {
 	path := pipeName
 	if !filepath.IsAbs(path) {
@@ -34,36 +36,54 @@ func socketPathFromPipe(pipeName string) string {
 	return path
 }
 
-// RunPreflight runs all startup checks and returns any failures.
-// enginePath: resolved path to ZeriEngine binary.
-// pipeName:   socket identifier (e.g. "zeri-core").
-//
-// Checks are non-fatal individually — all are collected and returned so
-// main() can print all problems at once instead of failing on the first.
-// The stale socket cleanup is always performed regardless of other errors.
 func RunPreflight(enginePath, pipeName string) []*PreflightError {
 	var errs []*PreflightError
-
-	// Platform-specific checks (Windows version, VS Redistributable).
 	errs = append(errs, platformPreflight()...)
 
-	// ZeriEngine binary present.
 	if _, err := os.Stat(enginePath); os.IsNotExist(err) {
 		errs = append(errs, &PreflightError{
-			Check:   "ZeriEngine",
-			Message: fmt.Sprintf("Eseguibile non trovato: %s", enginePath),
-			Hint:    "Assicurati che zeri.exe e ZeriEngine.exe siano nella stessa cartella.",
+            Code: "ENGINE_NOT_FOUND",
+			Check: "ZeriEngine",
+          Message: fmt.Sprintf("Executable not found: %s", enginePath),
+			Hint: "Ensure zeri and ZeriEngine are in the same directory.",
 		})
 	}
 
-	// TEMP directory writable (socket will be created here).
-	if err := checkTempWritable(); err != nil {
-		errs = append(errs, err)
+  manifest, err := loadRuntimeManifest()
+	if err != nil {
+		errs = append(errs, &PreflightError{
+			Code: "BOOTSTRAP_MANIFEST_INVALID",
+			Check: "Runtime Manifest",
+			Message: err.Error(),
+			Hint: "Fix runtime/runtime_manifest.json and retry.",
+		})
+	} else {
+		for _, result := range validateRequiredRuntimes(manifest) {
+           if result.Status == RuntimeStatusOK || !result.Runtime.Required {
+				continue
+			}
+
+			code := "RUNTIME_MISSING"
+			message := fmt.Sprintf("Runtime %s not found in PATH.", result.Runtime.Name)
+			if result.Status == RuntimeStatusOutdated {
+				code = "RUNTIME_OUTDATED"
+				message = fmt.Sprintf("Runtime %s is outdated. Required >= %s, detected %s.", result.Runtime.Name, result.Runtime.MinVersion, result.DetectedVersion)
+			}
+
+			errs = append(errs, &PreflightError{
+				Code: code,
+				Check: result.Runtime.Check,
+				Message: message,
+				Hint: result.Runtime.InstallHint,
+			})
+		}
 	}
 
-	// Remove stale socket from a previous crash — always run, not an error.
-	cleanStaleSocket(socketPathFromPipe(pipeName))
+   if writableErr := checkTempWritable(); writableErr != nil {
+		errs = append(errs, writableErr)
+	}
 
+	cleanStaleSocket(socketPathFromPipe(pipeName))
 	return errs
 }
 
@@ -71,17 +91,15 @@ func checkTempWritable() *PreflightError {
 	probe := filepath.Join(os.TempDir(), ".zeri_write_probe")
 	if err := os.WriteFile(probe, []byte{}, 0600); err != nil {
 		return &PreflightError{
-			Check:   "Directory TEMP",
-			Message: fmt.Sprintf("Impossibile scrivere in %s: %v", os.TempDir(), err),
-			Hint:    "Controlla i permessi della directory temporanea di sistema.",
+            Code: "TEMP_DIR_NOT_WRITABLE",
+			Check: "Directory TEMP",
+            Message: fmt.Sprintf("Cannot write in %s: %v", os.TempDir(), err),
+			Hint: "Check permissions for the system temporary directory.",
 		}
 	}
 	_ = os.Remove(probe)
 	return nil
 }
-
-// cleanStaleSocket removes a leftover socket file from a previous crashed session.
-// If it exists and is not removed, the next ZeriEngine bind will fail silently.
 func cleanStaleSocket(sockPath string) {
 	if _, err := os.Stat(sockPath); err == nil {
 		_ = os.Remove(sockPath)
@@ -102,4 +120,6 @@ Removing it here ensures a clean startup every time.
 Platform-specific checks (Windows version, VS Redistributable) are
 split into preflight_windows.go / preflight_other.go to keep build
 tags isolated from the common logic.
+
+User-facing diagnostics are standardized as [ZERI][CODE].
 */
