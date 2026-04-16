@@ -56,10 +56,10 @@ func RenderCodeViewHistoryMessage(msg ChatMessage, maxWidth int) string {
 		Render(lg.JoinVertical(lg.Left, lg.NewStyle().Foreground(ColourVolt).Bold(true).Render(label), body))
 }
 
-func RenderZeriMessage(msg ChatMessage, maxWidth int, activeContext string) string {
+func RenderZeriMessage(msg ChatMessage, maxWidth int) string {
 	labelText := "◆ Zeri"
-	if activeContext != "" && activeContext != "global" {
-		labelText = "◆ Zeri::" + activeContext
+   if msg.Title != "" && msg.Title != "global" {
+		labelText = "◆ Zeri::" + msg.Title
 	}
 	label := lg.NewStyle().Foreground(ColourAcidGreen).Render(labelText)
 	ts := lg.NewStyle().Foreground(ColourIndustrialGrey).Render(msg.Timestamp)
@@ -144,7 +144,7 @@ func RenderScriptExecutionMessage(msg ChatMessage, maxWidth int) string {
 	return panel
 }
 
-func RenderAllMessages(messages []ChatMessage, maxWidth int, activeContext string) string {
+func RenderAllMessages(messages []ChatMessage, maxWidth int) string {
 	if len(messages) == 0 {
 		return ""
 	}
@@ -152,7 +152,7 @@ func RenderAllMessages(messages []ChatMessage, maxWidth int, activeContext strin
 	for _, msg := range messages {
 		switch msg.Role {
 		case RoleZeri:
-			parts = append(parts, RenderZeriMessage(msg, maxWidth, activeContext))
+          parts = append(parts, RenderZeriMessage(msg, maxWidth))
 		case RoleUser:
 			parts = append(parts, RenderUserMessage(msg, maxWidth))
 		case RoleSystem:
@@ -172,10 +172,10 @@ func RenderAllMessages(messages []ChatMessage, maxWidth int, activeContext strin
  * [messages.go]
  *
  * What changed:
- *   - RenderZeriMessage now accepts activeContext parameter.
- *     Label shows "◆ Zeri::math" when context != "global".
- *   - RenderAllMessages accepts activeContext and forwards it to
- *     RenderZeriMessage for context-aware label rendering.
+ *   - RenderZeriMessage now renders the header from msg.Title snapshot.
+ *     Label shows "◆ Zeri::math" when msg.Title != "global".
+ *   - RenderAllMessages no longer accepts activeContext and renders each
+ *     history entry using only data stored inside that entry.
  *   - Added RenderScriptExecutionMessage for dedicated script execution
  *     history blocks with prominent labels and bordered output content.
  *   - Added RenderCodeViewHistoryMessage for persistent markers generated
@@ -191,6 +191,7 @@ func RenderAllMessages(messages []ChatMessage, maxWidth int, activeContext strin
  *     always knows which engine produced the output.
  *
  * Impact on other components:
- *   - model.go refreshViewport passes activeContext to RenderAllMessages.
+ *   - model.go refreshViewport now calls RenderAllMessages without a
+ *     current-context argument.
  *   - palette.go ColourAcidGreen drives the label colour.
  */

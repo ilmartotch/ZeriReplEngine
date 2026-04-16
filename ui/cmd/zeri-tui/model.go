@@ -27,17 +27,17 @@ const (
 )
 
 const (
-	editorTriggerCommand = ":edit"
-	editorAliasCommand = ":script"
-	copyCommandPrefix = "/copy"
-	copyCommandModeLast = "last"
-	copyCommandModeAll = "all"
-	defaultScriptLanguage = "js"
+	editorTriggerCommand     = ":edit"
+	editorAliasCommand       = ":script"
+	copyCommandPrefix        = "/copy"
+	copyCommandModeLast      = "last"
+	copyCommandModeAll       = "all"
+	defaultScriptLanguage    = "js"
 	scriptRunConfirmTemplate = "Code finished for (%s). Type 'y' to save+run, 's' to save only, 'n' to return to editor."
-	newCommandPrefix = "/new"
-	editCommandPrefix = "/edit"
-	showCommandPrefix = "/show"
-   runtimeStatusCommand = "/runtime-status"
+	newCommandPrefix         = "/new"
+	editCommandPrefix        = "/edit"
+	showCommandPrefix        = "/show"
+	runtimeStatusCommand     = "/runtime-status"
 )
 
 type ScriptEditorIntent int
@@ -57,15 +57,15 @@ const (
 )
 
 type PendingBridgeRequest struct {
-	Kind PendingBridgeRequestKind
+	Kind       PendingBridgeRequestKind
 	ScriptName string
-	Language string
+	Language   string
 }
 
 type CodePreviewState struct {
-	Visible bool
+	Visible    bool
 	ScriptName string
-	Content string
+	Content    string
 }
 
 func tickStatusCmd() tea.Cmd {
@@ -75,46 +75,48 @@ func tickStatusCmd() tea.Cmd {
 }
 
 type AppModel struct {
-	width int
+	width  int
 	height int
-	mode AppMode
+	mode   AppMode
 
-	viewport viewport.Model
-	input textarea.Model
+	viewport     viewport.Model
+	input        textarea.Model
 	autocomplete ui.AutocompleteModel
 
-	messages []ui.ChatMessage
-	scriptEditor ui.ScriptEditor
-	inputHistory []string
-	historyIndex int
-	draftBuffer string
-	activeContext string
-	isCommandMode bool
-	pendingReset bool
+	messages               []ui.ChatMessage
+	scriptEditor           ui.ScriptEditor
+	inputHistory           []string
+	historyIndex           int
+	draftBuffer            string
+	activeContext          string
+	activeContextPath      string
+	pendingContextPath     string
+	isCommandMode          bool
+	pendingReset           bool
 	pendingScriptExecution bool
-	pendingScriptLabel string
-	pendingScriptConfirm bool
-	pendingScriptCode string
-	pendingScriptName string
-	pendingScriptLanguage string
-	pendingScriptIntent ScriptEditorIntent
-	pendingBridgeRequest PendingBridgeRequest
-	codePreview CodePreviewState
-	runtimeCenterVisible bool
-	runtimeCenter RuntimeCenterState
-	startupLogPath string
+	pendingScriptLabel     string
+	pendingScriptConfirm   bool
+	pendingScriptCode      string
+	pendingScriptName      string
+	pendingScriptLanguage  string
+	pendingScriptIntent    ScriptEditorIntent
+	pendingBridgeRequest   PendingBridgeRequest
+	codePreview            CodePreviewState
+	runtimeCenterVisible   bool
+	runtimeCenter          RuntimeCenterState
+	startupLogPath         string
 
-	bridge bridge.YuumiClient
-  runner *yuumi.Runner
-	client *yuumi.Client
-	ready bool
-	bridgeConnected bool
-	memoryMB uint64
-	lastStatusTick  time.Time
-   startupInProgress bool
-	startupFailed bool
-	startupStage string
-	startupErrors []string
+	bridge              bridge.YuumiClient
+	runner              *yuumi.Runner
+	client              *yuumi.Client
+	ready               bool
+	bridgeConnected     bool
+	memoryMB            uint64
+	lastStatusTick      time.Time
+	startupInProgress   bool
+	startupFailed       bool
+	startupStage        string
+	startupErrors       []string
 	startupSpinnerIndex int
 }
 
@@ -142,20 +144,44 @@ func newAppModel(b bridge.YuumiClient) AppModel {
 	vp.SetHeight(10)
 
 	return AppModel{
-		width: 80,
-		height: 24,
-		viewport: vp,
-		input: ta,
-		bridge: b,
-		historyIndex: -1,
-		activeContext: "global",
-       startupInProgress: true,
-		startupStage: "Initializing workspace...",
+		width:             80,
+		height:            24,
+		viewport:          vp,
+		input:             ta,
+		bridge:            b,
+		historyIndex:      -1,
+		activeContext:     "global",
+		activeContextPath: "global",
+		startupInProgress: true,
+		startupStage:      "Initializing workspace...",
 	}
 }
 
+func previousContextPath(path string) (string, bool) {
+	normalized := normaliseContextName(path)
+	if normalized == "" || normalized == "global" {
+		return "", false
+	}
+
+	segments := strings.Split(normalized, "::")
+	if len(segments) <= 1 {
+		return "global", true
+	}
+
+	return strings.Join(segments[:len(segments)-1], "::"), true
+}
+
+func leafContextFromPath(path string) string {
+	normalized := normaliseContextName(path)
+	if normalized == "" {
+		return ""
+	}
+	segments := strings.Split(normalized, "::")
+	return segments[len(segments)-1]
+}
+
 func (m AppModel) Init() tea.Cmd {
-   cmds := []tea.Cmd{tickStatusCmd(), m.input.Focus()}
+	cmds := []tea.Cmd{tickStatusCmd(), m.input.Focus()}
 	if m.bridge != nil {
 		cmds = append(cmds, m.bridge.ConnectCmd())
 	}
@@ -193,8 +219,8 @@ func (m *AppModel) recalculateLayout() {
 }
 
 func (m *AppModel) refreshViewport() {
-	content := ui.RenderAllMessages(m.messages, m.width-4, m.activeContext)
-  if m.codePreview.Visible {
+	content := ui.RenderAllMessages(m.messages, m.width-4)
+	if m.codePreview.Visible {
 		panel := m.renderCodePreviewPanel()
 		if content == "" {
 			content = panel
@@ -279,10 +305,13 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case bridge.ContextChangedMsg:
 		if msg.Active {
-			m.activeContext = msg.ContextName
+			m.activeContext = normaliseContextName(msg.ContextName)
+			m.activeContextPath = m.resolveDisplayContextPath(msg.ContextName)
 		} else {
 			m.activeContext = ""
+			m.activeContextPath = ""
 		}
+		m.pendingContextPath = ""
 		m.autocomplete.ActiveContext = m.activeContext
 		m.refreshViewport()
 		return m, nil
@@ -295,7 +324,7 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.startupInProgress = false
 		m.startupFailed = true
 		m.startupErrors = append([]string{}, msg.Errors...)
-       m.startupLogPath = strings.TrimSpace(msg.LogPath)
+		m.startupLogPath = strings.TrimSpace(msg.LogPath)
 		if m.startupLogPath != "" {
 			m.startupErrors = append(m.startupErrors, "Detailed startup diagnostics saved to: "+m.startupLogPath)
 		}
@@ -309,8 +338,8 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.startupFailed = false
 		m.startupStage = "Environment ready"
 		m.startupErrors = nil
-       m.startupLogPath = strings.TrimSpace(msg.LogPath)
-       _ = msg.Warnings
+		m.startupLogPath = strings.TrimSpace(msg.LogPath)
+		_ = msg.Warnings
 		m.recalculateLayout()
 		m.refreshViewport()
 		if m.bridge != nil {
@@ -334,11 +363,11 @@ func (m AppModel) updateScriptEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyPressMsg:
 		switch msg.String() {
-		case "esc", "escape":
+		case "Esc", "escape":
 			m.mode = ModeREPL
 			m.addSystemMessage("Script editor closed.")
 			return m, nil
-		case "alt+enter":
+		case "Shift + Enter":
 			code := strings.TrimSpace(m.scriptEditor.Value())
 			m.mode = ModeREPL
 			if code == "" {
@@ -388,10 +417,13 @@ func (m AppModel) updateScriptEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case bridge.ContextChangedMsg:
 		if msg.Active {
-			m.activeContext = msg.ContextName
+			m.activeContext = normaliseContextName(msg.ContextName)
+			m.activeContextPath = m.resolveDisplayContextPath(msg.ContextName)
 		} else {
 			m.activeContext = ""
+			m.activeContextPath = ""
 		}
+		m.pendingContextPath = ""
 		m.autocomplete.ActiveContext = m.activeContext
 		m.refreshViewport()
 		return m, nil
@@ -413,10 +445,11 @@ func (m AppModel) View() tea.View {
 
 func (m AppModel) viewREPL() tea.View {
 	pad := lg.NewStyle().Padding(1, 2)
+	displayContextPath := m.currentDisplayContextPath()
 
 	header := ui.RenderHeader(m.width, m.height)
-   if m.startupInProgress || m.startupFailed {
-		statusBar := ui.RenderStatusBar(m.width, m.activeContext, m.bridgeConnected, m.memoryMB)
+	if m.startupInProgress || m.startupFailed {
+		statusBar := ui.RenderStatusBar(m.width, displayContextPath, m.bridgeConnected, m.memoryMB)
 		startupPanel := m.renderStartupPanel()
 		full := lg.JoinVertical(lg.Left, header, startupPanel, statusBar)
 		v := tea.NewView(pad.Render(full))
@@ -425,7 +458,7 @@ func (m AppModel) viewREPL() tea.View {
 		return v
 	}
 	if m.runtimeCenterVisible {
-		statusBar := ui.RenderStatusBar(m.width, m.activeContext, m.bridgeConnected, m.memoryMB)
+		statusBar := ui.RenderStatusBar(m.width, displayContextPath, m.bridgeConnected, m.memoryMB)
 		runtimePanel := m.renderRuntimeCenterModal()
 		full := lg.JoinVertical(lg.Left, header, runtimePanel, statusBar)
 		v := tea.NewView(pad.Render(full))
@@ -435,7 +468,7 @@ func (m AppModel) viewREPL() tea.View {
 	}
 
 	chatArea := m.viewport.View()
-	statusBar := ui.RenderStatusBar(m.width, m.activeContext, m.bridgeConnected, m.memoryMB)
+	statusBar := ui.RenderStatusBar(m.width, displayContextPath, m.bridgeConnected, m.memoryMB)
 	inputSection := m.renderInputArea()
 
 	sections := []string{header, chatArea, inputSection}
@@ -501,7 +534,7 @@ func (m *AppModel) CloseRuntimeResources() {
 
 func (m AppModel) viewScriptEditor() tea.View {
 	v := tea.NewView(m.scriptEditor.View())
-  v.AltScreen = false
+	v.AltScreen = false
 	v.MouseMode = tea.MouseModeNone
 	return v
 }
@@ -533,19 +566,21 @@ func (m AppModel) renderCodePreviewPanel() string {
 func (m *AppModel) addUserMessage(content string) {
 	normalised := ui.NormaliseContent(content)
 	msg := ui.ChatMessage{
-		Role: ui.RoleUser,
-		Content: normalised,
+		Role:      ui.RoleUser,
+		Title:     m.currentMessageContextTitle(),
+		Content:   normalised,
 		Timestamp: time.Now().Format("15:04"),
 	}
 	m.messages = append(m.messages, msg)
 	m.refreshViewport()
 }
 
-func (m *AppModel) addZeriMessage(content string) {
+func (m *AppModel) addZeriMessage(content string, title string) {
 	normalised := ui.NormaliseContent(content)
 	msg := ui.ChatMessage{
-		Role: ui.RoleZeri,
-		Content: normalised,
+		Role:      ui.RoleZeri,
+		Title:     title,
+		Content:   normalised,
 		Timestamp: time.Now().Format("15:04"),
 	}
 	m.messages = append(m.messages, msg)
@@ -555,8 +590,9 @@ func (m *AppModel) addZeriMessage(content string) {
 func (m *AppModel) addSystemMessage(content string) {
 	normalised := ui.NormaliseContent(content)
 	msg := ui.ChatMessage{
-		Role: ui.RoleSystem,
-		Content: normalised,
+		Role:      ui.RoleSystem,
+		Title:     m.currentMessageContextTitle(),
+		Content:   normalised,
 		Timestamp: time.Now().Format("15:04"),
 	}
 	m.messages = append(m.messages, msg)
@@ -573,11 +609,11 @@ func (m AppModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	if m.runtimeCenterVisible {
-        if key == "esc" || key == "escape" {
+		if key == "esc" || key == "escape" {
 			m.runtimeCenterVisible = false
 			return m, nil
 		}
-       if key == "ctrl+c" {
+		if key == "ctrl+c" {
 			return m, tea.Quit
 		}
 		return m, nil
@@ -691,13 +727,13 @@ func (m AppModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	if !m.autocomplete.Visible {
-      line := m.input.Line()
+		line := m.input.Line()
 		lastLine := m.input.LineCount() - 1
 		if lastLine < 0 {
 			lastLine = 0
 		}
 		switch key {
-       case "up":
+		case "up":
 			if line == 0 {
 				return m.handleHistoryUp()
 			}
@@ -707,7 +743,7 @@ func (m AppModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			}
 		case "ctrl+up":
 			return m.handleHistoryUp()
-        case "ctrl+down":
+		case "ctrl+down":
 			return m.handleHistoryDown()
 		case "pgup":
 			var cmd tea.Cmd
@@ -835,6 +871,7 @@ func (m AppModel) handleSubmit() (tea.Model, tea.Cmd) {
 		if lower == "y" || lower == "yes" {
 			m.messages = m.messages[:0]
 			m.activeContext = "global"
+			m.activeContextPath = "global"
 			m.addSystemMessage("Session reset.")
 			m.refreshViewport()
 			return m, m.bridge.SendDataCmd("/reset")
@@ -850,6 +887,8 @@ func (m AppModel) handleSubmit() (tea.Model, tea.Cmd) {
 	if strings.HasPrefix(trimmed, "/") {
 		return m.handleSlashCommand(trimmed)
 	}
+
+	m.queuePendingContextTitleIfSwitch(trimmed)
 
 	m.addUserMessage(trimmed)
 	return m, m.bridge.SendDataCmd(trimmed)
@@ -910,7 +949,7 @@ func (m *AppModel) consumeEngineOutput(content string) {
 		m.pendingScriptLabel = ""
 		return
 	}
-	m.addZeriMessage(content)
+	m.addZeriMessage(content, m.currentMessageContextTitle())
 }
 
 func (m *AppModel) consumeEngineError(content string) {
@@ -918,14 +957,19 @@ func (m *AppModel) consumeEngineError(content string) {
 		m.handlePendingBridgeError(content)
 		return
 	}
-	m.addZeriMessage("Error: " + content)
+	if strings.TrimSpace(m.pendingContextPath) != "" {
+		m.pendingContextPath = ""
+		m.autocomplete.ActiveContext = m.activeContext
+	}
+	m.addZeriMessage("Error: "+content, m.currentMessageContextTitle())
 }
 
 func (m *AppModel) addScriptExecutionMessage(label string, content string) {
 	msg := ui.ChatMessage{
-		Role: ui.RoleScriptExecution,
-		Label: strings.TrimSpace(label),
-		Content: ui.NormaliseContent(content),
+		Role:      ui.RoleScriptExecution,
+		Label:     strings.TrimSpace(label),
+		Title:     m.currentMessageContextTitle(),
+		Content:   ui.NormaliseContent(content),
 		Timestamp: time.Now().Format("15:04"),
 	}
 	m.messages = append(m.messages, msg)
@@ -956,13 +1000,13 @@ func (m *AppModel) handlePendingBridgeData(content string) {
 		m.openScriptEditor(req.Language, req.ScriptName, content, ScriptEditorIntentEdit)
 	case PendingBridgeRequestShowPreview:
 		m.codePreview = CodePreviewState{
-			Visible: true,
+			Visible:    true,
 			ScriptName: req.ScriptName,
-			Content: content,
+			Content:    content,
 		}
-        m.refreshViewport()
+		m.refreshViewport()
 	default:
-		m.addZeriMessage(content)
+		m.addZeriMessage(content, m.currentMessageContextTitle())
 	}
 }
 
@@ -976,13 +1020,114 @@ func (m *AppModel) handlePendingBridgeError(content string) {
 			m.openScriptEditor(req.Language, req.ScriptName, "", ScriptEditorIntentNew)
 			return
 		}
-		m.addZeriMessage("Error: " + content)
+		m.addZeriMessage("Error: "+content, m.currentMessageContextTitle())
 	case PendingBridgeRequestEditLoad:
-		m.addZeriMessage("Error: " + content)
+		m.addZeriMessage("Error: "+content, m.currentMessageContextTitle())
 	case PendingBridgeRequestShowPreview:
-		m.addZeriMessage("Error: " + content)
+		m.addZeriMessage("Error: "+content, m.currentMessageContextTitle())
 	default:
-		m.addZeriMessage("Error: " + content)
+		m.addZeriMessage("Error: "+content, m.currentMessageContextTitle())
+	}
+}
+
+func (m AppModel) currentMessageContextTitle() string {
+	if strings.TrimSpace(m.pendingContextPath) != "" {
+		return m.pendingContextPath
+	}
+	return m.activeContextPath
+}
+
+func (m AppModel) currentDisplayContextPath() string {
+	if strings.TrimSpace(m.pendingContextPath) != "" {
+		return m.pendingContextPath
+	}
+	return m.activeContextPath
+}
+
+func normaliseContextName(name string) string {
+	trimmed := strings.TrimSpace(strings.TrimPrefix(name, "$"))
+	if trimmed == "" {
+		return ""
+	}
+	return strings.ToLower(trimmed)
+}
+
+func contextParent(name string) (string, bool) {
+	switch normaliseContextName(name) {
+	case "js", "ts", "lua", "python", "ruby":
+		return "code", true
+	default:
+		return "", false
+	}
+}
+
+func contextPathPrefix(path string, context string) string {
+	normalizedPath := normaliseContextName(path)
+	normalizedContext := normaliseContextName(context)
+	if normalizedPath == "" || normalizedContext == "" {
+		return ""
+	}
+
+	segments := strings.Split(normalizedPath, "::")
+	for idx := len(segments) - 1; idx >= 0; idx-- {
+		if segments[idx] == normalizedContext {
+			return strings.Join(segments[:idx+1], "::")
+		}
+	}
+
+	return ""
+}
+
+func (m AppModel) resolveDisplayContextPath(nextContext string) string {
+	normalized := normaliseContextName(nextContext)
+	if normalized == "" {
+		return ""
+	}
+	if normalized == "global" {
+		return "global"
+	}
+
+	parent, hasParent := contextParent(normalized)
+	if !hasParent {
+		return normalized
+	}
+
+	parentPath := contextPathPrefix(m.activeContextPath, parent)
+	if parentPath == "" {
+		parentPath = parent
+	}
+
+	return parentPath + "::" + normalized
+}
+
+func parseDirectContextSwitchCommand(input string) (string, bool) {
+	trimmed := strings.ToLower(strings.TrimSpace(input))
+	if trimmed == "" || !strings.HasPrefix(trimmed, "$") {
+		return "", false
+	}
+	if strings.ContainsAny(trimmed, " |\t\n\r") {
+		return "", false
+	}
+	name := strings.TrimPrefix(trimmed, "$")
+	if name == "" {
+		return "", false
+	}
+	return name, true
+}
+
+func (m *AppModel) queuePendingContextTitleIfSwitch(input string) {
+	target, ok := parseDirectContextSwitchCommand(input)
+	if !ok {
+		return
+	}
+
+	command := "$" + target
+	for _, entry := range ui.ContextCommandsForContext(m.activeContext) {
+		if strings.EqualFold(entry.Command, command) {
+			m.pendingContextPath = m.resolveDisplayContextPath(target)
+			m.autocomplete.ActiveContext = target
+			return
+		}
 	}
 }
 
@@ -1004,9 +1149,10 @@ func (m *AppModel) closeCodePreview() {
 func (m *AppModel) addCodeViewHistoryBlock(scriptName string) {
 	label := "[code view - \"" + scriptName + "\"]"
 	msg := ui.ChatMessage{
-		Role: ui.RoleCodeView,
-		Label: label,
-		Content: "closed",
+		Role:      ui.RoleCodeView,
+		Label:     label,
+		Title:     m.currentMessageContextTitle(),
+		Content:   "closed",
 		Timestamp: time.Now().Format("15:04"),
 	}
 	m.messages = append(m.messages, msg)
@@ -1146,6 +1292,13 @@ func (m AppModel) handleCopyCommand(cmd string) (tea.Model, tea.Cmd) {
 }
 
 func (m AppModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
+	if strings.EqualFold(strings.TrimSpace(cmd), "/back") {
+		if previous, ok := previousContextPath(m.activeContextPath); ok {
+			m.pendingContextPath = previous
+			m.autocomplete.ActiveContext = leafContextFromPath(previous)
+		}
+	}
+
 	switch {
 	case cmd == "/exit":
 		return m, tea.Sequence(
@@ -1163,7 +1316,7 @@ func (m AppModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 		m.pendingReset = true
 		m.addSystemMessage("Reset will clear all variables and return to global context.\nType 'y' to confirm, anything else to cancel.")
 		return m, nil
-  case cmd == runtimeStatusCommand:
+	case cmd == runtimeStatusCommand:
 		m.addUserMessage(cmd)
 		m.runtimeCenter = buildRuntimeCenterState(m.startupLogPath)
 		m.runtimeCenterVisible = true
@@ -1180,9 +1333,9 @@ func (m AppModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 		}
 		m.addUserMessage(cmd)
 		m.pendingBridgeRequest = PendingBridgeRequest{
-			Kind: PendingBridgeRequestNewExistsCheck,
+			Kind:       PendingBridgeRequestNewExistsCheck,
 			ScriptName: scriptName,
-			Language: m.scriptLanguageFromContext(),
+			Language:   m.scriptLanguageFromContext(),
 		}
 		return m, m.bridge.SendDataCmd(showCommandPrefix + " " + quoteScriptName(scriptName))
 	case strings.HasPrefix(cmd, editCommandPrefix):
@@ -1197,9 +1350,9 @@ func (m AppModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 		}
 		m.addUserMessage(cmd)
 		m.pendingBridgeRequest = PendingBridgeRequest{
-			Kind: PendingBridgeRequestEditLoad,
+			Kind:       PendingBridgeRequestEditLoad,
 			ScriptName: scriptName,
-			Language: m.scriptLanguageFromContext(),
+			Language:   m.scriptLanguageFromContext(),
 		}
 		return m, m.bridge.SendDataCmd(showCommandPrefix + " " + quoteScriptName(scriptName))
 	case strings.HasPrefix(cmd, showCommandPrefix):
@@ -1214,9 +1367,9 @@ func (m AppModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 		}
 		m.addUserMessage(cmd)
 		m.pendingBridgeRequest = PendingBridgeRequest{
-			Kind: PendingBridgeRequestShowPreview,
+			Kind:       PendingBridgeRequestShowPreview,
 			ScriptName: scriptName,
-			Language: m.scriptLanguageFromContext(),
+			Language:   m.scriptLanguageFromContext(),
 		}
 		return m, m.bridge.SendDataCmd(showCommandPrefix + " " + quoteScriptName(scriptName))
 	default:
