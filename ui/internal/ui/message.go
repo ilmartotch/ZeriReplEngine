@@ -13,6 +13,7 @@ const (
 type ChatMessage struct {
 	Role MessageRole
 	Label string
+	Title string
 	Content string
 	Timestamp string
 }
@@ -28,6 +29,8 @@ type ChatMessage struct {
  *     code preview panels are closed.
  *   - Added Label field to ChatMessage for mode-specific visual tags
  *     (for example: [main.js], [$js]).
+ *   - Added Title field to ChatMessage to store immutable context snapshots
+ *     for history rendering (for example: "math", "sandbox").
  *   - Timestamp field stores "HH:MM" for display next to bubbles.
  *
  * Why:
