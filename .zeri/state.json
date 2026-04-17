@@ -1,9 +1,11 @@
 {
   "js::scripts::__deleted__::es": false,
+  "js::scripts::__deleted__::jsTest": false,
   "js::scripts::__deleted__::lilCatra": false,
   "js::scripts::__deleted__::test1": false,
-  "js::scripts::__registry__": "es\nlilCatra\ntest1",
+  "js::scripts::__registry__": "es\nlilCatra\ntest1\njsTest",
   "js::scripts::es": "const nome = prompt(\"Inserisci il tuo nome:\");\nconsole.log(\"Ciao \" + nome);",
+  "js::scripts::jsTest": "console.log(2+2)",
   "js::scripts::lilCatra": "const n = [1, 3, 4, 7];\nconsole.log(n);",
   "js::scripts::test1": "console.log(\"hello\");\nconsole.log(\"kek\");\nconsole.log(\"hello\");\nconsole.log(\";\nconsole.log(\"hello\");\nconsole.log(\"kek\");\nconsole.log(\"hello\");\nconsole.log(\";\nhbghuhihhhjhjh"
 }

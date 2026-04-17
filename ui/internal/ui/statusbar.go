@@ -22,7 +22,7 @@ func RenderStatusBar(termWidth int, context string, connected bool, memMB uint64
 	}
 
 	if context != "" && context != "global" {
-		ctxDisplay := strings.ToUpper(context)
+		ctxDisplay := contextLabel(context)
 		ctxTag := lg.NewStyle().
 			Foreground(ColourWhite).
 			Background(ColourElectricBlue).
@@ -50,6 +50,17 @@ func RenderStatusBar(termWidth int, context string, connected bool, memMB uint64
 		Render(content)
 
 	return bar
+}
+
+func contextLabel(context string) string {
+	normalized := strings.ToLower(strings.TrimSpace(context))
+	if normalized == "" {
+		return ""
+	}
+	if strings.HasPrefix(normalized, "zeri::") {
+		return normalized
+	}
+	return "zeri::" + normalized
 }
 
 /*

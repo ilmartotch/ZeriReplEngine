@@ -1,5 +1,8 @@
 #include "../Include/JsExecutor.h"
 
+#include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <sstream>
 #include <vector>
 
@@ -14,6 +17,13 @@ namespace {
             stream << args[i];
         }
         return stream.str();
+    }
+
+    [[nodiscard]] std::filesystem::path BuildTempScriptPath(bool typescript) {
+        const auto now = std::chrono::steady_clock::now().time_since_epoch().count();
+        const auto ext = typescript ? ".ts" : ".js";
+        const std::string fileName = "zeri_bun_exec_" + std::to_string(now) + ext;
+        return std::filesystem::temp_directory_path() / fileName;
     }
 
 }
@@ -59,9 +69,31 @@ namespace Zeri::Engines::Defaults {
             });
         }
 
-        const std::vector<std::string> args = { "eval", script };
+        const auto scriptPath = BuildTempScriptPath(m_typescript);
+        {
+            std::ofstream file(scriptPath, std::ios::binary | std::ios::trunc);
+            if (!file.is_open()) {
+                return std::unexpected(ExecutionError{
+                    "JS_FILE_WRITE_ERR",
+                    "Failed to create temporary JS/TS script file.",
+                    cmd.rawInput,
+                    { "Check temporary directory permissions and retry." }
+                });
+            }
+            file << script;
+            if (!file.good()) {
+                return std::unexpected(ExecutionError{
+                    "JS_FILE_WRITE_ERR",
+                    "Failed to write temporary JS/TS script content.",
+                    cmd.rawInput,
+                    { "Check disk availability and temporary directory permissions." }
+                });
+            }
+        }
 
-        return m_bridge.Run(
+        const std::vector<std::string> args = { "run", scriptPath.string() };
+
+        auto result = m_bridge.Run(
             m_binary,
             args,
             [&terminal](const std::string& line) {
@@ -71,6 +103,23 @@ namespace Zeri::Engines::Defaults {
                 terminal.WriteError(line);
             }
         );
+
+        if (result.has_value()) {
+            const int exitCode = m_bridge.WaitForExit();
+            if (exitCode != 0) {
+                result = std::unexpected(ExecutionError{
+                    "JS_EXEC_ERR",
+                    "Bun runtime execution failed with non-zero exit code.",
+                    cmd.rawInput,
+                    { "Check the script output for runtime errors.", "Exit code: " + std::to_string(exitCode) }
+                });
+            }
+        }
+
+        std::error_code removeError;
+        std::filesystem::remove(scriptPath, removeError);
+
+        return result;
     }
 
 }
@@ -78,6 +127,6 @@ namespace Zeri::Engines::Defaults {
 /*
 JsExecutor.cpp
 Bun-only JS/TS execution through ProcessBridge.
-Both JavaScript and TypeScript are executed via `bun eval <script>`.
+Both JavaScript and TypeScript are executed via temporary files and `bun run <tempfile>`.
 stdout/stderr are streamed to the terminal callbacks.
 */
