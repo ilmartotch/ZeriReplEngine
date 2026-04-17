@@ -12,6 +12,17 @@ namespace {
         }
         return oss.str();
     }
+
+    [[nodiscard]] std::string WrapLuaScript(const std::string& source) {
+        std::ostringstream wrapped;
+        wrapped << "local __zeri_fn = function()\n";
+        wrapped << source << "\n";
+        wrapped << "end\n";
+        wrapped << "local __zeri_ok, __zeri_result = pcall(__zeri_fn)\n";
+        wrapped << "if not __zeri_ok then error(__zeri_result) end\n";
+        wrapped << "if __zeri_result ~= nil then print(__zeri_result) end\n";
+        return wrapped.str();
+    }
 }
 
 namespace Zeri::Engines::Defaults {
@@ -54,9 +65,11 @@ namespace Zeri::Engines::Defaults {
             });
         }
 
+        const std::string wrappedScript = WrapLuaScript(script);
+
         return m_bridge.Run(
             m_binary,
-            { "-e", script },
+            { "-e", wrappedScript },
             [&terminal](const std::string& line) {
                 terminal.Write(line);
             },
