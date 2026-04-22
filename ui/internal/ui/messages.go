@@ -176,6 +176,25 @@ func RenderScriptExecutionMessage(msg ChatMessage, maxWidth int) string {
 	return panel
 }
 
+func RenderScriptSavedMessage(msg ChatMessage, maxWidth int) string {
+	contentWidth := maxWidth - 10
+	if contentWidth < 10 {
+		contentWidth = 10
+	}
+
+	body := lg.NewStyle().
+		Foreground(ColourWhite).
+		Render(wordwrap(msg.Content, contentWidth))
+
+	ts := lg.NewStyle().Foreground(ColourIndustrialGrey).Render(msg.Timestamp)
+
+	return lg.NewStyle().
+		Border(lg.RoundedBorder()).
+		BorderForeground(AzzurroElettrico).
+		Padding(0, 1).
+		Render(lg.JoinVertical(lg.Left, body+" "+ts))
+}
+
 func RenderAllMessages(messages []ChatMessage, maxWidth int) string {
 	if len(messages) == 0 {
 		return ""
@@ -195,15 +214,14 @@ func RenderAllMessages(messages []ChatMessage, maxWidth int) string {
 			parts = append(parts, RenderScriptExecutionMessage(msg, maxWidth))
 		case RoleCodeView:
 			parts = append(parts, RenderCodeViewHistoryMessage(msg, maxWidth))
+		case RoleScriptSaved:
+			parts = append(parts, RenderScriptSavedMessage(msg, maxWidth))
 		}
 	}
 	return strings.Join(parts, "\n\n")
 }
 
 /*
- * CHANGES & RATIONALE
- * -------------------
- * [messages.go]
  *
  * What changed:
  *   - RenderZeriMessage now renders the header from msg.Title snapshot.

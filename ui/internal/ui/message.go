@@ -9,6 +9,7 @@ const (
 	RoleSystem
 	RoleScriptExecution
 	RoleCodeView
+	RoleScriptSaved
 )
 
 type ChatMessage struct {

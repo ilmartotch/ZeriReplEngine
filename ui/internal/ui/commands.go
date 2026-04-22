@@ -14,24 +14,24 @@ type CompletionEntry struct {
 }
 
 type helpCatalogContextEntry struct {
-	Name string `json:"name"`
+	Name        string `json:"name"`
 	Description string `json:"description"`
 }
 
 type helpCatalogCommandEntry struct {
-	Command string `json:"command"`
+	Command  string `json:"command"`
 	Synopsis string `json:"synopsis"`
 }
 
 type helpCatalogData struct {
-	Contexts []helpCatalogContextEntry `json:"contexts"`
-	Reachable map[string][]string `json:"reachable"`
-	Commands map[string][]helpCatalogCommandEntry `json:"commands"`
+	Contexts  []helpCatalogContextEntry            `json:"contexts"`
+	Reachable map[string][]string                  `json:"reachable"`
+	Commands  map[string][]helpCatalogCommandEntry `json:"commands"`
 }
 
 var (
 	helpCatalogOnce sync.Once
-	helpCatalog helpCatalogData
+	helpCatalog     helpCatalogData
 )
 
 func defaultHelpCatalog() helpCatalogData {
@@ -57,7 +57,8 @@ func defaultHelpCatalog() helpCatalogData {
 		Commands: map[string][]helpCatalogCommandEntry{
 			"global": {
 				{Command: "/help", Synopsis: "Show help for the active context"},
-               {Command: "/runtime-status", Synopsis: "Open Runtime Center with runtime diagnostics"},
+				{Command: "restart", Synopsis: "Restart and reconnect the engine after a disconnection"},
+				{Command: "/runtime-status", Synopsis: "Open Runtime Center with runtime diagnostics"},
 				{Command: "/copy last", Synopsis: "Copy the latest non-user output message"},
 				{Command: "/copy all", Synopsis: "Copy the full visible message history"},
 				{Command: "/clear", Synopsis: "Clear chat history"},
@@ -67,6 +68,7 @@ func defaultHelpCatalog() helpCatalogData {
 				{Command: "/reset", Synopsis: "Reset the current session"},
 				{Command: "/status", Synopsis: "Show engine diagnostics"},
 				{Command: "/save", Synopsis: "Save session state to disk"},
+				{Command: "/load", Synopsis: "Load a saved session from disk"},
 			},
 			"sandbox": {
 				{Command: "/open", Synopsis: "Open a file in the configured IDE"},
@@ -154,7 +156,13 @@ func normaliseContextName(activeContext string) string {
 	if name == "" {
 		return "global"
 	}
-	return strings.ToLower(name)
+	lower := strings.ToLower(name)
+	lower = strings.TrimPrefix(lower, "zeri::")
+	segments := strings.Split(lower, "::")
+	if len(segments) > 0 {
+		return segments[len(segments)-1]
+	}
+	return lower
 }
 
 func commandGroupForContext(ctx string) string {

@@ -1,14 +1,19 @@
 package bridge
 
 import (
+	"context"
+	"sync"
 	"yuumi/pkg/yuumi"
 
 	tea "charm.land/bubbletea/v2"
 )
 
 type RealYuumiClient struct {
-	client  *yuumi.Client
+	client *yuumi.Client
 	program *tea.Program
+	messageMutex sync.Mutex
+	handlerCtx   context.Context
+	handlerStop  context.CancelFunc
 }
 
 func NewRealYuumiClient(client *yuumi.Client) *RealYuumiClient {
@@ -21,6 +26,23 @@ func (r *RealYuumiClient) SetProgram(p *tea.Program) {
 
 func (r *RealYuumiClient) SetClient(client *yuumi.Client) {
 	r.client = client
+}
+
+func (r *RealYuumiClient) Send(msg tea.Msg) {
+	if r.program == nil {
+		return
+	}
+	r.program.Send(msg)
+}
+
+func (r *RealYuumiClient) StopMessageForwarding() {
+	r.messageMutex.Lock()
+	defer r.messageMutex.Unlock()
+	if r.handlerStop != nil {
+		r.handlerStop()
+		r.handlerStop = nil
+		r.handlerCtx = nil
+	}
 }
 
 func (r *RealYuumiClient) ConnectCmd() tea.Cmd {
@@ -87,34 +109,51 @@ func (r *RealYuumiClient) SendShutdownCmd() tea.Cmd {
 }
 
 func (r *RealYuumiClient) RegisterMessageHandler() {
-	if r.client == nil || r.program == nil {
+	r.messageMutex.Lock()
+	if r.handlerStop != nil {
+		r.handlerStop()
+	}
+	handlerCtx, cancel := context.WithCancel(context.Background())
+	r.handlerCtx = handlerCtx
+	r.handlerStop = cancel
+	client := r.client
+	program := r.program
+	r.messageMutex.Unlock()
+
+	if client == nil || program == nil {
 		return
 	}
-	r.client.OnMessage(func(data map[string]interface{}, ch yuumi.Channel) {
+	client.OnMessage(func(data map[string]interface{}, ch yuumi.Channel) {
+		select {
+		case <-handlerCtx.Done():
+			return
+		default:
+		}
+
 		msgType, _ := data["type"].(string)
 		switch msgType {
 		case "ready":
-			r.program.Send(ConnectedMsg{})
+			program.Send(ConnectedMsg{})
 		case "output", "info", "success":
 			payload, _ := data["payload"].(string)
 			if payload != "" {
-				r.program.Send(DataMsg{Content: payload})
+				program.Send(DataMsg{Content: payload})
 			}
 		case "error":
 			payload, _ := data["payload"].(string)
 			if payload != "" {
-				r.program.Send(ErrorMsg{Content: payload})
+				program.Send(ErrorMsg{Content: payload})
 			}
 		case "req_input":
 			prompt, _ := data["prompt"].(string)
-			r.program.Send(InputRequestMsg{Prompt: prompt})
+			program.Send(InputRequestMsg{Prompt: prompt})
 		case "context_changed":
 			name, _ := data["context"].(string)
 			active, ok := data["active"].(bool)
 			if !ok {
 				active = true
 			}
-			r.program.Send(ContextChangedMsg{ContextName: name, Active: active})
+			program.Send(ContextChangedMsg{ContextName: name, Active: active})
 		case "code_mode":
 			name, _ := data["context"].(string)
 			if name == "" {
@@ -124,7 +163,7 @@ func (r *RealYuumiClient) RegisterMessageHandler() {
 			if !ok {
 				active = false
 			}
-			r.program.Send(ContextChangedMsg{ContextName: name, Active: active})
+			program.Send(ContextChangedMsg{ContextName: name, Active: active})
 		case "":
 			return
 		default:
@@ -132,23 +171,25 @@ func (r *RealYuumiClient) RegisterMessageHandler() {
 			if payload == "" {
 				return
 			}
-			r.program.Send(DataMsg{Content: msgType + ": " + payload})
+			program.Send(DataMsg{Content: msgType + ": " + payload})
 		}
 	})
-	r.client.OnDisconnect(func(err error) {
+	client.OnDisconnect(func(err error) {
+		select {
+		case <-handlerCtx.Done():
+			return
+		default:
+		}
+
 		reason := "connection lost"
 		if err != nil {
 			reason = err.Error()
 		}
-		r.program.Send(DisconnectedMsg{Reason: reason})
+		program.Send(DisconnectedMsg{Reason: reason})
 	})
 }
 
 /*
- * CHANGES & RATIONALE
- * -------------------
- * [yuumi_client.go]
- *
  * What changed:
  *   - RegisterMessageHandler now also registers an OnDisconnect callback
  *     on the underlying yuumi.Client. When the readLoop exits due to a

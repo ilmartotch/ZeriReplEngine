@@ -7,20 +7,18 @@ import (
 )
 
 var (
-	ColourVolt           color.Color = lg.Color("#D9D923")
-	ColourAcidGreen      color.Color = lg.Color("#A3E635")
-	ColourElectricBlue   color.Color = lg.Color("#2C92F0")
-	ColourDarkViolet     color.Color = lg.Color("#221F40")
+	ColourVolt color.Color = lg.Color("#D9D923")
+	ColourAcidGreen color.Color = lg.Color("#A3E635")
+	ColourElectricBlue color.Color = lg.Color("#2C92F0")
+	AzzurroElettrico color.Color = ColourElectricBlue
+	ColourDarkViolet color.Color = lg.Color("#221F40")
 	ColourIndustrialGrey color.Color = lg.Color("#C4C4A5")
 
 	ColourErrorRed color.Color = lg.Color("#FF4444")
-	ColourWhite    color.Color = lg.Color("#FFFFFF")
+	ColourWhite color.Color = lg.Color("#FFFFFF")
 )
 
 /*
- * CHANGES & RATIONALE
- * -------------------
- * [palette.go]
  *
  * What changed:
  *   - Created dedicated palette file with Zeri brand colours.

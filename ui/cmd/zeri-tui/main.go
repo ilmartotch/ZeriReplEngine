@@ -15,6 +15,11 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	if err := ensureZeriDirectories(); err != nil {
+		fmt.Fprintf(os.Stderr, "Storage initialization error: %v\n", err)
+		os.Exit(1)
+	}
+
 	engineName := "ZeriEngine"
 	if runtime.GOOS == "windows" {
 		engineName = "ZeriEngine.exe"

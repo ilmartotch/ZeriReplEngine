@@ -18,15 +18,15 @@ type startupPhaseMsg struct {
 }
 
 type startupFailedMsg struct {
-	Errors []string
+	Errors  []string
 	LogPath string
 }
 
 type startupReadyMsg struct {
-	Runner *yuumi.Runner
-	Client *yuumi.Client
+	Runner   *yuumi.Runner
+	Client   *yuumi.Client
 	Warnings []string
-	LogPath string
+	LogPath  string
 }
 
 func runStartupFlowAsync(ctx context.Context, p *tea.Program, bridgeClient *bridge.RealYuumiClient, enginePath string, pipeName string) {
@@ -60,8 +60,8 @@ func runStartupFlowAsync(ctx context.Context, p *tea.Program, bridgeClient *brid
 
 		p.Send(startupPhaseMsg{Title: "Starting ZeriEngine..."})
 		runner := &yuumi.Runner{
-			BinaryPath: enginePath,
-			PipeName: pipeName,
+			BinaryPath:     enginePath,
+			PipeName:       pipeName,
 			SessionTempDir: sessionTempDir,
 		}
 		if err := runner.Start(ctx); err != nil {
@@ -81,7 +81,6 @@ func runStartupFlowAsync(ctx context.Context, p *tea.Program, bridgeClient *brid
 
 		runner.SetClient(client)
 		bridgeClient.SetClient(client)
-		bridgeClient.RegisterMessageHandler()
 		runner.OnCrash = func(err error) {
 			p.Send(bridge.DisconnectedMsg{Reason: err.Error()})
 		}
