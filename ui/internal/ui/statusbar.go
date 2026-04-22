@@ -7,10 +7,12 @@ import (
 	lg "charm.land/lipgloss/v2"
 )
 
-func RenderStatusBar(termWidth int, context string, connected bool, memMB uint64) string {
+func RenderStatusBar(termWidth int, context string, connected bool, memMB uint64, sandboxRunning bool) string {
+	_ = sandboxRunning
 	volt := lg.NewStyle().Foreground(ColourVolt)
 	grey := lg.NewStyle().Foreground(ColourIndustrialGrey)
 	sep := grey.Render(" │ ")
+	normalizedContext := strings.ToLower(strings.TrimSpace(context))
 
 	var parts []string
 	parts = append(parts, volt.Render("◆ Zeri"))
@@ -21,7 +23,7 @@ func RenderStatusBar(termWidth int, context string, connected bool, memMB uint64
 		parts = append(parts, grey.Render(fmt.Sprintf("RAM: %d MB", memMB)))
 	}
 
-	if context != "" && context != "global" {
+	if context != "" && context != "global" && normalizedContext != "sandbox" && !strings.HasPrefix(normalizedContext, "sandbox::") {
 		ctxDisplay := contextLabel(context)
 		ctxTag := lg.NewStyle().
 			Foreground(ColourWhite).

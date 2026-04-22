@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -15,12 +16,15 @@ import (
 
 type Runner struct {
 	BinaryPath string
-	PipeName   string
-	OnCrash    func(error)
-	client     *Client
-	cmd        *exec.Cmd
-	cancel     context.CancelFunc
-	stopOnce   sync.Once
+	PipeName string
+	OnCrash func(error)
+	SessionTempDir string
+	EngineLogPath string
+	client *Client
+	cmd *exec.Cmd
+	logFile *os.File
+	cancel context.CancelFunc
+	stopOnce sync.Once
 }
 
 func (r *Runner) SetClient(c *Client) {
@@ -28,15 +32,29 @@ func (r *Runner) SetClient(c *Client) {
 }
 
 func (r *Runner) Start(ctx context.Context) error {
+	if strings.TrimSpace(r.SessionTempDir) == "" {
+		dir, err := os.MkdirTemp(os.TempDir(), "zeri-project-session-")
+		if err != nil {
+			return err
+		}
+		r.SessionTempDir = dir
+	}
+
+	logsDir := filepath.Join(r.SessionTempDir, "logs")
+	if err := os.MkdirAll(logsDir, 0755); err != nil {
+		return err
+	}
+
 	ctx, r.cancel = context.WithCancel(ctx)
 	r.cmd = exec.CommandContext(ctx, r.BinaryPath, "--yuumi-pipe", r.PipeName)
+	r.cmd.Env = append(os.Environ(), "ZERI_SESSION_TEMP_DIR="+r.SessionTempDir)
 
 	r.cmd.Stdout = io.Discard
 	r.cmd.Stdin = nil
 
-	// Route ZeriEngine stderr to a log file next to the binary for crash diagnostics.
-	logPath := filepath.Join(filepath.Dir(r.BinaryPath), "zeri-engine.log")
-	if logFile, err := os.Create(logPath); err == nil {
+	r.EngineLogPath = filepath.Join(logsDir, "zeri-engine.log")
+	if logFile, err := os.Create(r.EngineLogPath); err == nil {
+		r.logFile = logFile
 		r.cmd.Stderr = logFile
 		fmt.Fprintf(logFile, "[RUNNER] Launching: %s --yuumi-pipe %s\n", r.BinaryPath, r.PipeName)
 	} else {
@@ -76,6 +94,15 @@ func (r *Runner) Stop() {
 
 		if r.cancel != nil {
 			r.cancel()
+		}
+
+		if r.logFile != nil {
+			_ = r.logFile.Close()
+			r.logFile = nil
+		}
+
+		if strings.TrimSpace(r.SessionTempDir) != "" {
+			_ = os.RemoveAll(r.SessionTempDir)
 		}
 	})
 }

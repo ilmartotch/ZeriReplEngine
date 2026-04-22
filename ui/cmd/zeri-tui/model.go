@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 	"yuumi/internal/bridge"
@@ -38,7 +40,14 @@ const (
 	editCommandPrefix = "/edit"
 	showCommandPrefix = "/show"
 	runtimeStatusCommand = "/runtime-status"
+	restartCoreCommand = "/restart core"
 )
+
+type coreRestartResultMsg struct {
+	Runner *yuumi.Runner
+	Client *yuumi.Client
+	Err error
+}
 
 type ScriptEditorIntent int
 
@@ -65,6 +74,11 @@ type PendingBridgeRequest struct {
 type CodePreviewState struct {
 	Visible bool
 	ScriptName string
+	Content    string
+}
+
+type EngineBatchChunk struct {
+	IsError bool
 	Content string
 }
 
@@ -91,7 +105,9 @@ type AppModel struct {
 	activeContext string
 	activeContextPath string
 	activeLanguage string
+	sandboxProcessRunning bool
 	pendingContextPath string
+	pendingInputPrompt string
 	isCommandMode bool
 	pendingReset bool
 	pendingScriptExecution bool
@@ -106,6 +122,9 @@ type AppModel struct {
 	runtimeCenterVisible bool
 	runtimeCenter RuntimeCenterState
 	startupLogPath string
+	engineLogPath string
+	enginePath string
+	pipeName string
 
 	bridge bridge.YuumiClient
 	runner *yuumi.Runner
@@ -119,9 +138,12 @@ type AppModel struct {
 	startupStage string
 	startupErrors []string
 	startupSpinnerIndex int
+	engineBatchTitle string
+	engineBatchChunks []EngineBatchChunk
+	engineBatchUpdatedAt time.Time
 }
 
-func newAppModel(b bridge.YuumiClient) AppModel {
+func newAppModel(b bridge.YuumiClient, enginePath string, pipeName string) AppModel {
 	ta := textarea.New()
 	ta.Placeholder = "waiting for..."
 	ta.ShowLineNumbers = false
@@ -154,6 +176,8 @@ func newAppModel(b bridge.YuumiClient) AppModel {
 		activeContext: "global",
 		activeContextPath: "global",
 		activeLanguage: "",
+		enginePath: strings.TrimSpace(enginePath),
+		pipeName: strings.TrimSpace(pipeName),
 		startupInProgress: true,
 		startupStage: "Initializing workspace...",
 	}
@@ -265,6 +289,9 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		return m.handleKeyPress(msg)
 
+	case tea.PasteMsg:
+		return m, m.applyInputPaste(msg.Content)
+
 	case tea.MouseMsg:
 		if m.handleAutocompleteMouse(msg) {
 			return m, nil
@@ -282,6 +309,7 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.startupInProgress {
 			m.startupSpinnerIndex = (m.startupSpinnerIndex + 1) % 4
 		}
+		m.flushEngineBatchIfSettled()
 		return m, tickStatusCmd()
 
 	case bridge.ConnectedMsg:
@@ -293,8 +321,43 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case bridge.DisconnectedMsg:
+		m.flushEngineBatch(false)
 		m.bridgeConnected = false
+		m.sandboxProcessRunning = false
+		m.pendingInputPrompt = ""
 		m.addSystemMessage("Disconnected: " + msg.Reason)
+		for _, tip := range m.disconnectionHints(msg.Reason) {
+			m.addSystemMessage(tip)
+		}
+		return m, nil
+
+	case coreRestartResultMsg:
+		m.flushEngineBatch(false)
+		m.pendingInputPrompt = ""
+		if msg.Err != nil {
+			m.bridgeConnected = false
+			m.sandboxProcessRunning = false
+			m.addErrorMessage("Core restart failed: " + msg.Err.Error())
+			for _, tip := range m.disconnectionHints(msg.Err.Error()) {
+				m.addSystemMessage(tip)
+			}
+			return m, nil
+		}
+
+		m.runner = msg.Runner
+		m.client = msg.Client
+		if msg.Runner != nil {
+			m.engineLogPath = strings.TrimSpace(msg.Runner.EngineLogPath)
+		}
+		m.bridgeConnected = false
+		if realBridge, ok := m.bridge.(*bridge.RealYuumiClient); ok {
+			realBridge.SetClient(msg.Client)
+			realBridge.RegisterMessageHandler()
+		}
+		m.addSystemMessage("Core restart completed. Waiting for engine handshake...")
+		if m.bridge != nil {
+			return m, m.bridge.ConnectCmd()
+		}
 		return m, nil
 
 	case bridge.DataMsg:
@@ -305,15 +368,31 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.consumeEngineError(msg.Content)
 		return m, nil
 
+	case bridge.InputRequestMsg:
+		m.flushEngineBatch(false)
+		m.pendingInputPrompt = strings.TrimSpace(msg.Prompt)
+		if m.pendingInputPrompt == "" {
+			m.addSystemMessage("Input required by running process.")
+		} else {
+			m.addSystemMessage("Input required: " + m.pendingInputPrompt)
+		}
+		return m, nil
+
 	case bridge.ContextChangedMsg:
+		m.flushEngineBatch(false)
+		m.pendingInputPrompt = ""
 		if msg.Active {
 			m.activeContext = normaliseContextName(msg.ContextName)
 			m.activeContextPath = m.resolveDisplayContextPath(msg.ContextName)
 			m.activeLanguage = m.resolveActiveLanguage(m.activeContextPath)
+			if m.activeContext != "sandbox" {
+				m.sandboxProcessRunning = false
+			}
 		} else {
 			m.activeContext = ""
 			m.activeContextPath = ""
 			m.activeLanguage = ""
+			m.sandboxProcessRunning = false
 		}
 		m.pendingContextPath = ""
 		m.autocomplete.ActiveContext = m.activeContext
@@ -325,6 +404,8 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case startupFailedMsg:
+		m.flushEngineBatch(false)
+		m.pendingInputPrompt = ""
 		m.startupInProgress = false
 		m.startupFailed = true
 		m.startupErrors = append([]string{}, msg.Errors...)
@@ -336,8 +417,13 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case startupReadyMsg:
+		m.flushEngineBatch(false)
+		m.pendingInputPrompt = ""
 		m.runner = msg.Runner
 		m.client = msg.Client
+		if msg.Runner != nil {
+			m.engineLogPath = strings.TrimSpace(msg.Runner.EngineLogPath)
+		}
 		m.startupInProgress = false
 		m.startupFailed = false
 		m.startupStage = "Environment ready"
@@ -365,14 +451,17 @@ func (m AppModel) updateScriptEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.scriptEditor.SetSize(msg.Width, msg.Height)
 		return m, nil
 
+	case tea.PasteMsg:
+		return m, m.applyScriptEditorPaste(msg.Content)
+
 	case tea.KeyPressMsg:
-       normalizedKey := normalisedKeyPress(msg)
+		normalizedKey := normalisedKeyPress(msg)
 		switch normalizedKey {
 		case "esc", "escape":
 			m.mode = ModeREPL
 			m.addSystemMessage("Script editor closed.")
 			return m, nil
-       case "alt+enter", "alt+return", "shift+enter", "shift+return":
+		case "alt+enter", "alt+return", "shift+enter", "shift+return":
 			code := strings.TrimSpace(m.scriptEditor.Value())
 			m.mode = ModeREPL
 			if code == "" {
@@ -408,19 +497,13 @@ func (m AppModel) updateScriptEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		if normalizedKey == "ctrl+v" {
-			pasted, err := clipboard.ReadAll()
+		if isPasteShortcut(normalizedKey) {
+			pasted, err := readClipboardContent()
 			if err != nil {
-				m.addSystemMessage("Paste failed: " + err.Error())
+				m.addSystemMessage("Paste failed: " + err.Error() + ". Try Shift+Insert or your terminal paste action.")
 				return m, nil
 			}
-			if pasted == "" {
-				return m, nil
-			}
-
-			var pasteCmd tea.Cmd
-			m.scriptEditor, pasteCmd = m.scriptEditor.Update(tea.PasteMsg{Content: pasted})
-			return m, pasteCmd
+			return m, m.applyScriptEditorPaste(pasted)
 		}
 
 		if normalizedKey == "ctrl+x" {
@@ -445,6 +528,7 @@ func (m AppModel) updateScriptEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.startupInProgress {
 			m.startupSpinnerIndex = (m.startupSpinnerIndex + 1) % 4
 		}
+		m.flushEngineBatchIfSettled()
 		return m, tickStatusCmd()
 
 	case bridge.ConnectedMsg:
@@ -456,7 +540,9 @@ func (m AppModel) updateScriptEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case bridge.DisconnectedMsg:
+		m.flushEngineBatch(false)
 		m.bridgeConnected = false
+		m.pendingInputPrompt = ""
 		m.addSystemMessage("Disconnected: " + msg.Reason)
 		return m, nil
 
@@ -468,7 +554,19 @@ func (m AppModel) updateScriptEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.consumeEngineError(msg.Content)
 		return m, nil
 
+	case bridge.InputRequestMsg:
+		m.flushEngineBatch(false)
+		m.pendingInputPrompt = strings.TrimSpace(msg.Prompt)
+		if m.pendingInputPrompt == "" {
+			m.addSystemMessage("Input required by running process.")
+		} else {
+			m.addSystemMessage("Input required: " + m.pendingInputPrompt)
+		}
+		return m, nil
+
 	case bridge.ContextChangedMsg:
+		m.flushEngineBatch(false)
+		m.pendingInputPrompt = ""
 		if msg.Active {
 			m.activeContext = normaliseContextName(msg.ContextName)
 			m.activeContextPath = m.resolveDisplayContextPath(msg.ContextName)
@@ -504,7 +602,7 @@ func (m AppModel) viewREPL() tea.View {
 
 	header := ui.RenderHeader(m.width, m.height)
 	if m.startupInProgress || m.startupFailed {
-		statusBar := ui.RenderStatusBar(m.width, displayContextPath, m.bridgeConnected, m.memoryMB)
+		statusBar := ui.RenderStatusBar(m.width, displayContextPath, m.bridgeConnected, m.memoryMB, m.sandboxProcessRunning)
 		startupPanel := m.renderStartupPanel()
 		full := lg.JoinVertical(lg.Left, header, startupPanel, statusBar)
 		v := tea.NewView(pad.Render(full))
@@ -513,7 +611,7 @@ func (m AppModel) viewREPL() tea.View {
 		return v
 	}
 	if m.runtimeCenterVisible {
-		statusBar := ui.RenderStatusBar(m.width, displayContextPath, m.bridgeConnected, m.memoryMB)
+		statusBar := ui.RenderStatusBar(m.width, displayContextPath, m.bridgeConnected, m.memoryMB, m.sandboxProcessRunning)
 		runtimePanel := m.renderRuntimeCenterModal()
 		full := lg.JoinVertical(lg.Left, header, runtimePanel, statusBar)
 		v := tea.NewView(pad.Render(full))
@@ -523,7 +621,7 @@ func (m AppModel) viewREPL() tea.View {
 	}
 
 	chatArea := m.viewport.View()
-	statusBar := ui.RenderStatusBar(m.width, displayContextPath, m.bridgeConnected, m.memoryMB)
+	statusBar := ui.RenderStatusBar(m.width, displayContextPath, m.bridgeConnected, m.memoryMB, m.sandboxProcessRunning)
 	inputSection := m.renderInputArea()
 
 	sections := []string{header, chatArea, inputSection}
@@ -589,7 +687,7 @@ func (m *AppModel) CloseRuntimeResources() {
 
 func (m AppModel) viewScriptEditor() tea.View {
 	v := tea.NewView(m.scriptEditor.View())
- v.AltScreen = true
+	v.AltScreen = true
 	v.MouseMode = tea.MouseModeNone
 	return v
 }
@@ -597,6 +695,71 @@ func (m AppModel) viewScriptEditor() tea.View {
 func normalisedKeyPress(msg tea.KeyPressMsg) string {
 	key := strings.ToLower(strings.TrimSpace(msg.String()))
 	return strings.ReplaceAll(key, " ", "")
+}
+
+func isPasteShortcut(normalizedKey string) bool {
+	switch normalizedKey {
+	case "ctrl+v", "ctrl+shift+v", "shift+insert", "meta+v", "cmd+v":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizePastedContent(content string) string {
+	normalized := strings.ReplaceAll(content, "\r\n", "\n")
+	normalized = strings.ReplaceAll(normalized, "\r", "\n")
+	return strings.TrimRight(normalized, "\n")
+}
+
+func readClipboardContent() (string, error) {
+	pasted, err := clipboard.ReadAll()
+	if err != nil {
+		return "", err
+	}
+	return normalizePastedContent(pasted), nil
+}
+
+func (m *AppModel) applyInputPaste(content string) tea.Cmd {
+	normalized := normalizePastedContent(content)
+	if normalized == "" {
+		return nil
+	}
+
+	var cmd tea.Cmd
+	m.input, cmd = m.input.Update(tea.PasteMsg{Content: normalized})
+	lines := strings.Count(m.input.Value(), "\n") + 1
+	if lines < 1 {
+		lines = 1
+	}
+	if lines > 5 {
+		lines = 5
+	}
+	if lines != m.input.Height() {
+		m.input.SetHeight(lines)
+		m.recalculateLayout()
+	}
+
+	val := m.input.Value()
+	m.isCommandMode = strings.HasPrefix(val, "/") || strings.HasPrefix(val, "$")
+	if m.isCommandMode {
+		m.autocomplete.Filter(val)
+	} else {
+		m.autocomplete.Dismiss()
+	}
+
+	return cmd
+}
+
+func (m *AppModel) applyScriptEditorPaste(content string) tea.Cmd {
+	normalized := normalizePastedContent(content)
+	if normalized == "" {
+		return nil
+	}
+
+	var cmd tea.Cmd
+	m.scriptEditor, cmd = m.scriptEditor.Update(tea.PasteMsg{Content: normalized})
+	return cmd
 }
 
 func (m AppModel) renderCodePreviewPanel() string {
@@ -610,7 +773,7 @@ func (m AppModel) renderCodePreviewPanel() string {
 		Background(ui.ColourElectricBlue).
 		Bold(true).
 		Padding(0, 1).
-		Render(title + "  |  ESC close")
+		Render(title + " | ESC close")
 
 	body := lg.NewStyle().
 		Foreground(ui.ColourWhite).
@@ -661,6 +824,7 @@ func (m *AppModel) addSystemMessage(content string) {
 
 func (m AppModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
+	normalizedKey := normalisedKeyPress(msg)
 	if m.startupInProgress || m.startupFailed {
 		if key == "ctrl+c" {
 			return m, tea.Quit
@@ -679,7 +843,7 @@ func (m AppModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	if key == "ctrl+c" {
+	if normalizedKey == "ctrl+c" || normalizedKey == "ctrl+insert" {
 		current := strings.TrimSpace(m.input.Value())
 		if current == "" {
 			m.addSystemMessage("Copy skipped: input is empty.")
@@ -695,39 +859,16 @@ func (m AppModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	if key == "ctrl+v" {
-		pasted, err := clipboard.ReadAll()
+	if isPasteShortcut(normalizedKey) {
+		pasted, err := readClipboardContent()
 		if err != nil {
-			m.addSystemMessage("Paste failed: " + err.Error())
+			m.addSystemMessage("Paste failed: " + err.Error() + ". Try Shift+Insert or your terminal paste action.")
 			return m, nil
 		}
-		if pasted == "" {
-			return m, nil
-		}
-		var inputCmd tea.Cmd
-		m.input, inputCmd = m.input.Update(tea.PasteMsg{Content: pasted})
-		lines := strings.Count(m.input.Value(), "\n") + 1
-		if lines < 1 {
-			lines = 1
-		}
-		if lines > 5 {
-			lines = 5
-		}
-		if lines != m.input.Height() {
-			m.input.SetHeight(lines)
-			m.recalculateLayout()
-		}
-		val := m.input.Value()
-		m.isCommandMode = strings.HasPrefix(val, "/") || strings.HasPrefix(val, "$")
-		if m.isCommandMode {
-			m.autocomplete.Filter(val)
-		} else {
-			m.autocomplete.Dismiss()
-		}
-		return m, inputCmd
+		return m, m.applyInputPaste(pasted)
 	}
 
-	if key == "ctrl+x" {
+	if normalizedKey == "ctrl+x" || normalizedKey == "shift+delete" {
 		current := m.input.Value()
 		if strings.TrimSpace(current) == "" {
 			m.addSystemMessage("Cut skipped: input is empty.")
@@ -891,10 +1032,18 @@ func (m AppModel) handleSubmit() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	m.flushEngineBatch(false)
+
 	m.input.Reset()
 	m.input.SetHeight(1)
 	m.autocomplete.Dismiss()
 	m.recalculateLayout()
+
+	if strings.TrimSpace(m.pendingInputPrompt) != "" {
+		m.addUserMessage(trimmed)
+		m.pendingInputPrompt = ""
+		return m, m.bridge.SendInputResponseCmd(trimmed)
+	}
 
 	if m.pendingScriptConfirm {
 		m.pendingScriptConfirm = false
@@ -1000,29 +1149,146 @@ func (m AppModel) submitScript(code string, runAfterSave bool) tea.Cmd {
 }
 
 func (m *AppModel) consumeEngineOutput(content string) {
+	if m.updateSandboxProcessStatusFromContent(content) {
+		return
+	}
 	if m.pendingBridgeRequest.Kind != PendingBridgeRequestNone {
+		m.flushEngineBatch(false)
 		m.handlePendingBridgeData(content)
 		return
 	}
 	if m.pendingScriptExecution {
+		m.flushEngineBatch(false)
 		m.addScriptExecutionMessage(m.pendingScriptLabel, content)
 		m.pendingScriptExecution = false
 		m.pendingScriptLabel = ""
 		return
 	}
-	m.addZeriMessage(content, m.currentMessageContextTitle())
+	m.bufferEngineChunk(false, content)
 }
 
 func (m *AppModel) consumeEngineError(content string) {
+	if m.updateSandboxProcessStatusFromContent(content) {
+		return
+	}
 	if m.pendingBridgeRequest.Kind != PendingBridgeRequestNone {
+		m.flushEngineBatch(false)
 		m.handlePendingBridgeError(content)
 		return
 	}
 	if strings.TrimSpace(m.pendingContextPath) != "" {
+		m.flushEngineBatch(false)
 		m.pendingContextPath = ""
 		m.autocomplete.ActiveContext = m.activeContext
 	}
-	m.addZeriMessage("Error: "+content, m.currentMessageContextTitle())
+	m.bufferEngineChunk(true, content)
+}
+
+func (m *AppModel) updateSandboxProcessStatusFromContent(content string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(content))
+	if normalized == "sandbox process status: running" {
+		m.sandboxProcessRunning = true
+		return true
+	}
+	if normalized == "sandbox process status: idle" {
+		m.sandboxProcessRunning = false
+		m.flushEngineBatch(false)
+		return true
+	}
+	return false
+}
+
+func (m *AppModel) bufferEngineChunk(isError bool, content string) {
+	normalized := ui.NormaliseContent(content)
+	if strings.TrimSpace(normalized) == "" {
+		return
+	}
+	if m.engineBatchTitle == "" {
+		m.engineBatchTitle = m.currentMessageContextTitle()
+	}
+	m.engineBatchChunks = append(m.engineBatchChunks, EngineBatchChunk{
+		IsError: isError,
+		Content: normalized,
+	})
+	m.engineBatchUpdatedAt = time.Now()
+}
+
+func (m *AppModel) flushEngineBatchIfSettled() {
+	if len(m.engineBatchChunks) == 0 {
+		return
+	}
+	if m.sandboxProcessRunning {
+		return
+	}
+	if strings.TrimSpace(m.pendingInputPrompt) != "" {
+		return
+	}
+	if m.engineBatchUpdatedAt.IsZero() {
+		m.flushEngineBatch(false)
+		return
+	}
+	if time.Since(m.engineBatchUpdatedAt) >= 350*time.Millisecond {
+		m.flushEngineBatch(false)
+	}
+}
+
+func (m *AppModel) flushEngineBatch(forceError bool) {
+	if len(m.engineBatchChunks) == 0 {
+		return
+	}
+
+	title := m.engineBatchTitle
+	if strings.TrimSpace(title) == "" {
+		title = m.currentMessageContextTitle()
+	}
+
+	var builder strings.Builder
+	hasError := forceError
+	for idx, chunk := range m.engineBatchChunks {
+		if idx > 0 {
+			builder.WriteString("\n")
+		}
+		if chunk.IsError {
+			hasError = true
+			builder.WriteString("[stderr] ")
+		}
+		builder.WriteString(chunk.Content)
+	}
+
+	if hasError {
+		msg := ui.ChatMessage{
+			Role:      ui.RoleError,
+			Title:     title,
+			Content:   builder.String(),
+			Timestamp: time.Now().Format("15:04"),
+		}
+		m.messages = append(m.messages, msg)
+	} else {
+		msg := ui.ChatMessage{
+			Role:      ui.RoleZeri,
+			Title:     title,
+			Content:   builder.String(),
+			Timestamp: time.Now().Format("15:04"),
+		}
+		m.messages = append(m.messages, msg)
+	}
+
+	m.engineBatchChunks = nil
+	m.engineBatchTitle = ""
+	m.engineBatchUpdatedAt = time.Time{}
+	m.refreshViewport()
+}
+
+func (m *AppModel) addErrorMessage(content string) {
+	normalised := ui.NormaliseContent(content)
+	msg := ui.ChatMessage{
+		Role: ui.RoleError,
+		Title: m.currentMessageContextTitle(),
+		Content: normalised,
+		Timestamp: time.Now().Format("15:04"),
+	}
+	m.messages = append(m.messages, msg)
+	m.refreshViewport()
 }
 
 func (m *AppModel) addScriptExecutionMessage(label string, content string) {
@@ -1244,7 +1510,7 @@ func (m *AppModel) closeCodePreview() {
 
 func (m *AppModel) addCodeViewHistoryBlock(scriptName string) {
 	label := "[code view - \"" + scriptName + "\"]"
-	msg := ui.ChatMessage{
+	msg := ui.ChatMessage {
 		Role: ui.RoleCodeView,
 		Label: label,
 		Title: m.currentMessageContextTitle(),
@@ -1307,6 +1573,8 @@ func roleNameForClipboard(role ui.MessageRole) string {
 		return "USER"
 	case ui.RoleSystem:
 		return "SYSTEM"
+	case ui.RoleError:
+		return "ERROR"
 	case ui.RoleScriptExecution:
 		return "SCRIPT"
 	case ui.RoleCodeView:
@@ -1388,6 +1656,8 @@ func (m AppModel) handleCopyCommand(cmd string) (tea.Model, tea.Cmd) {
 }
 
 func (m AppModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
+	m.flushEngineBatch(false)
+
 	if strings.EqualFold(strings.TrimSpace(cmd), "/back") {
 		if previous, ok := previousContextPath(m.activeContextPath); ok {
 			m.pendingContextPath = previous
@@ -1418,6 +1688,13 @@ func (m AppModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 		m.runtimeCenter = buildRuntimeCenterState(m.startupLogPath)
 		m.runtimeCenterVisible = true
 		return m, nil
+	case strings.EqualFold(strings.TrimSpace(cmd), restartCoreCommand):
+		m.addUserMessage(cmd)
+		m.addSystemMessage("Restarting core engine and bridge...")
+		m.startupInProgress = false
+		m.startupFailed = false
+		m.sandboxProcessRunning = false
+		return m, m.restartCoreCmd()
 	case strings.HasPrefix(cmd, newCommandPrefix):
 		if !m.isCodeContextActive() {
 			m.addUserMessage(cmd)
@@ -1447,7 +1724,7 @@ func (m AppModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 		}
 		m.addUserMessage(cmd)
 		m.pendingBridgeRequest = PendingBridgeRequest{
-			Kind:       PendingBridgeRequestEditLoad,
+			Kind: PendingBridgeRequestEditLoad,
 			ScriptName: scriptName,
 			Language: m.scriptLanguageFromContext(),
 		}
@@ -1473,6 +1750,69 @@ func (m AppModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 		m.addUserMessage(cmd)
 		return m, m.bridge.SendDataCmd(cmd)
 	}
+}
+
+func (m AppModel) restartCoreCmd() tea.Cmd {
+	enginePath := strings.TrimSpace(m.enginePath)
+	pipeName := strings.TrimSpace(m.pipeName)
+	previousRunner := m.runner
+	previousClient := m.client
+
+	return func() tea.Msg {
+		if previousClient != nil {
+			_ = previousClient.Close()
+		}
+		if previousRunner != nil {
+			previousRunner.Stop()
+		}
+
+		if enginePath == "" {
+			return coreRestartResultMsg{Err: fmt.Errorf("engine path is not configured")}
+		}
+		if pipeName == "" {
+			return coreRestartResultMsg{Err: fmt.Errorf("pipe name is not configured")}
+		}
+
+		runner := &yuumi.Runner{
+			BinaryPath: enginePath,
+			PipeName:   pipeName,
+		}
+
+		if err := runner.Start(context.Background()); err != nil {
+			return coreRestartResultMsg{Err: err}
+		}
+
+		client, err := yuumi.Connect(pipeName)
+		if err != nil {
+			runner.Stop()
+			return coreRestartResultMsg{Err: err}
+		}
+
+		runner.SetClient(client)
+		return coreRestartResultMsg{Runner: runner, Client: client}
+	}
+}
+
+func (m AppModel) disconnectionHints(reason string) []string {
+	trimmedReason := strings.TrimSpace(reason)
+	if trimmedReason == "" {
+		trimmedReason = "unknown transport error"
+	}
+
+	hints := []string{"Use /restart core to restore the C++ engine connection without closing Zeri."}
+	lowerReason := strings.ToLower(trimmedReason)
+	if strings.Contains(lowerReason, "eof") || strings.Contains(lowerReason, "0xc0000409") {
+		engineLogPath := strings.TrimSpace(m.engineLogPath)
+		if engineLogPath == "" && strings.TrimSpace(m.enginePath) != "" {
+			engineLogPath = filepath.Join(filepath.Dir(m.enginePath), "zeri-engine.log")
+		}
+		if engineLogPath != "" {
+			hints = append(hints, "Engine crash diagnostics: "+engineLogPath)
+		}
+		hints = append(hints, "Crash signature detected (EOF/0xc0000409). Verify the executed script path and runtime environment, then retry with /restart core.")
+	}
+
+	return hints
 }
 
 func (m AppModel) handleHistoryUp() (tea.Model, tea.Cmd) {

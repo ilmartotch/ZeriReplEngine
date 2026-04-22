@@ -22,6 +22,36 @@ namespace {
         return result;
     }
 
+    [[nodiscard]] std::optional<size_t> FindUnquotedPipePosition(std::string_view input) {
+        bool inQuotes = false;
+        bool escape = false;
+
+        for (size_t i = 0; i < input.size(); ++i) {
+            const char c = input[i];
+
+            if (escape) {
+                escape = false;
+                continue;
+            }
+
+            if (c == '\\') {
+                escape = true;
+                continue;
+            }
+
+            if (c == '"') {
+                inQuotes = !inQuotes;
+                continue;
+            }
+
+            if (c == '|' && !inQuotes) {
+                return i;
+            }
+        }
+
+        return std::nullopt;
+    }
+
     [[nodiscard]] std::optional<size_t> FindUnclosedQuotePosition(std::string_view input) {
         bool inQuotes = false;
         bool escape = false;
@@ -108,6 +138,25 @@ namespace Zeri::Engines::Defaults {
             cmd.commandName = "@expr";
             cmd.args.emplace_back(std::string(inputView));
             return cmd;
+        }
+
+        if (cmd.type == InputType::ContextSwitch) {
+            if (const auto pipePos = FindUnquotedPipePosition(inputView); pipePos.has_value()) {
+                const std::string_view contextToken = Trim(inputView.substr(1, *pipePos - 1));
+                const std::string_view pipePayload = Trim(inputView.substr(*pipePos + 1));
+
+                if (contextToken.empty()) {
+                    return std::unexpected(ParseError{ "Missing context name before pipe.", 1 });
+                }
+
+                if (pipePayload.empty()) {
+                    return std::unexpected(ParseError{ "Missing pipeline payload after '|'.", *pipePos + 1 });
+                }
+
+                cmd.commandName = ToLower(contextToken);
+                cmd.pipeInput = std::string(pipePayload);
+                return cmd;
+            }
         }
 
         std::array<std::byte, 4096> scratch{};

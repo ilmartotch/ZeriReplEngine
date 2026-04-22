@@ -1,5 +1,7 @@
 #include "Ui/Include/OutputSink.h"
 
+#include <utility>
+
 namespace Zeri::Ui {
 
     OutputSink::OutputSink(yuumi::Bridge& bridge)
@@ -16,7 +18,13 @@ namespace Zeri::Ui {
 
     void OutputSink::Send(const nlohmann::json& message, yuumi::Channel channel) {
         if (m_connected.load(std::memory_order_acquire)) {
-            m_bridge.send(message, channel);
+            try {
+                m_bridge.send(message, channel);
+            } catch (...) {
+                m_connected.store(false, std::memory_order_release);
+                std::lock_guard lock(m_mutex);
+                m_buffer.emplace_back(message, channel);
+            }
             return;
         }
 
@@ -40,8 +48,18 @@ namespace Zeri::Ui {
             pending.swap(m_buffer);
         }
 
-        for (const auto& [msg, ch] : pending) {
-            m_bridge.send(msg, ch);
+        for (size_t idx = 0; idx < pending.size(); ++idx) {
+            const auto& [msg, ch] = pending[idx];
+            try {
+                m_bridge.send(msg, ch);
+            } catch (...) {
+                m_connected.store(false, std::memory_order_release);
+                std::lock_guard lock(m_mutex);
+                for (size_t rest = idx; rest < pending.size(); ++rest) {
+                    m_buffer.emplace_back(std::move(pending[rest]));
+                }
+                break;
+            }
         }
     }
 

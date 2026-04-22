@@ -27,6 +27,10 @@
 
 - Standardize all user-facing REPL messages in English across global, code, sandbox, and system diagnostics.
 
-- Check and modify Ui Go evry time after a core change to ensure all user-facing interactions are consistent with the new language standardization, color and formatting rules on the output.
+- Check and modify UI Go every time after a core change to ensure all user-facing interactions are consistent with the new language standardization, color, and formatting rules on the output.
 
-- Evry single implementation must be multi platform compatible, this project needs to run on Windows, Linux and MacOS. Always check for platform-specific code and provide cross-platform solutions.
+- Every single implementation must be multi-platform compatible; this project needs to run on Windows, Linux, and MacOS. Always check for platform-specific code and provide cross-platform solutions.
+
+- In Go, prefer minimal internal spacing with at most a single space/tab between tokens (e.g., `bridge bridge.YuumiClient`), avoiding vertical alignments with multiple spaces. Establish a categorical rule to prevent recurring manual corrections.
+
+- Mandatory enforcement rule: never generate or preserve vertical alignment padding in Go declarations or literals (`name     type` and `field:    value` are forbidden). Always emit `name type` and `field: value`.

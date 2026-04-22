@@ -1,13 +1,19 @@
 #include "../Include/SandboxContext.h"
 #include "../../Core/Include/RuntimeState.h"
 #include "../../Core/Include/SystemGuard.h"
+#include <nlohmann/json.hpp>
 #include <any>
 #include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cctype>
+#include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <format>
+#include <iomanip>
+#include <mutex>
+#include <sstream>
 #include <string_view>
 #include <thread>
 
@@ -18,6 +24,15 @@
 namespace fs = std::filesystem;
 
 namespace {
+
+    enum class SandboxLanguage {
+        Unknown,
+        Python,
+        Lua,
+        JavaScript,
+        TypeScript,
+        Ruby
+    };
 
     [[nodiscard]] std::string ToLower(std::string_view value) {
         std::string result;
@@ -54,12 +69,178 @@ namespace {
         return value.contains('/') || value.contains('\\') || value.contains('.') || value.contains(':');
     }
 
+    [[nodiscard]] std::string_view Trim(std::string_view value) {
+        while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front())) != 0) {
+            value.remove_prefix(1);
+        }
+        while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back())) != 0) {
+            value.remove_suffix(1);
+        }
+        return value;
+    }
+
+    [[nodiscard]] std::string NormalizePathInput(std::string_view value) {
+        value = Trim(value);
+        if (value.size() >= 2) {
+            const char first = value.front();
+            const char last = value.back();
+            if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
+                value.remove_prefix(1);
+                value.remove_suffix(1);
+            }
+        }
+
+        return std::string(Trim(value));
+    }
+
+    [[nodiscard]] SandboxLanguage DetectLanguage(std::string_view filePath) {
+        const std::string extension = ToLower(fs::path(filePath).extension().string());
+        if (extension == ".py") return SandboxLanguage::Python;
+        if (extension == ".lua") return SandboxLanguage::Lua;
+        if (extension == ".js") return SandboxLanguage::JavaScript;
+        if (extension == ".ts") return SandboxLanguage::TypeScript;
+        if (extension == ".rb") return SandboxLanguage::Ruby;
+        return SandboxLanguage::Unknown;
+    }
+
+    [[nodiscard]] std::string RuntimeKey(SandboxLanguage language) {
+        if (language == SandboxLanguage::Python) return "python";
+        if (language == SandboxLanguage::Lua) return "lua";
+        if (language == SandboxLanguage::JavaScript) return "js";
+        if (language == SandboxLanguage::TypeScript) return "js";
+        if (language == SandboxLanguage::Ruby) return "ruby";
+        return {};
+    }
+
+    [[nodiscard]] std::string ExtensionOrPlaceholder(const fs::path& filePath) {
+        const auto extension = filePath.extension().string();
+        if (!extension.empty()) {
+            return extension;
+        }
+        return "<none>";
+    }
+
+    [[nodiscard]] fs::path BuildSessionTempRoot() {
+#ifdef _WIN32
+        char* value = nullptr;
+        size_t len = 0;
+        if (_dupenv_s(&value, &len, "ZERI_SESSION_TEMP_DIR") == 0 && value != nullptr) {
+            std::string fromEnv(value);
+            std::free(value);
+            if (!fromEnv.empty()) {
+                return fs::path(fromEnv);
+            }
+        }
+#else
+        const char* raw = std::getenv("ZERI_SESSION_TEMP_DIR");
+        if (raw != nullptr) {
+            const std::string fromEnv(raw);
+            if (!fromEnv.empty()) {
+                return fs::path(fromEnv);
+            }
+        }
+#endif
+
+        const auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        const auto fallback = std::format("session-{}", timestamp);
+        return fs::temp_directory_path() / "zeri-project" / fallback;
+    }
+
+    [[nodiscard]] fs::path SessionTempRoot() {
+        static const fs::path root = [] {
+            std::error_code ec;
+            fs::path base = BuildSessionTempRoot();
+            fs::create_directories(base, ec);
+            return base;
+        }();
+        return root;
+    }
+
+    [[nodiscard]] fs::path SandboxWorkspaceRoot() {
+        static const fs::path root = [] {
+            std::error_code ec;
+            fs::path path = SessionTempRoot() / "sandbox";
+            fs::create_directories(path, ec);
+            return path;
+        }();
+        return root;
+    }
+
+    [[nodiscard]] std::string BuildArtifactStamp() {
+        const auto now = std::chrono::system_clock::now();
+        const auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
+        const std::time_t timeNow = std::chrono::system_clock::to_time_t(now);
+
+        std::tm local{};
+#ifdef _WIN32
+        localtime_s(&local, &timeNow);
+#else
+        localtime_r(&timeNow, &local);
+#endif
+
+        std::ostringstream stamp;
+        stamp << std::put_time(&local, "%Y%m%d_%H%M%S")
+              << '_' << std::setw(3) << std::setfill('0') << millis.count();
+        return stamp.str();
+    }
+
+    void PersistExecutionArtifacts(
+        const fs::path& workspaceRoot,
+        const fs::path& executable,
+        const std::vector<std::string>& args,
+        const std::optional<fs::path>& cwd,
+        const std::string& stdoutData,
+        const std::string& stderrData,
+        int exitCode,
+        bool interruptedByUser
+    ) {
+        std::error_code ec;
+        fs::create_directories(workspaceRoot, ec);
+
+        const std::string stamp = BuildArtifactStamp();
+        const fs::path logPath = workspaceRoot / std::format("exec_{}.log", stamp);
+        const fs::path jsonPath = workspaceRoot / std::format("exec_{}.json", stamp);
+
+        {
+            std::ofstream logStream(logPath, std::ios::binary | std::ios::trunc);
+            if (logStream.is_open()) {
+                logStream << "[stdout]\n";
+                logStream << stdoutData;
+                if (!stdoutData.empty() && stdoutData.back() != '\n') {
+                    logStream << '\n';
+                }
+                logStream << "\n[stderr]\n";
+                logStream << stderrData;
+                if (!stderrData.empty() && stderrData.back() != '\n') {
+                    logStream << '\n';
+                }
+            }
+        }
+
+        nlohmann::json manifest;
+        manifest["timestamp"] = stamp;
+        manifest["executable"] = executable.string();
+        manifest["arguments"] = args;
+        manifest["workingDirectory"] = cwd.has_value() ? cwd->string() : "";
+        manifest["exitCode"] = exitCode;
+        manifest["interrupted"] = interruptedByUser;
+        manifest["stdoutBytes"] = stdoutData.size();
+        manifest["stderrBytes"] = stderrData.size();
+        manifest["logFile"] = logPath.string();
+
+        std::ofstream jsonStream(jsonPath, std::ios::binary | std::ios::trunc);
+        if (jsonStream.is_open()) {
+            jsonStream << manifest.dump(2);
+        }
+    }
+
 }
 
 namespace Zeri::Engines::Defaults {
 
     void SandboxContext::OnEnter(Zeri::Ui::ITerminal& terminal) {
-        terminal.WriteInfo("Sandbox environment active \u2014 type /help to list sandbox commands.");
+        terminal.WriteInfo("Sandbox environment active - paste a file path to execute it, or type /help for commands.");
     }
 
     std::string SandboxContext::ResolveSandboxIde(const Zeri::Core::RuntimeState& state) {
@@ -118,6 +299,11 @@ namespace Zeri::Engines::Defaults {
         Zeri::Core::RuntimeState& state,
         Zeri::Ui::ITerminal& terminal
     ) {
+        if (cmd.type == InputType::Expression) {
+            const std::string rawPath = cmd.args.empty() ? cmd.rawInput : cmd.args.front();
+            return RunExternalFilePath(rawPath, cmd, terminal);
+        }
+
         if (cmd.commandName == "open") return HandleOpen(cmd, state, terminal);
 
         if (cmd.commandName == "set-ide") return HandleSetIde(cmd, state);
@@ -160,27 +346,28 @@ namespace Zeri::Engines::Defaults {
             const std::string ide = ResolveSandboxIde(state);
 
             return std::format(
-                "Sandbox Context \u2014 Available Commands\n"
+                "Sandbox Context - Available Commands\n"
                 "\n"
                 "Global Commands:\n"
-                "  /help \u2014 Show help for the active context\n"
-                "  /context \u2014 List available contexts\n"
-                "  /back \u2014 Return to previous context\n"
-                "  /save \u2014 Save session state to disk\n"
-                "  /clear \u2014 Clear the chat history\n"
-                "  /status \u2014 Show engine diagnostics\n"
-                "  /reset \u2014 Reset the current session\n"
-                "  /exit \u2014 Exit the REPL\n"
+                "  /help - Show help for the active context\n"
+                "  /context - List available contexts\n"
+                "  /back - Return to previous context\n"
+                "  /save - Save session state to disk\n"
+                "  /clear - Clear the chat history\n"
+                "  /status - Show engine diagnostics\n"
+                "  /reset - Reset the current session\n"
+                "  /exit - Exit the REPL\n"
                 "\n"
                 "Module Commands:\n"
-                "  /list \u2014 List all available modules\n"
-                "  /build <moduleName> \u2014 Build a module using CMake\n"
-                "  /run <moduleName|filePath> [args...] [--cwd <path>] \u2014 Run module or external target\n"
+                "  /list - List all available modules\n"
+                "  /build <moduleName> - Build a module using CMake\n"
+                "  /run <moduleName|filePath> [args...] [--cwd <path>] - Run module or external target\n"
+                "  <filePath> - Execute an external script file by path (.py .lua .js .ts .rb)\n"
                 "\n"
                 "IDE + Monitoring:\n"
-                "  /open [file] \u2014 Open file/path in configured IDE\n"
-                "  /set-ide <name> \u2014 Set preferred IDE command\n"
-                "  /watch \u2014 Show current sandbox process status\n"
+                "  /open [file] - Open file/path in configured IDE\n"
+                "  /set-ide <name> - Set preferred IDE command\n"
+                "  /watch - Show current sandbox process status\n"
                 "\n"
                 "Configured IDE: {}\n",
                 ide
@@ -193,6 +380,77 @@ namespace Zeri::Engines::Defaults {
             cmd.rawInput,
             { "Type /help to list available sandbox commands." }
         });
+    }
+
+    ExecutionOutcome SandboxContext::RunExternalFilePath(
+        std::string_view filePathInput,
+        const Command& origin,
+        Zeri::Ui::ITerminal& terminal
+    ) {
+        const std::string normalizedPath = NormalizePathInput(filePathInput);
+        if (normalizedPath.empty()) {
+            return std::unexpected(ExecutionError{
+                "SANDBOX_MISSING_ARGS",
+                "Missing file path for sandbox execution.",
+                origin.rawInput,
+                { "Provide a valid file path, for example: /tmp/script.py" }
+            });
+        }
+
+        fs::path filePath = fs::path(normalizedPath);
+        if (filePath.is_relative()) {
+            filePath = fs::absolute(filePath);
+        }
+
+        if (!fs::exists(filePath)) {
+            return std::unexpected(ExecutionError{
+                "SANDBOX_TARGET_NOT_FOUND",
+                "File not found: " + filePath.string(),
+                origin.rawInput
+            });
+        }
+
+        if (!fs::is_regular_file(filePath)) {
+            return std::unexpected(ExecutionError{
+                "SANDBOX_INVALID_TARGET",
+                "Path does not point to a file: " + filePath.string(),
+                origin.rawInput
+            });
+        }
+
+        std::ifstream readable(filePath, std::ios::in);
+        if (!readable.good()) {
+            return std::unexpected(ExecutionError{
+                "SANDBOX_FILE_NOT_READABLE",
+                "File is not readable: " + filePath.string(),
+                origin.rawInput
+            });
+        }
+
+        const SandboxLanguage language = DetectLanguage(filePath.string());
+        if (language == SandboxLanguage::Unknown) {
+            return std::unexpected(ExecutionError{
+                "SANDBOX_UNSUPPORTED_EXTENSION",
+                "Unsupported file extension: " + ExtensionOrPlaceholder(filePath),
+                origin.rawInput,
+                { "Supported extensions: .py .lua .js .ts .rb" }
+            });
+        }
+
+        auto health = Zeri::Core::SystemGuard::CheckEnvironment();
+        const std::string runtimeKey = RuntimeKey(language);
+        const auto* runtime = health.GetRuntime(runtimeKey);
+        if (runtime == nullptr || !runtime->available) {
+            return std::unexpected(ExecutionError{
+                "SANDBOX_RUNTIME_MISSING",
+                "No runtime available for extension: " + ExtensionOrPlaceholder(filePath),
+                origin.rawInput,
+                { "Use /status in global context to inspect runtime availability." }
+            });
+        }
+
+        terminal.WriteInfo("Running external file: " + filePath.filename().string());
+        return RunBlockingExternal(runtime->binary, { filePath.string() }, SandboxWorkspaceRoot(), terminal);
     }
 
     ExecutionOutcome SandboxContext::ListModules(Zeri::Core::RuntimeState& state) {
@@ -337,7 +595,7 @@ namespace Zeri::Engines::Defaults {
                 }
 
                 if (!workingDirectory.has_value()) {
-                    workingDirectory = targetPath.parent_path();
+                    workingDirectory = SandboxWorkspaceRoot();
                 }
             } else {
                 executable = targetPath;
@@ -375,17 +633,31 @@ namespace Zeri::Engines::Defaults {
         Zeri::Ui::ITerminal& terminal
     ) {
         std::atomic<bool> awaitingInput{ false };
+        bool interruptedByUser = false;
+        std::mutex captureMutex;
+        std::string capturedStdout;
+        std::string capturedStderr;
+
+        terminal.WriteInfo("Sandbox process status: running");
 
         auto outcome = m_bridge.Run(
             executable,
             args,
             [&](const std::string& chunk) {
+                {
+                    std::lock_guard lock(captureMutex);
+                    capturedStdout += chunk;
+                }
                 terminal.Write(chunk);
                 if (IsLikelyInputPrompt(chunk)) {
                     awaitingInput = true;
                 }
             },
             [&](const std::string& chunk) {
+                {
+                    std::lock_guard lock(captureMutex);
+                    capturedStderr += chunk;
+                }
                 terminal.WriteError(chunk);
                 if (IsLikelyInputPrompt(chunk)) {
                     awaitingInput = true;
@@ -395,20 +667,23 @@ namespace Zeri::Engines::Defaults {
         );
 
         if (!outcome.has_value()) {
+            terminal.WriteInfo("Sandbox process status: idle");
             return outcome;
         }
 
-        terminal.WriteInfo("Sandbox process started. Type /stop in stdin prompt to terminate.");
+        terminal.WriteInfo("Sandbox process started. Type /stop in stdin prompt to interrupt execution.");
 
         while (m_bridge.IsRunning()) {
             if (awaitingInput.exchange(false)) {
                 auto userInput = terminal.ReadLine("zeri::sandbox::stdin> ");
                 if (!userInput.has_value()) {
+                    interruptedByUser = true;
                     m_bridge.Terminate();
                     break;
                 }
 
                 if (*userInput == "/stop") {
+                    interruptedByUser = true;
                     m_bridge.Terminate();
                     break;
                 }
@@ -421,16 +696,38 @@ namespace Zeri::Engines::Defaults {
         }
 
         const int exitCode = m_bridge.WaitForExit();
+
+        {
+            std::lock_guard lock(captureMutex);
+            PersistExecutionArtifacts(
+                SandboxWorkspaceRoot(),
+                executable,
+                args,
+                cwd,
+                capturedStdout,
+                capturedStderr,
+                exitCode,
+                interruptedByUser
+            );
+        }
+
+        terminal.WriteInfo("Sandbox process status: idle");
+
+        if (interruptedByUser) {
+            return Zeri::Engines::Warning("Sandbox process interrupted by user.");
+        }
+
         if (exitCode != 0) {
             return std::unexpected(ExecutionError{
                 "SANDBOX_RUN_FAILED",
-                "Process exited with code: " + std::to_string(exitCode),
+                "Sandbox process terminated with exit code: " + std::to_string(exitCode),
                 executable.string(),
-                { "Review stderr output shown above for diagnostics." }
+                { "Review stderr output shown above for diagnostics.",
+                  "If execution was intentional, use /stop when prompted for stdin." }
             });
         }
 
-        return Zeri::Engines::Success("[SandboxRun] Process completed successfully.");
+        return Zeri::Engines::Success("Sandbox process completed successfully.");
     }
 
 }

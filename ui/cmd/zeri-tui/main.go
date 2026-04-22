@@ -41,14 +41,14 @@ func main() {
 	pipeName := "zeri-core"
 
 	realBridge := bridge.NewRealYuumiClient(nil)
-	m := newAppModel(realBridge)
+	m := newAppModel(realBridge, enginePath, pipeName)
 
 	p := tea.NewProgram(m)
 
 	realBridge.SetProgram(p)
- runStartupFlowAsync(ctx, p, realBridge, enginePath, pipeName)
+	runStartupFlowAsync(ctx, p, realBridge, enginePath, pipeName)
 
-  finalModel, err := p.Run()
+	finalModel, err := p.Run()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "TUI error: %v\n", err)
 		os.Exit(1)

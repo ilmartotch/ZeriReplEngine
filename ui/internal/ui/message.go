@@ -5,6 +5,7 @@ type MessageRole int
 const (
 	RoleUser MessageRole = iota
 	RoleZeri
+	RoleError
 	RoleSystem
 	RoleScriptExecution
 	RoleCodeView
