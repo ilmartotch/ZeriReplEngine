@@ -20,12 +20,14 @@
   "commands": {
     "global": [
       { "command": "/help", "synopsis": "Show help for the active context" },
+      { "command": "restart", "synopsis": "Restart and reconnect the engine after a disconnection" },
       { "command": "/runtime-status", "synopsis": "Open Runtime Center with runtime diagnostics" },
       { "command": "/copy last", "synopsis": "Copy the latest non-user output message" },
       { "command": "/copy all", "synopsis": "Copy the full visible message history" },
       { "command": "/context", "synopsis": "List reachable contexts" },
       { "command": "/back", "synopsis": "Return to previous context" },
       { "command": "/save", "synopsis": "Save session state to disk" },
+      { "command": "/load", "synopsis": "Load a saved session from disk" },
       { "command": "/status", "synopsis": "Show engine diagnostics" },
       { "command": "/reset", "synopsis": "Reset the current session" },
       { "command": "/clear", "synopsis": "Clear chat history" },
