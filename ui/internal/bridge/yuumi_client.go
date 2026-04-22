@@ -32,6 +32,21 @@ func (r *RealYuumiClient) ConnectCmd() tea.Cmd {
 	}
 }
 
+func (r *RealYuumiClient) SendInputResponseCmd(value string) tea.Cmd {
+	client := r.client
+	return func() tea.Msg {
+		if client == nil {
+			return nil
+		}
+		payload := map[string]interface{}{
+			"type":    "input_response",
+			"payload": value,
+		}
+		client.Send(payload, yuumi.ChannelCommand)
+		return nil
+	}
+}
+
 func (r *RealYuumiClient) SendDataCmd(s string) tea.Cmd {
 	client := r.client
 	return func() tea.Msg {
@@ -90,15 +105,18 @@ func (r *RealYuumiClient) RegisterMessageHandler() {
 			if payload != "" {
 				r.program.Send(ErrorMsg{Content: payload})
 			}
+		case "req_input":
+			prompt, _ := data["prompt"].(string)
+			r.program.Send(InputRequestMsg{Prompt: prompt})
 		case "context_changed":
-          name, _ := data["context"].(string)
+			name, _ := data["context"].(string)
 			active, ok := data["active"].(bool)
 			if !ok {
 				active = true
 			}
 			r.program.Send(ContextChangedMsg{ContextName: name, Active: active})
 		case "code_mode":
-            name, _ := data["context"].(string)
+			name, _ := data["context"].(string)
 			if name == "" {
 				name = "sandbox"
 			}

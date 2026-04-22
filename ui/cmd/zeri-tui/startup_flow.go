@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
-   "path/filepath"
+	"path/filepath"
 	"strings"
- "time"
+	"time"
 	"yuumi/internal/bridge"
 	"yuumi/pkg/yuumi"
 
@@ -19,52 +19,54 @@ type startupPhaseMsg struct {
 
 type startupFailedMsg struct {
 	Errors []string
-   LogPath string
+	LogPath string
 }
 
 type startupReadyMsg struct {
 	Runner *yuumi.Runner
 	Client *yuumi.Client
-   Warnings []string
+	Warnings []string
 	LogPath string
 }
 
 func runStartupFlowAsync(ctx context.Context, p *tea.Program, bridgeClient *bridge.RealYuumiClient, enginePath string, pipeName string) {
 	go func() {
-        warnings := make([]string, 0)
-		logPath := startupLogFilePath(enginePath)
+		warnings := make([]string, 0)
+		sessionTempDir := resolveSessionTempDir()
+		logPath := startupLogFilePath(sessionTempDir)
 		_ = os.MkdirAll(filepath.Dir(logPath), 0755)
 
 		p.Send(startupPhaseMsg{Title: "Bootstrapping required runtimes..."})
-       _ = os.Setenv(bootstrapModeEnv, bootstrapModeValidate)
+		_ = os.Setenv(bootstrapModeEnv, bootstrapModeValidate)
 
 		bootstrapErrs := RunBootstrapManager()
 		if len(bootstrapErrs) > 0 {
-         appendStartupLog(logPath, "BOOTSTRAP", preflightErrorsToLines(bootstrapErrs))
+			appendStartupLog(logPath, "BOOTSTRAP", preflightErrorsToLines(bootstrapErrs))
 			warnings = append(warnings, summarizeIssues("Bootstrap diagnostics", bootstrapErrs)...)
 		}
 
 		p.Send(startupPhaseMsg{Title: "Running environment checks..."})
 		preflightErrs := RunPreflight(enginePath, pipeName)
-     fatalErrs, nonFatalErrs := splitPreflightErrors(preflightErrs)
+		fatalErrs, nonFatalErrs := splitPreflightErrors(preflightErrs)
 		if len(nonFatalErrs) > 0 {
 			appendStartupLog(logPath, "PREFLIGHT_NON_FATAL", preflightErrorsToLines(nonFatalErrs))
 			warnings = append(warnings, summarizeIssues("Optional tools need attention", nonFatalErrs)...)
 		}
-     if len(fatalErrs) > 0 {
+		if len(fatalErrs) > 0 {
 			appendStartupLog(logPath, "PREFLIGHT_FATAL", preflightErrorsToLines(fatalErrs))
-         p.Send(startupFailedMsg{Errors: summarizeIssues("Environment blocking issues", fatalErrs), LogPath: logPath})
+			p.Send(startupFailedMsg{Errors: summarizeIssues("Environment blocking issues", fatalErrs), LogPath: logPath})
 			return
 		}
 
 		p.Send(startupPhaseMsg{Title: "Starting ZeriEngine..."})
 		runner := &yuumi.Runner{
 			BinaryPath: enginePath,
-			PipeName:   pipeName,
+			PipeName: pipeName,
+			SessionTempDir: sessionTempDir,
 		}
 		if err := runner.Start(ctx); err != nil {
-          appendStartupLog(logPath, "ENGINE_START", []string{err.Error()})
-          p.Send(startupFailedMsg{Errors: []string{"Engine startup failed. Check required permissions and local dependencies."}, LogPath: logPath})
+			appendStartupLog(logPath, "ENGINE_START", []string{err.Error()})
+			p.Send(startupFailedMsg{Errors: []string{"Engine startup failed. Check required permissions and local dependencies."}, LogPath: logPath})
 			return
 		}
 
@@ -72,8 +74,8 @@ func runStartupFlowAsync(ctx context.Context, p *tea.Program, bridgeClient *brid
 		client, err := yuumi.Connect(pipeName)
 		if err != nil {
 			runner.Stop()
-         appendStartupLog(logPath, "ENGINE_CONNECT", []string{err.Error()})
-            p.Send(startupFailedMsg{Errors: []string{"Bridge connection failed. Engine may be blocked by security policy."}, LogPath: logPath})
+			appendStartupLog(logPath, "ENGINE_CONNECT", []string{err.Error()})
+			p.Send(startupFailedMsg{Errors: []string{"Bridge connection failed. Engine may be blocked by security policy."}, LogPath: logPath})
 			return
 		}
 
@@ -84,7 +86,7 @@ func runStartupFlowAsync(ctx context.Context, p *tea.Program, bridgeClient *brid
 			p.Send(bridge.DisconnectedMsg{Reason: err.Error()})
 		}
 
-     p.Send(startupReadyMsg{Runner: runner, Client: client, Warnings: warnings, LogPath: logPath})
+		p.Send(startupReadyMsg{Runner: runner, Client: client, Warnings: warnings, LogPath: logPath})
 	}()
 }
 
@@ -130,9 +132,24 @@ func summarizeIssues(title string, errs []*PreflightError) []string {
 	return lines
 }
 
-func startupLogFilePath(enginePath string) string {
-	baseDir := filepath.Dir(enginePath)
-	return filepath.Join(baseDir, "zeri-startup.log")
+func resolveSessionTempDir() string {
+	fromEnv := strings.TrimSpace(os.Getenv("ZERI_SESSION_TEMP_DIR"))
+	if fromEnv != "" {
+		return fromEnv
+	}
+	dir, err := os.MkdirTemp(os.TempDir(), "zeri-project-session-")
+	if err != nil {
+		return filepath.Join(os.TempDir(), "zeri-project-session-fallback")
+	}
+	return dir
+}
+
+func startupLogFilePath(sessionTempDir string) string {
+	baseDir := strings.TrimSpace(sessionTempDir)
+	if baseDir == "" {
+		baseDir = filepath.Join(os.TempDir(), "zeri-project-session-fallback")
+	}
+	return filepath.Join(baseDir, "logs", "zeri-startup.log")
 }
 
 func appendStartupLog(path string, section string, lines []string) {

@@ -429,6 +429,41 @@ namespace {
             return false;
         }
     }
+
+    [[nodiscard]] bool TryExecuteInlineSandbox(
+        std::string_view input,
+        Zeri::Engines::Defaults::CachedDispatcher& dispatcher,
+        Zeri::Core::RuntimeState& runtimeState,
+        Zeri::Ui::ITerminal& terminal
+    ) {
+        const std::string_view trimmed = Trim(input);
+        if (!ToLower(trimmed).starts_with("$sandbox")) {
+            return false;
+        }
+
+        auto dispatchResult = dispatcher.Dispatch(std::string(trimmed));
+        if (!dispatchResult.has_value()) {
+            return false;
+        }
+
+        const auto& cmd = dispatchResult->command;
+        if (cmd.type != Zeri::Engines::InputType::ContextSwitch ||
+            cmd.commandName != "sandbox" ||
+            !cmd.pipeInput.has_value()) {
+            return false;
+        }
+
+        Zeri::Engines::Defaults::SandboxContext sandbox;
+        Zeri::Engines::Command sandboxCommand;
+        sandboxCommand.type = Zeri::Engines::InputType::Expression;
+        sandboxCommand.rawInput = *cmd.pipeInput;
+        sandboxCommand.commandName = "@expr";
+        sandboxCommand.args.push_back(*cmd.pipeInput);
+
+        auto outcome = sandbox.HandleCommand(sandboxCommand, runtimeState, terminal);
+        HandleOutcome(outcome, terminal);
+        return true;
+    }
 }
 
 namespace {
@@ -542,6 +577,10 @@ int main(int argc, char* argv[]) {
         }
         if (lowered == "$customcommand") {
             (void)SwitchContext("customcommand", runtimeState, terminal, sinkOwner.get());
+            continue;
+        }
+
+        if (TryExecuteInlineSandbox(input, dispatcher, runtimeState, terminal)) {
             continue;
         }
 

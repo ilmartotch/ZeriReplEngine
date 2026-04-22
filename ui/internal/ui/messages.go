@@ -57,10 +57,7 @@ func RenderCodeViewHistoryMessage(msg ChatMessage, maxWidth int) string {
 }
 
 func RenderZeriMessage(msg ChatMessage, maxWidth int) string {
-	labelText := "◆ Zeri"
-   if msg.Title != "" && msg.Title != "global" {
-		labelText = "◆ Zeri::" + msg.Title
-	}
+	labelText := "◆ " + contextTag(msg.Title)
 	label := lg.NewStyle().Foreground(ColourAcidGreen).Render(labelText)
 	ts := lg.NewStyle().Foreground(ColourIndustrialGrey).Render(msg.Timestamp)
 
@@ -69,14 +66,49 @@ func RenderZeriMessage(msg ChatMessage, maxWidth int) string {
 		contentWidth = 10
 	}
 
+	contentColour := ColourWhite
+	normalizedTitle := strings.TrimPrefix(contextTag(msg.Title), "zeri::")
+	if normalizedTitle == "sandbox" || strings.HasPrefix(normalizedTitle, "sandbox::") {
+		contentColour = ColourIndustrialGrey
+	}
+
 	content := lg.NewStyle().
-		Foreground(ColourWhite).
+		Foreground(contentColour).
 		Render(wordwrap(msg.Content, contentWidth))
 
 	return lg.JoinVertical(lg.Left,
 		label+" "+ts,
 		content,
 	)
+}
+
+func RenderErrorMessage(msg ChatMessage, maxWidth int) string {
+	labelText := "✕ " + contextTag(msg.Title)
+	label := lg.NewStyle().Foreground(ColourErrorRed).Bold(true).Render(labelText)
+	ts := lg.NewStyle().Foreground(ColourIndustrialGrey).Render(msg.Timestamp)
+
+	contentWidth := maxWidth - 4
+	if contentWidth < 10 {
+		contentWidth = 10
+	}
+	content := lg.NewStyle().
+		Foreground(ColourErrorRed).
+		Render(wordwrap(msg.Content, contentWidth))
+
+	return lg.JoinVertical(lg.Left,
+		label+" "+ts,
+		content,
+	)
+}
+
+func contextTag(title string) string {
+	normalized := strings.ToLower(strings.TrimSpace(title))
+	normalized = strings.TrimPrefix(normalized, "$")
+	normalized = strings.TrimPrefix(normalized, "zeri::")
+	if normalized == "" {
+		normalized = "global"
+	}
+	return "zeri::" + normalized
 }
 
 func RenderUserMessage(msg ChatMessage, maxWidth int) string {
@@ -152,7 +184,9 @@ func RenderAllMessages(messages []ChatMessage, maxWidth int) string {
 	for _, msg := range messages {
 		switch msg.Role {
 		case RoleZeri:
-          parts = append(parts, RenderZeriMessage(msg, maxWidth))
+			parts = append(parts, RenderZeriMessage(msg, maxWidth))
+		case RoleError:
+			parts = append(parts, RenderErrorMessage(msg, maxWidth))
 		case RoleUser:
 			parts = append(parts, RenderUserMessage(msg, maxWidth))
 		case RoleSystem:

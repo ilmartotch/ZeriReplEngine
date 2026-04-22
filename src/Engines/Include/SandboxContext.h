@@ -6,6 +6,7 @@
 
 #include <filesystem>
 #include <optional>
+#include <string_view>
 #include <vector>
 
 namespace Zeri::Engines::Defaults {
@@ -27,6 +28,11 @@ namespace Zeri::Engines::Defaults {
         ExecutionOutcome HandleOpen(const Command& cmd, Zeri::Core::RuntimeState& state, Zeri::Ui::ITerminal& terminal);
         ExecutionOutcome HandleSetIde(const Command& cmd, Zeri::Core::RuntimeState& state);
         [[nodiscard]] static std::string ResolveSandboxIde(const Zeri::Core::RuntimeState& state);
+        ExecutionOutcome RunExternalFilePath(
+            std::string_view filePathInput,
+            const Command& origin,
+            Zeri::Ui::ITerminal& terminal
+        );
         ExecutionOutcome RunExternalTarget(const Command& cmd, Zeri::Core::RuntimeState& state, Zeri::Ui::ITerminal& terminal);
         ExecutionOutcome RunBlockingExternal(
             const std::filesystem::path& executable,
