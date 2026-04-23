@@ -165,6 +165,23 @@ func readScript(name string, language string) (string, error) {
 	return string(data), nil
 }
 
+func deleteScript(name string, language string) error {
+	safeName, err := sanitizeStorageName(name)
+	if err != nil {
+		return err
+	}
+	dir, err := ZeriScriptsDir(language)
+	if err != nil {
+		return err
+	}
+	ext := languageExtension(language)
+	path := filepath.Join(dir, safeName+"."+ext)
+	if _, statErr := os.Stat(path); os.IsNotExist(statErr) {
+		return os.ErrNotExist
+	}
+	return os.Remove(path)
+}
+
 func saveSession(model AppModel, name string, overwrite bool) error {
 	safeName, err := sanitizeStorageName(name)
 	if err != nil {
@@ -331,7 +348,9 @@ func formatBytes(size int) string {
  * What changed:
  *   - Added centralized persistence helpers for .zeri base/scripts/sessions paths.
  *   - Added first-run directory bootstrap creation for scripts and sessions.
- *   - Added script save/read utilities and language folder/extension normalization.
+ *   - Added script save/read/delete utilities and language folder/extension normalization.
+ *   - Added deleteScript: resolves path via sanitizeStorageName, returns os.ErrNotExist
+ *     if not found, otherwise removes the file.
  *   - Added named session snapshot save/load with JSON schema and overwrite guard.
  *   - Added directory-backed session/script name listing utilities for autocomplete.
  *   - Added script save confirmation format utilities for history rendering.

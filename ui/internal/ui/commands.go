@@ -199,10 +199,15 @@ func contextDescriptions() map[string]string {
 
 func SlashCommandsForContext(activeContext string) []CompletionEntry {
 	ctx := normaliseContextName(activeContext)
+	group := commandGroupForContext(ctx)
+
+	if group == "script" {
+		return commandsForGroup("script")
+	}
+
 	pool := make([]CompletionEntry, 0, 16)
 	pool = append(pool, commandsForGroup("global")...)
 
-	group := commandGroupForContext(ctx)
 	if group != "global" {
 		pool = append(pool, commandsForGroup(group)...)
 	}
@@ -238,10 +243,9 @@ func ContextCommandsForContext(activeContext string) []CompletionEntry {
  *     /open, /set-ide, /watch, /list, /build, /run.
  *   - Added CodeCommands for ScriptHub context routing commands.
  *   - Added new context switches $code and $customCommand.
- *
- * Why:
- *   - Autocomplete must mirror current engine commands after Session 2
- *     rollback and ScriptHub introduction.
+ *   - SlashCommandsForContext now returns only script-group commands when the
+ *     active context is a script language (js, ts, lua, python, ruby), preventing
+ *     global-only commands from leaking into script context autocomplete.
  *
  * Impact on other components:
  *   - autocomplete.go selects SandboxCommands in sandbox context and
