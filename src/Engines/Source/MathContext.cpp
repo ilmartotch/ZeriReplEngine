@@ -281,6 +281,7 @@ namespace Zeri::Engines::Defaults {
             if (i > 0) paramList += ", ";
             paramList += params[i];
         }
+        m_functionDefinitions[fnName] = std::format("{}({}) → {}", fnName, paramList, body);
         return std::format("[FunctionDefined] {}({}) = {}", fnName, paramList, body);
     }
 
@@ -303,39 +304,35 @@ namespace Zeri::Engines::Defaults {
         return result;
     }
 
-    ExecutionOutcome MathContext::HandleListFunctions(Zeri::Core::RuntimeState& state) {
+    ExecutionOutcome MathContext::HandleListFunctions(Zeri::Core::RuntimeState& state) const {
         const auto localFns = state.GetCurrentLocalFunctions();
         const auto allFns = state.GetResolvedFunctions();
 
         std::string result;
 
-        if (!localFns.empty()) {
-            result += "User-defined functions (current scope):\n";
-            for (const auto& [name, _] : localFns) {
-                result += std::format("  {}\n", name);
+        if (!m_functionDefinitions.empty()) {
+            const std::size_t count = m_functionDefinitions.size();
+            result += std::format("Defined functions ({}):\n", count);
+            for (const auto& [name, definition] : m_functionDefinitions) {
+                result += std::format("  {}\n", definition);
             }
         }
 
-        bool hasPromoted = false;
+        bool hasInherited = false;
         for (const auto& [name, _] : allFns) {
-            if (!localFns.contains(name)) {
-                if (!hasPromoted) {
+            if (!localFns.contains(name) && !m_functionDefinitions.contains(name)) {
+                if (!hasInherited) {
                     result += "Inherited functions (session/global):\n";
-                    hasPromoted = true;
+                    hasInherited = true;
                 }
                 result += std::format("  {}\n", name);
             }
         }
 
         if (result.empty()) {
-            return "No user-defined functions.\n"
-                   "  Define with:  /fn f(x) = x*sin(x)";
+            return "No functions defined. Use /fn f(x)=<expr> to define one.";
         }
 
-        result += "\nBuilt-in (exprtk): sin cos tan asin acos atan atan2\n"
-                  "  sinh cosh tanh log log2 log10 exp pow sqrt abs\n"
-                  "  ceil floor round trunc min max clamp mod frac\n"
-                  "  Constants: pi euler phi tau sqrt2 inf epsilon";
         return result;
     }
 
@@ -541,7 +538,13 @@ Handles math expressions and logic operations via exprtk.
 Supports explicit slash commands (/calc, /logic, /eval, /fn, /vars, /fns,
 /promote), variable promotion and assignment, and user-defined functions.
 
-QA Changes:
-  - OnEnter uses WriteInfo for single-line context header.
-  - /help reformatted with structured "command — description" layout.
+Changes:
+  - Added m_functionDefinitions (std::map<std::string, std::string>) to MathContext
+    to store each user-defined function as a display string (signature → body).
+  - HandleDefineFunction now records the definition text in m_functionDefinitions
+    on successful compile and registration.
+  - HandleListFunctions now uses m_functionDefinitions to render structured output:
+    "f(x)  →  x * sin(x)" format, with count header and empty-state message.
+  - Both HandleDefineFunction and HandleListFunctions changed from static to
+    non-static member methods to access the instance map.
 */

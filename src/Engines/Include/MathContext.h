@@ -17,13 +17,15 @@ namespace Zeri::Engines::Defaults {
         ) override;
 
     private:
+        std::map<std::string, std::string> m_functionDefinitions;
+
         [[nodiscard]] static ExecutionOutcome HandleHelp();
         [[nodiscard]] static ExecutionOutcome HandleCalc(const Command& cmd);
         [[nodiscard]] static ExecutionOutcome HandleLogic(const Command& cmd);
         [[nodiscard]] static ExecutionOutcome HandleExpression(const std::string& expr, Zeri::Core::RuntimeState& state);
-        [[nodiscard]] static ExecutionOutcome HandleDefineFunction(const Command& cmd, Zeri::Core::RuntimeState& state);
+        [[nodiscard]] ExecutionOutcome HandleDefineFunction(const Command& cmd, Zeri::Core::RuntimeState& state);
         [[nodiscard]] static ExecutionOutcome HandleListVariables(Zeri::Core::RuntimeState& state);
-        [[nodiscard]] static ExecutionOutcome HandleListFunctions(Zeri::Core::RuntimeState& state);
+        [[nodiscard]] ExecutionOutcome HandleListFunctions(Zeri::Core::RuntimeState& state) const;
         [[nodiscard]] static ExecutionOutcome HandlePromote(const Command& cmd, Zeri::Core::RuntimeState& state);
     };
 
@@ -32,11 +34,17 @@ namespace Zeri::Engines::Defaults {
 /*
 MathContext.h — Full-featured math computation engine.
 
-Responsabilità:
+Responsibilities:
   - Free-form expression evaluation via exprtk.
   - Variable assignment, user-defined functions, scope promotion.
   - Backward-compatible /calc and /logic commands.
   - Acts as a Julia-style sandbox for numerical computation within the REPL.
 
-Dipendenze: BaseContext, RuntimeState (via ExpressionExecutor).
+Changes:
+  - Added m_functionDefinitions (std::map<std::string, std::string>) instance
+    member to store function display text (name(params) → body) at define time.
+  - HandleDefineFunction and HandleListFunctions changed from static to non-static
+    to allow access to the instance map.
+
+Dependencies: BaseContext, RuntimeState (via ExpressionExecutor).
 */

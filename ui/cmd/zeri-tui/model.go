@@ -39,14 +39,16 @@ const (
 	copyCommandModeLast   = "last"
 	copyCommandModeAll    = "all"
 	defaultScriptLanguage = "js"
-	saveCommandPrefix     = "/save"
-	loadCommandPrefix     = "/load"
-	newCommandPrefix      = "/new"
-	editCommandPrefix     = "/edit"
-	showCommandPrefix     = "/show"
-	runtimeStatusCommand  = "/runtime-status"
-	restartCoreCommand    = "/restart core"
-	restartCommand        = "restart"
+	saveCommandPrefix    = "/save"
+	loadCommandPrefix    = "/load"
+	newCommandPrefix     = "/new"
+	editCommandPrefix    = "/edit"
+	showCommandPrefix    = "/show"
+	runCommandPrefix     = "/run"
+	deleteCommandPrefix  = "/delete"
+	runtimeStatusCommand = "/runtime-status"
+	restartCoreCommand   = "/restart core"
+	restartCommand       = "restart"
 )
 
 const (
@@ -82,6 +84,13 @@ type SessionOverwriteOption int
 const (
 	SessionOverwriteConfirm SessionOverwriteOption = iota
 	SessionOverwriteCancel
+)
+
+type DeleteConfirmOption int
+
+const (
+	DeleteConfirmYes DeleteConfirmOption = iota
+	DeleteConfirmCancel
 )
 
 type ConnectionState int
@@ -175,6 +184,10 @@ type AppModel struct {
 	sessionOverwriteVisible     bool
 	sessionOverwriteCursor      SessionOverwriteOption
 	pendingSessionOverwriteName string
+	deleteConfirmVisible        bool
+	deleteConfirmCursor         DeleteConfirmOption
+	pendingDeleteScriptName     string
+	pendingDeleteLanguage       string
 	pendingBridgeRequest        PendingBridgeRequest
 	codePreview                 CodePreviewState
 	runtimeCenterVisible        bool
@@ -288,6 +301,10 @@ func (m *AppModel) replAuxiliaryPanelHeight() int {
 
 	if m.sessionOverwriteVisible {
 		height += lg.Height(m.renderSessionOverwriteMenu())
+	}
+
+	if m.deleteConfirmVisible {
+		height += lg.Height(m.renderDeleteConfirmMenu())
 	}
 
 	if m.saveMenu == SaveMenuVisible {
@@ -404,12 +421,14 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.bridgeConnected = false
 		m.sandboxProcessRunning = false
 		m.pendingInputPrompt = ""
-		m.addSystemMessage("⚠ ZeriEngine disconnected. Type 'restart' to reconnect.")
-		if reason := strings.TrimSpace(msg.Reason); reason != "" {
-			m.addSystemMessage("Reason: " + reason)
-		}
-		for _, tip := range m.disconnectionHints(msg.Reason) {
-			m.addSystemMessage(tip)
+		if !m.startupInProgress {
+			m.addSystemMessage("ZeriEngine disconnected. Type '/restart' to reconnect.")
+			if reason := strings.TrimSpace(msg.Reason); reason != "" {
+				m.addSystemMessage("Reason: " + reason)
+			}
+			for _, tip := range m.disconnectionHints(msg.Reason) {
+				m.addSystemMessage(tip)
+			}
 		}
 		return m, nil
 
@@ -518,7 +537,6 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.startupStage = "Environment ready"
 		m.startupErrors = nil
 		m.startupLogPath = strings.TrimSpace(msg.LogPath)
-		_ = msg.Warnings
 		m.engineState = ConnectionConnected
 		m.bridgeConnected = true
 		m.recalculateLayout()
@@ -619,20 +637,8 @@ func (m AppModel) updateScriptEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.ready {
 			m.bridgeConnected = true
 			m.ready = true
-			m.addSystemMessage("Work environment ready")
 		}
 		m.bridgeConnected = true
-		return m, nil
-
-	case bridge.DisconnectedMsg:
-		m.flushEngineBatch(false)
-		m.engineState = ConnectionDisconnected
-		m.bridgeConnected = false
-		m.pendingInputPrompt = ""
-		m.addSystemMessage("⚠ ZeriEngine disconnected. Type 'restart' to reconnect.")
-		if reason := strings.TrimSpace(msg.Reason); reason != "" {
-			m.addSystemMessage("Reason: " + reason)
-		}
 		return m, nil
 
 	case bridge.DataMsg:
@@ -738,6 +744,10 @@ func (m AppModel) appendREPLAuxiliarySections(sections []string) []string {
 		sections = append(sections, m.renderSessionOverwriteMenu())
 	}
 
+	if m.deleteConfirmVisible {
+		sections = append(sections, m.renderDeleteConfirmMenu())
+	}
+
 	if m.saveMenu == SaveMenuVisible {
 		sections = append(sections, m.renderScriptSaveMenu())
 	}
@@ -804,6 +814,62 @@ func (m AppModel) viewScriptEditor() tea.View {
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeNone
 	return v
+}
+
+func (m AppModel) renderDeleteConfirmMenu() string {
+	ext := languageExtension(m.pendingDeleteLanguage)
+	filename := m.pendingDeleteScriptName + "." + ext
+	title := fmt.Sprintf("Delete %q? This action cannot be undone.", filename)
+
+	options := []string{"Yes, delete", "Cancel"}
+	rows := make([]string, 0, len(options))
+	for idx, option := range options {
+		prefix := "   "
+		if DeleteConfirmOption(idx) == m.deleteConfirmCursor {
+			prefix = " ▶ "
+		}
+		rows = append(rows, prefix+option)
+	}
+
+	panel := lg.JoinVertical(lg.Left, title, strings.Join(rows, "\n"))
+	width := m.width - 6
+	if width < 44 {
+		width = 44
+	}
+
+	return lg.NewStyle().
+		Border(lg.RoundedBorder()).
+		BorderForeground(ui.ColourErrorRed).
+		Padding(0, 1).
+		Width(width).
+		Render(panel)
+}
+
+func (m AppModel) handleDeleteConfirm() (tea.Model, tea.Cmd) {
+	cursor := m.deleteConfirmCursor
+	name := m.pendingDeleteScriptName
+	language := m.pendingDeleteLanguage
+
+	m.deleteConfirmVisible = false
+	m.pendingDeleteScriptName = ""
+	m.pendingDeleteLanguage = ""
+	m.recalculateLayout()
+
+	if cursor == DeleteConfirmCancel {
+		m.addSystemMessage("Deletion cancelled.")
+		return m, nil
+	}
+
+	ext := languageExtension(language)
+	filename := name + "." + ext
+
+	if err := deleteScript(name, language); err != nil {
+		m.addErrorMessage("Delete failed: " + err.Error())
+		return m, nil
+	}
+
+	m.addSystemMessage(fmt.Sprintf("Script %q deleted.", filename))
+	return m, nil
 }
 
 func (m AppModel) renderScriptSaveMenu() string {
@@ -1059,6 +1125,32 @@ func (m AppModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.recalculateLayout()
 			m.addSystemMessage("Session overwrite cancelled.")
 			return m, nil
+		default:
+			return m, nil
+		}
+	}
+
+	if m.deleteConfirmVisible {
+		switch normalizedKey {
+		case "up":
+			if m.deleteConfirmCursor > DeleteConfirmYes {
+				m.deleteConfirmCursor--
+			}
+			return m, nil
+		case "down":
+			if m.deleteConfirmCursor < DeleteConfirmCancel {
+				m.deleteConfirmCursor++
+			}
+			return m, nil
+		case "esc", "escape":
+			m.deleteConfirmVisible = false
+			m.pendingDeleteScriptName = ""
+			m.pendingDeleteLanguage = ""
+			m.recalculateLayout()
+			m.addSystemMessage("Deletion cancelled.")
+			return m, nil
+		case "enter", "return":
+			return m.handleDeleteConfirm()
 		default:
 			return m, nil
 		}
@@ -1348,6 +1440,11 @@ func (m AppModel) handleSubmit() (tea.Model, tea.Cmd) {
 
 	if strings.HasPrefix(trimmed, "/") {
 		return m.handleSlashCommand(trimmed)
+	}
+
+	if normalizedInput == restartCommand {
+		m.addUserMessage(trimmed)
+		return m.handleRestart()
 	}
 
 	m.queuePendingContextTitleIfSwitch(trimmed)
@@ -1963,6 +2060,32 @@ func (m *AppModel) openScriptEditor(language string, scriptName string, content 
 	m.mode = ModeScriptEditor
 }
 
+func (m *AppModel) appendShowBlock(scriptName string, language string, content string) {
+	ext := languageExtension(language)
+	header := fmt.Sprintf("[%s] %s.%s", strings.ToUpper(language), scriptName, ext)
+	numbered := addLineNumbers(content)
+	body := header + "\n" + numbered
+	msg := ui.ChatMessage{
+		Role:      ui.RoleCodeView,
+		Label:     "[show - \"" + scriptName + "\"]",
+		Title:     m.currentMessageContextTitle(),
+		Content:   body,
+		Timestamp: time.Now().Format("15:04"),
+	}
+	m.messages = append(m.messages, msg)
+	m.refreshViewport()
+}
+
+func addLineNumbers(content string) string {
+	lines := strings.Split(content, "\n")
+	width := len(fmt.Sprintf("%d", len(lines)))
+	var builder strings.Builder
+	for i, line := range lines {
+		fmt.Fprintf(&builder, "%*d  %s\n", width, i+1, line)
+	}
+	return strings.TrimRight(builder.String(), "\n")
+}
+
 func (m *AppModel) closeCodePreview() {
 	if !m.codePreview.Visible {
 		return
@@ -2025,11 +2148,11 @@ func parseScriptNameArgument(input string, command string) (string, bool) {
 		name := strings.TrimSpace(remainder[1 : len(remainder)-1])
 		return name, name != ""
 	}
-	parts := strings.Fields(remainder)
-	if len(parts) == 0 {
+	name := strings.Join(strings.Fields(remainder), " ")
+	if name == "" {
 		return "", false
 	}
-	return strings.Trim(parts[0], "\""), true
+	return name, true
 }
 
 func quoteScriptName(name string) string {
@@ -2244,12 +2367,30 @@ func (m AppModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 			m.addErrorMessage("Unable to show script: " + err.Error())
 			return m, nil
 		}
-		m.codePreview = CodePreviewState{
-			Visible:    true,
-			ScriptName: scriptName,
-			Content:    content,
+		m.appendShowBlock(scriptName, m.scriptLanguageFromContext(), content)
+		return m, nil
+	case strings.HasPrefix(cmd, deleteCommandPrefix):
+		if !m.isCodeContextActive() {
+			m.addUserMessage(cmd)
+			return m, m.bridge.SendDataCmd(cmd)
 		}
-		m.refreshViewport()
+		scriptName, ok := parseScriptNameArgument(cmd, deleteCommandPrefix)
+		if !ok {
+			m.addSystemMessage("Missing script name. Usage: /delete \"script-name\".")
+			return m, nil
+		}
+		m.addUserMessage(cmd)
+		language := m.scriptLanguageFromContext()
+		if _, err := readScript(scriptName, language); err != nil {
+			ext := languageExtension(language)
+			m.addErrorMessage(fmt.Sprintf("[SCRIPT_NOT_FOUND] Script not found: %s.%s", scriptName, ext))
+			return m, nil
+		}
+		m.pendingDeleteScriptName = scriptName
+		m.pendingDeleteLanguage = language
+		m.deleteConfirmVisible = true
+		m.deleteConfirmCursor = DeleteConfirmCancel
+		m.recalculateLayout()
 		return m, nil
 	default:
 		m.addUserMessage(cmd)
@@ -2462,11 +2603,18 @@ func (m AppModel) handleHistoryDown() (tea.Model, tea.Cmd) {
  *     script load for editing, and temporary preview fetch.
  *   - Added explicit save-and-run confirmation prompt after Alt+Enter in
  *     editor mode before dispatching engine commands.
- *   - Added temporary code preview panel in REPL for `/show`, closable with
- *     ESC, with persistent history marker block on close.
- *   - Updated script execution dispatch to perform editor workflow commands
- *     through existing bridge transport: open editor context, push lines,
- *     save, and run named script.
+ *   - `/show` now appends a static numbered code block to the chat stream
+ *     (RoleCodeView message) instead of a floating overlay panel.
+ *   - `/delete` intercept: shows inline confirmation menu (Yes/Cancel) before
+ *     permanent deletion; skips menu and returns error if script does not exist.
+ *   - `restart` bare command intercepted before bridge dispatch in all
+ *     connection states (connected, disconnected, reconnecting).
+ *   - parseScriptNameArgument fixed to capture the full remainder after the
+ *     command keyword as the script name (multi-word names now work correctly).
+ *   - DeleteConfirmOption enum and deleteConfirmVisible/pendingDeleteScriptName/
+ *     pendingDeleteLanguage fields added to AppModel.
+ *   - Non-fatal startup warnings (e.g. RUNTIME_OUTDATED) are now displayed as
+ *     system messages in the chat stream after startup completes.
  *
  * Why:
  *   - Aligns UI workflow with requested command semantics across all code
@@ -2477,4 +2625,5 @@ func (m AppModel) handleHistoryDown() (tea.Model, tea.Cmd) {
  * Impact on other components:
  *   - ui/internal/ui/scripteditor.go is used for named editor sessions.
  *   - ui/internal/ui/message.go and messages.go render new history block types.
+ *   - ui/cmd/zeri-tui/persistence.go provides deleteScript.
  */

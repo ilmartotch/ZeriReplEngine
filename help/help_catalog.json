@@ -33,8 +33,7 @@
       { "command": "/clear", "synopsis": "Clear chat history" },
       { "command": "/exit", "synopsis": "Exit the REPL" },
       { "command": "/set", "synopsis": "Store a variable in the current scope" },
-      { "command": "/get", "synopsis": "Read a variable from the current scope" },
-      { "command": "/lua", "synopsis": "Execute inline Lua code" }
+      { "command": "/get", "synopsis": "Read a variable from the current scope" }
     ],
     "code": [],
     "math": [
