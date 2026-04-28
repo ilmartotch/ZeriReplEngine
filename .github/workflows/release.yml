@@ -21,6 +21,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.24'
+          cache-dependency-path: ui/go.sum
 
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
@@ -50,11 +51,15 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.24'
+          cache-dependency-path: ui/go.sum
 
       - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential cmake ninja-build curl zip unzip tar pkg-config
+
+      - name: Make build script executable
+        run: chmod +x build.sh
 
       - name: Build Linux
         run: ./build.sh Release
@@ -80,10 +85,14 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.24'
+          cache-dependency-path: ui/go.sum
 
       - name: Install system dependencies
         run: |
           brew install cmake ninja
+
+      - name: Make build script executable
+        run: chmod +x build.sh
 
       - name: Build macOS (Apple Silicon)
         env:
