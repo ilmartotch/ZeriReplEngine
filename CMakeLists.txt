@@ -20,10 +20,6 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-if(APPLE)
-    add_compile_options(-std=c++23)
-endif()
-
 # NOMINMAX prevents Windows.h from defining min/max macros that conflict with <algorithm>.
 # _WIN32_WINNT=0x0A00 targets Windows 10, enabling AF_UNIX socket support required by
 # asio::local::stream_protocol for the Yuumi IPC bridge.
