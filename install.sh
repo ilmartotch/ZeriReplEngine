@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-REPO="ilmartotch/ReplZeriEmgine"
+REPO="ilmartotch/ZeriReplEngine"
 INSTALL_DIR="$HOME/.local/bin"
 mkdir -p "$INSTALL_DIR"
 
