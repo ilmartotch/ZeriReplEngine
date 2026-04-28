@@ -43,12 +43,18 @@ if (-not (Test-Path $vsWhere)) {
 }
 $vsPath = & $vsWhere -latest -property installationPath
 $devShellDll = Join-Path $vsPath "Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
-if (-not (Test-Path $devShellDll)) {
-    throw "Microsoft.VisualStudio.DevShell.dll non trovato in: $devShellDll"
+
+# Se cl.exe è già nel PATH (es. ilammy/msvc-dev-cmd in CI), salta VsDevShell.
+if (Get-Command "cl.exe" -ErrorAction SilentlyContinue) {
+    Write-Host "VS environment già attivo (cl.exe trovato in PATH), salto VsDevShell."
+} else {
+    if (-not (Test-Path $devShellDll)) {
+        throw "Microsoft.VisualStudio.DevShell.dll non trovato in: $devShellDll"
+    }
+    Import-Module $devShellDll -ErrorAction Stop
+    Enter-VsDevShell -VsInstallPath $vsPath -SkipAutomaticLocation -Arch x64 | Out-Null
+    Write-Host "VS environment attivo: $vsPath"
 }
-Import-Module $devShellDll -ErrorAction Stop
-Enter-VsDevShell -VsInstallPath $vsPath -SkipAutomaticLocation -Arch x64 | Out-Null
-Write-Host "VS environment attivo: $vsPath"
 # ---
 
 $toolchainPath = Resolve-VcpkgToolchain $Root $vsPath
