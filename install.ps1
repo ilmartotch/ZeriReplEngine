@@ -1,5 +1,5 @@
 $ErrorActionPreference = "Stop"
-$Repo = "ilmartotch/ReplZeriEmgine"
+$Repo = "ilmartotch/ZeriReplEngine"
 $InstallDir = "$env:LOCALAPPDATA\Zeri"
 
 Write-Host "Installazione Zeri..."

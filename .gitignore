@@ -1,7 +1,13 @@
-out
-build
-build-release
-dist
+out/
+build/
+build-release/
+dist/
 .vs
 vcpkg_installed
 docs
+vcpkg/buildtrees/
+vcpkg/packages/
+vcpkg/downloads/
+vcpkg/installed/
+.zeri/
+ui/vendor/

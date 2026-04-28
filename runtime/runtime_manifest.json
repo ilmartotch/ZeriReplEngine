@@ -2,67 +2,52 @@
   "version": 1,
   "runtimes": [
     {
-      "name": "bun",
-      "check": "JavaScript Runtime",
-      "required": true,
-      "candidates": ["bun", "bun.exe"],
+      "name": "Bun",
+      "check": "JavaScript/TypeScript Runtime",
+      "required": false,
+      "candidates": ["bun"],
       "versionArgs": ["--version"],
       "minVersion": "1.0.0",
-      "installHint": "Install or update Bun from https://bun.sh/docs/installation and ensure it is available in PATH.",
+      "installHint": "Install from https://bun.sh or run: curl -fsSL https://bun.sh/install | bash",
       "installers": {
         "windows": [
           { "manager": "winget", "package": "Oven-sh.Bun" },
-          { "manager": "choco", "package": "bun" },
           { "manager": "scoop", "package": "bun" }
         ],
         "darwin": [
-          { "manager": "brew", "package": "bun" }
+          { "manager": "brew", "package": "oven-sh/bun/bun" }
         ],
-        "linux": [
-          { "manager": "apt-get", "package": "bun" },
-          { "manager": "dnf", "package": "bun" },
-          { "manager": "yum", "package": "bun" },
-          { "manager": "pacman", "package": "bun" },
-          { "manager": "zypper", "package": "bun" },
-          { "manager": "apk", "package": "bun" }
-        ]
+        "linux": []
       }
     },
     {
-      "name": "python",
+      "name": "Python",
       "check": "Python Runtime",
-      "required": true,
-      "candidates": ["python3", "python", "python3.exe", "python.exe"],
+      "required": false,
+      "candidates": ["python3", "python"],
       "versionArgs": ["--version"],
-      "minVersion": "3.10.0",
-      "installHint": "Install or update Python 3 and ensure it is available in PATH.",
+      "minVersion": "3.8.0",
+      "installHint": "Install from https://python.org",
       "installers": {
         "windows": [
-          { "manager": "winget", "package": "Python.Python.3.12" },
-          { "manager": "choco", "package": "python" },
-          { "manager": "scoop", "package": "python" }
+          { "manager": "winget", "package": "Python.Python.3.12" }
         ],
         "darwin": [
-          { "manager": "brew", "package": "python" }
+          { "manager": "brew", "package": "python3" }
         ],
         "linux": [
-          { "manager": "apt-get", "package": "python3" },
-          { "manager": "dnf", "package": "python3" },
-          { "manager": "yum", "package": "python3" },
-          { "manager": "pacman", "package": "python" },
-          { "manager": "zypper", "package": "python3" },
-          { "manager": "apk", "package": "python3" }
+          { "manager": "apt-get", "package": "python3" }
         ]
       }
     },
     {
-      "name": "luajit",
-      "check": "Lua Runtime",
-      "required": true,
-      "candidates": ["luajit", "luajit.exe"],
+      "name": "LuaJIT",
+      "check": "LuaJIT Runtime",
+      "required": false,
+      "candidates": ["luajit"],
       "versionArgs": ["-v"],
       "minVersion": "2.1.0",
-      "installHint": "Install or update LuaJIT and ensure it is available in PATH.",
+      "installHint": "Install LuaJIT from https://luajit.org or via system package manager",
       "installers": {
         "windows": [
           { "manager": "choco", "package": "luajit" },
@@ -72,39 +57,27 @@
           { "manager": "brew", "package": "luajit" }
         ],
         "linux": [
-          { "manager": "apt-get", "package": "luajit" },
-          { "manager": "dnf", "package": "luajit" },
-          { "manager": "yum", "package": "luajit" },
-          { "manager": "pacman", "package": "luajit" },
-          { "manager": "zypper", "package": "luajit" },
-          { "manager": "apk", "package": "luajit" }
+          { "manager": "apt-get", "package": "luajit" }
         ]
       }
     },
     {
-      "name": "ruby",
+      "name": "Ruby",
       "check": "Ruby Runtime",
-      "required": true,
-      "candidates": ["ruby", "ruby.exe"],
+      "required": false,
+      "candidates": ["ruby"],
       "versionArgs": ["--version"],
       "minVersion": "3.3.0",
-      "installHint": "Install or update Ruby 3.3+ and ensure it is available in PATH.",
+      "installHint": "Install Ruby 3.3+ from https://ruby-lang.org",
       "installers": {
         "windows": [
-          { "manager": "winget", "package": "RubyInstallerTeam.Ruby" },
-          { "manager": "choco", "package": "ruby" },
-          { "manager": "scoop", "package": "ruby" }
+          { "manager": "winget", "package": "RubyInstallerTeam.RubyWithDevKit.3.3" }
         ],
         "darwin": [
           { "manager": "brew", "package": "ruby" }
         ],
         "linux": [
-          { "manager": "apt-get", "package": "ruby-full" },
-          { "manager": "dnf", "package": "ruby" },
-          { "manager": "yum", "package": "ruby" },
-          { "manager": "pacman", "package": "ruby" },
-          { "manager": "zypper", "package": "ruby" },
-          { "manager": "apk", "package": "ruby" }
+          { "manager": "apt-get", "package": "ruby" }
         ]
       }
     }
