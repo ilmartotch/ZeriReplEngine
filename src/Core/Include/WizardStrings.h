@@ -26,7 +26,7 @@ namespace Zeri::Ui::Config {
 }
 
 /*
-Strings.h — Centralised constexpr string constants for the REPL UI.
+WizardStrings.h — Centralised constexpr string constants for the REPL UI.
 
 Sections:
   General: DefaultPrompt, Welcome, Goodbye.

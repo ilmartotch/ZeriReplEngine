@@ -1,6 +1,6 @@
 #include "../Include/SetupContext.h"
 #include "../../Core/Include/RuntimeState.h"
-#include "../../Core/Include/Strings.h"
+#include "../../Core/Include/WizardStrings.h"
 #include <vector>
 #include <string>
 
