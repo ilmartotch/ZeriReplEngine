@@ -23,6 +23,15 @@
 
 namespace Zeri::Engines::Defaults {
 
+    void ProcessBridge::JoinIoThreads() {
+        if (m_outputThread.joinable()) {
+            m_outputThread.join();
+        }
+        if (m_errorThread.joinable()) {
+            m_errorThread.join();
+        }
+    }
+
     struct ProcessBridge::Impl {
 #ifdef _WIN32
         Zeri::Link::ScopedHandle childProcess;
@@ -234,8 +243,8 @@ namespace Zeri::Engines::Defaults {
         m_lastExitCode = -1;
         m_activeReadLoops = 2;
         m_running = true;
-        m_outputThread = std::jthread(&ProcessBridge::ReadOutputLoop, this, std::move(onOutput));
-        m_errorThread = std::jthread(&ProcessBridge::ReadErrorLoop, this, std::move(onError));
+        m_outputThread = std::thread(&ProcessBridge::ReadOutputLoop, this, std::move(onOutput));
+        m_errorThread = std::thread(&ProcessBridge::ReadErrorLoop, this, std::move(onError));
         return "Process started.";
     }
 
@@ -291,6 +300,8 @@ namespace Zeri::Engines::Defaults {
             m_lastExitCode = 0;
             m_impl->childProcess.Reset();
         }
+
+        JoinIoThreads();
     }
 
 #else
@@ -380,8 +391,8 @@ namespace Zeri::Engines::Defaults {
         m_lastExitCode = -1;
         m_activeReadLoops = 2;
         m_running = true;
-        m_outputThread = std::jthread(&ProcessBridge::ReadOutputLoop, this, std::move(onOutput));
-        m_errorThread = std::jthread(&ProcessBridge::ReadErrorLoop, this, std::move(onError));
+        m_outputThread = std::thread(&ProcessBridge::ReadOutputLoop, this, std::move(onOutput));
+        m_errorThread = std::thread(&ProcessBridge::ReadErrorLoop, this, std::move(onError));
         return "Process started.";
     }
 
@@ -459,6 +470,8 @@ namespace Zeri::Engines::Defaults {
             m_lastExitCode = 0;
             m_impl->childPid = -1;
         }
+
+        JoinIoThreads();
     }
 #endif
 
@@ -478,6 +491,7 @@ namespace Zeri::Engines::Defaults {
 
         m_running = false;
         m_impl->childProcess.Reset();
+        JoinIoThreads();
         return m_lastExitCode.load();
 #else
         if (m_impl->childPid <= 0) {
@@ -502,6 +516,7 @@ namespace Zeri::Engines::Defaults {
 
         m_running = false;
         m_impl->childPid = -1;
+        JoinIoThreads();
         return m_lastExitCode.load();
 #endif
     }

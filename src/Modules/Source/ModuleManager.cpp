@@ -14,17 +14,22 @@ namespace Zeri::Modules {
     }
 
     ModuleManager::~ModuleManager() {
+        m_stopRequested = true;
         if (m_scanThread.joinable()) {
-            m_scanThread.request_stop();
+            m_scanThread.join();
         }
     }
 
     void ModuleManager::StartBackgroundScan() {
         if (m_isScanning) return;
+        if (m_scanThread.joinable()) {
+            m_scanThread.join();
+        }
+        m_stopRequested = false;
         m_isScanning = true;
 
-        m_scanThread = std::jthread([this](std::stop_token stoken) {
-            ScanTask(stoken);
+        m_scanThread = std::thread([this] {
+            ScanTask();
         });
     }
 
@@ -42,10 +47,10 @@ namespace Zeri::Modules {
         return result;
     }
 
-    void ModuleManager::ScanTask(std::stop_token stoken) {
+    void ModuleManager::ScanTask() {
         try {
             for (const auto& entry : fs::directory_iterator(m_modulesRoot)) {
-                if (stoken.stop_requested()) {
+                if (m_stopRequested.load()) {
                     break;
                 }
 

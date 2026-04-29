@@ -6,9 +6,7 @@ namespace Zeri::Link {
         : m_host(std::move(host)) {}
 
     SidecarProcessBridge::~SidecarProcessBridge() {
-        if (m_active.load()) {
-            Shutdown();
-        }
+        Shutdown();
     }
 
     bool SidecarProcessBridge::Launch(
@@ -21,13 +19,15 @@ namespace Zeri::Link {
 
         m_ready.store(false);
         m_decoder.Reset();
+        m_readerStop.store(false);
+        m_watchdogStop.store(false);
 
-        m_readerThread = std::jthread([this](std::stop_token token) {
-            ReaderLoop(token);
+        m_readerThread = std::thread([this] {
+            ReaderLoop();
         });
 
-        m_watchdogThread = std::jthread([this](std::stop_token token) {
-            WatchdogLoop(token);
+        m_watchdogThread = std::thread([this] {
+            WatchdogLoop();
         });
 
         std::unique_lock lock(m_readyMutex);
@@ -78,13 +78,10 @@ namespace Zeri::Link {
     void SidecarProcessBridge::Shutdown() {
         bool expected = true;
         if (!m_active.compare_exchange_strong(expected, false)) {
-            if (m_readerThread.joinable()) {
-                m_readerThread.request_stop();
-            }
-            if (m_watchdogThread.joinable()) {
-                m_watchdogThread.request_stop();
-                m_watchdogCv.notify_one();
-            }
+            m_readerStop.store(true);
+            m_watchdogStop.store(true);
+            m_awaitingResult.store(false);
+            m_watchdogCv.notify_one();
             m_host->Stop();
             if (m_readerThread.joinable()) m_readerThread.join();
             if (m_watchdogThread.joinable()) m_watchdogThread.join();
@@ -94,15 +91,9 @@ namespace Zeri::Link {
         SendFrame({ MsgType::SYS_EVENT, R"({"status":"TERMINATE"})" });
 
         m_awaitingResult.store(false);
-
-        if (m_watchdogThread.joinable()) {
-            m_watchdogThread.request_stop();
-            m_watchdogCv.notify_one();
-        }
-
-        if (m_readerThread.joinable()) {
-            m_readerThread.request_stop();
-        }
+        m_readerStop.store(true);
+        m_watchdogStop.store(true);
+        m_watchdogCv.notify_one();
 
         m_host->Stop();
 
@@ -126,10 +117,10 @@ namespace Zeri::Link {
         m_watchdogTimeout = timeout;
     }
 
-    void SidecarProcessBridge::ReaderLoop(std::stop_token token) {
+    void SidecarProcessBridge::ReaderLoop() {
         std::array<std::byte, 4096> buffer{};
 
-        while (!token.stop_requested()) {
+        while (!m_readerStop.load()) {
             size_t bytesRead = 0;
             if (!m_host->ReceiveData(buffer, bytesRead)) break;
 
@@ -141,21 +132,21 @@ namespace Zeri::Link {
         }
     }
 
-    void SidecarProcessBridge::WatchdogLoop(std::stop_token token) {
-        while (!token.stop_requested()) {
+    void SidecarProcessBridge::WatchdogLoop() {
+        while (!m_watchdogStop.load()) {
             std::unique_lock lock(m_watchdogMutex);
 
             m_watchdogCv.wait(lock, [&] {
-                return m_awaitingResult.load() || token.stop_requested();
+                return m_awaitingResult.load() || m_watchdogStop.load();
             });
 
-            if (token.stop_requested()) break;
+            if (m_watchdogStop.load()) break;
 
             bool resolved = m_watchdogCv.wait_for(lock, m_watchdogTimeout, [&] {
-                return !m_awaitingResult.load() || token.stop_requested();
+                return !m_awaitingResult.load() || m_watchdogStop.load();
             });
 
-            if (token.stop_requested()) break;
+            if (m_watchdogStop.load()) break;
 
             if (!resolved) {
                 m_awaitingResult.store(false);
