@@ -1,7 +1,7 @@
 #include "../Include/ExpressionExecutor.h"
 #include <any>
 #include <cctype>
-#include <charconv>
+#include <cstdlib>
 #include <iomanip>
 #include <memory>
 #include <mutex>
@@ -115,11 +115,13 @@ namespace {
         }
         if (value.type() == typeid(std::string)) {
             const auto& text = std::any_cast<const std::string&>(value);
-            double parsed = 0.0;
-            const auto* begin = text.data();
-            const auto* end = text.data() + text.size();
-            auto [ptr, ec] = std::from_chars(begin, end, parsed);
-            if (ec == std::errc() && ptr == end) {
+            if (text.empty()) {
+                return std::nullopt;
+            }
+
+            char* end = nullptr;
+            const double parsed = std::strtod(text.c_str(), &end);
+            if (end != nullptr && end == text.c_str() + text.size()) {
                 return parsed;
             }
         }
