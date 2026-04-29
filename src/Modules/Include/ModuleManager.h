@@ -7,7 +7,6 @@
 #include <thread>
 #include <atomic>
 #include <filesystem>
-#include <stop_token>
 
 namespace Zeri::Modules {
 
@@ -22,14 +21,15 @@ namespace Zeri::Modules {
         [[nodiscard]] bool IsScanning() const;
 
     private:
-        void ScanTask(std::stop_token stoken);
+        void ScanTask();
         ModuleManifest ParseManifest(const std::filesystem::path& dirPath);
 
         std::map<std::string, ModuleManifest> m_modules;
         mutable std::mutex m_mutex;
 
-        std::jthread m_scanThread;
+        std::thread m_scanThread;
         std::atomic<bool> m_isScanning{ false };
+        std::atomic<bool> m_stopRequested{ false };
         const std::string m_modulesRoot = "modules";
     };
 

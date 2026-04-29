@@ -42,9 +42,11 @@ namespace Zeri::Engines::Defaults {
         std::atomic<bool> m_running{ false };
         std::atomic<int> m_lastExitCode{ -1 };
         std::atomic<int> m_activeReadLoops{ 0 };
-        std::jthread m_outputThread;
-        std::jthread m_errorThread;
+        std::thread m_outputThread;
+        std::thread m_errorThread;
         std::unique_ptr<Impl> m_impl;
+
+        void JoinIoThreads();
     };
 
 }

@@ -39,8 +39,8 @@ namespace Zeri::Link {
         void SetWatchdogTimeout(std::chrono::seconds timeout);
 
     private:
-        void ReaderLoop(std::stop_token token);
-        void WatchdogLoop(std::stop_token token);
+        void ReaderLoop();
+        void WatchdogLoop();
         void DispatchFrame(const ZeriFrame& frame);
         bool SendFrame(const ZeriFrame& frame);
 
@@ -48,8 +48,10 @@ namespace Zeri::Link {
         FrameDecoder m_decoder;
         std::atomic<bool> m_active{ false };
 
-        std::jthread m_readerThread;
-        std::jthread m_watchdogThread;
+        std::thread m_readerThread;
+        std::thread m_watchdogThread;
+        std::atomic<bool> m_readerStop{ false };
+        std::atomic<bool> m_watchdogStop{ false };
 
         std::mutex m_writeMutex;
 
