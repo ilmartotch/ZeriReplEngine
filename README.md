@@ -55,7 +55,7 @@ $ zeri
 
 | Tool | Version | Notes |
 |------|---------|-------|
-| Go | 1.24+ | [go.dev/dl](https://go.dev/dl/) |
+| Go | 1.25+ | [go.dev/dl](https://go.dev/dl/) |
 | CMake | 3.28+ | [cmake.org](https://cmake.org/download/) |
 | MSVC / GCC / Clang | C++23 | VS 2022 / GCC 14+ / Clang 17+ |
 | vcpkg | baseline-pinned | [vcpkg.io](https://vcpkg.io) |

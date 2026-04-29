@@ -32,9 +32,19 @@ namespace Zeri::Link {
         size_t len = data.size();
 
         if (!m_pending.empty()) {
-            m_pending.insert(m_pending.end(), data.begin(), data.end());
+            if (!data.empty()) {
+                const size_t pendingSize = m_pending.size();
+                m_pending.resize(pendingSize + data.size());
+                std::memcpy(
+                    m_pending.data() + pendingSize,
+                    data.data(),
+                    data.size()
+                );
+            }
             ptr = m_pending.data();
             len = m_pending.size();
+        } else if (data.empty()) {
+            return std::nullopt;
         }
 
         size_t pos = 0;
@@ -118,10 +128,15 @@ namespace Zeri::Link {
     }
 
     void FrameDecoder::SavePending(const std::byte* src, size_t len, size_t pos) {
-        m_pending.clear();
-        if (pos < len) {
-            m_pending.assign(src + pos, src + len);
+        if (pos >= len) {
+            m_pending.clear();
+            return;
         }
+
+        std::vector<std::byte> pending;
+        pending.reserve(len - pos);
+        pending.insert(pending.end(), src + pos, src + len);
+        m_pending = std::move(pending);
     }
 
 }

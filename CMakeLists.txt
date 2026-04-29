@@ -151,7 +151,9 @@ target_link_libraries(ZeriEngine PRIVATE
 if(MSVC)
     target_compile_options(ZeriEngine PRIVATE /W4 /WX /permissive- /bigobj /wd4702)
 else()
-    target_compile_options(ZeriEngine PRIVATE -Wall -Wextra -Werror -pedantic -Wno-ignored-attributes)
+    target_compile_options(ZeriEngine PRIVATE -Wall -Wextra -Werror -pedantic -Wno-ignored-attributes
+            -Wno-missing-field-initializers
+        )
 endif()
 
 # Link Psapi on Windows for GetProcessMemoryInfo (RAM monitor)
