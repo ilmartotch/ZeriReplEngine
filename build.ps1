@@ -123,6 +123,14 @@ $RuntimeSrc = Join-Path $RuntimeSrc "ZeriLink"
 $RuntimeSrc = Join-Path $RuntimeSrc "Runtime"
 Copy-Item (Join-Path $RuntimeSrc "*") -Destination (Join-Path $Dist "runtime") -Recurse
 
+$ManifestSrc = Join-Path $Root "runtime\runtime_manifest.json"
+if (Test-Path $ManifestSrc) {
+    Copy-Item $ManifestSrc -Destination (Join-Path $Dist "runtime")
+    Write-Host "Copiato runtime_manifest.json"
+} else {
+    Write-Warning "runtime\runtime_manifest.json non trovato in $Root"
+}
+
 Write-Host ""
 Write-Host "Build complete."
 Get-ChildItem $Dist -Recurse | ForEach-Object { Write-Host $_.FullName }
