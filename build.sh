@@ -82,6 +82,14 @@ if [ -d "$RUNTIME_SRC" ]; then
     cp -r "$RUNTIME_SRC/." "$DIST/runtime/"
 fi
 
+MANIFEST_SRC="$SCRIPT_DIR/runtime/runtime_manifest.json"
+if [ -f "$MANIFEST_SRC" ]; then
+    cp "$MANIFEST_SRC" "$DIST/runtime/"
+    echo "Copied runtime_manifest.json"
+else
+    echo "WARNING: runtime/runtime_manifest.json not found in project root."
+fi
+
 echo ""
 echo "Build completed."
 find "$DIST" -type f | sort
