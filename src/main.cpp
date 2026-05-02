@@ -52,44 +52,6 @@ namespace {
         return result;
     }
 
-    [[nodiscard]] std::vector<std::string> SplitPipeline(std::string_view input) {
-        std::vector<std::string> stages;
-        std::string current;
-        bool inQuotes = false;
-        bool escape = false;
-
-        for (char c : input) {
-            if (escape) {
-                current.push_back(c);
-                escape = false;
-                continue;
-            }
-
-            if (c == '\\') {
-                escape = true;
-                current.push_back(c);
-                continue;
-            }
-
-            if (c == '"') {
-                inQuotes = !inQuotes;
-                current.push_back(c);
-                continue;
-            }
-
-            if (c == '|' && !inQuotes) {
-                stages.emplace_back(std::string{ Trim(current) });
-                current.clear();
-                continue;
-            }
-
-            current.push_back(c);
-        }
-
-        stages.emplace_back(std::string{ Trim(current) });
-        return stages;
-    }
-
     [[nodiscard]] std::unique_ptr<Zeri::Engines::IContext> BuildContext(const std::string& name) {
         const std::string normalized = ToLower(name);
         if (normalized == "code") return std::make_unique<Zeri::Engines::Defaults::ScriptHubContext>();
@@ -584,20 +546,8 @@ int main(int argc, char* argv[]) {
             continue;
         }
 
-        auto stages = SplitPipeline(input);
-        if (std::ranges::any_of(stages, [](const std::string& s) { return Trim(s).empty(); })) {
-            terminal.WriteError("Invalid pipeline syntax: empty stage detected around '|'.");
-            continue;
-        }
-
         std::optional<std::string> pipedValue;
-        bool ok = true;
-        for (const auto& stage : stages) {
-            if (!ExecuteStage(stage, dispatcher, runtimeState, terminal, pipedValue, sinkOwner.get())) {
-                ok = false;
-                break;
-            }
-        }
+        bool ok = ExecuteStage(input, dispatcher, runtimeState, terminal, pipedValue, sinkOwner.get());
 
         if (!ok) {
             continue;

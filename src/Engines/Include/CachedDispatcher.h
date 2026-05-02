@@ -39,11 +39,11 @@ namespace Zeri::Engines::Defaults {
 }
 
 /*
-CachedDispatcher.h — LRU-cached dispatcher wrapping IParser + IDispatcher.
+ CachedDispatcher.h — FIFO-cached dispatcher wrapping IParser + IDispatcher.
 
 Responsabilità:
   - Dispatch(): Parses input via IParser, classifies via IDispatcher,
-    caches results in an LRU map bounded by maxEntries.
+    caches results in a FIFO cache bounded by maxEntries.
   - Clear(): Empties the cache entirely.
   - SetMaxEntries(): Adjusts capacity, evicting oldest entries if needed.
 

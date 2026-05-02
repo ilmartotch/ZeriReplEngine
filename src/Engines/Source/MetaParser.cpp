@@ -140,23 +140,11 @@ namespace Zeri::Engines::Defaults {
             return cmd;
         }
 
-        if (cmd.type == InputType::ContextSwitch) {
-            if (const auto pipePos = FindUnquotedPipePosition(inputView); pipePos.has_value()) {
-                const std::string_view contextToken = Trim(inputView.substr(1, *pipePos - 1));
-                const std::string_view pipePayload = Trim(inputView.substr(*pipePos + 1));
-
-                if (contextToken.empty()) {
-                    return std::unexpected(ParseError{ "Missing context name before pipe.", 1 });
-                }
-
-                if (pipePayload.empty()) {
-                    return std::unexpected(ParseError{ "Missing pipeline payload after '|'.", *pipePos + 1 });
-                }
-
-                cmd.commandName = ToLower(contextToken);
-                cmd.pipeInput = std::string(pipePayload);
-                return cmd;
-            }
+        if (const auto pipePos = FindUnquotedPipePosition(inputView); pipePos.has_value()) {
+            return std::unexpected(ParseError{
+                "Pipe operator '|' is not supported in this parser.",
+                *pipePos
+            });
         }
 
         std::array<std::byte, 4096> scratch{};
