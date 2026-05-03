@@ -3,6 +3,7 @@
 #include "Interface/IExecutor.h"
 #include "../../Core/Include/SystemGuard.h"
 #include "ProcessBridge.h"
+#include "../../../engine/src/bridge/ZeriWireSidecarBridge.h"
 
 #include <string>
 
@@ -11,6 +12,7 @@ namespace Zeri::Engines::Defaults {
     class JsExecutor final : public IExecutor {
     public:
         explicit JsExecutor(const Zeri::Core::ScriptRuntime& runtime, bool typescript = false);
+        ~JsExecutor() override;
 
         [[nodiscard]] ExecutionOutcome Execute(
             const Command& cmd,
@@ -24,6 +26,7 @@ namespace Zeri::Engines::Defaults {
 
     private:
         Zeri::Engines::Defaults::ProcessBridge m_bridge;
+        Zeri::Bridge::ZeriWireSidecarBridge m_sidecarBridge;
         std::string m_binary;
         bool m_typescript{ false };
     };
