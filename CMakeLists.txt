@@ -30,7 +30,6 @@ endif()
 
 find_package(Threads REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
-find_package(replxx CONFIG REQUIRED EXACT 0.0.4)
 find_package(Lua REQUIRED)
 find_path(EXPRTK_INCLUDE_DIRS "exprtk.hpp")
 if(NOT EXPRTK_INCLUDE_DIRS)
@@ -68,9 +67,7 @@ set(MODULE_SOURCES
 
 set(ENGINE_SOURCES
     src/Engines/Source/MetaParser.cpp
-    src/Engines/Source/MetaLanguageParser.cpp
     src/Engines/Source/BuiltinExecutor.cpp
-    src/Engines/Source/ContextCommandExecutor.cpp
     src/Engines/Source/ExpressionExecutor.cpp
     src/Engines/Source/LuaExecutor.cpp
     src/Engines/Source/LuaContext.cpp
@@ -102,6 +99,10 @@ set(ZERILINK_SOURCES
     src/ZeriLink/Source/ProcessBridge.cpp
 )
 
+set(BRIDGE_SOURCES
+    engine/src/bridge/ZeriWireSidecarBridge.cpp
+)
+
 if(WIN32)
     list(APPEND ZERILINK_SOURCES src/ZeriLink/Source/WindowsProcessHost.cpp)
 else()
@@ -109,7 +110,6 @@ else()
 endif()
 
 set(UI_SOURCES
-    src/Ui/Source/TerminalUi.cpp
     src/Ui/Source/BridgeTerminal.cpp
     src/Ui/Source/OutputSink.cpp
 )
@@ -125,6 +125,7 @@ add_executable(ZeriEngine
     ${ENGINE_SOURCES}
     ${EXTENSION_SOURCES}
     ${ZERILINK_SOURCES}
+    ${BRIDGE_SOURCES}
     ${UI_SOURCES}
 )
 
@@ -143,7 +144,6 @@ target_include_directories(ZeriEngine PRIVATE
 target_link_libraries(ZeriEngine PRIVATE 
     Threads::Threads
     nlohmann_json::nlohmann_json
-    replxx::replxx
     ${LUA_LIBRARIES}
     yuumi::yuumi
 )

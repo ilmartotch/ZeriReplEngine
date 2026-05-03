@@ -52,7 +52,7 @@ namespace Zeri::Engines::Defaults {
 }
 
 /*
-CachedDispatcher.cpp — Implementation of LRU-cached dispatcher.
+ CachedDispatcher.cpp — Implementation of FIFO-cached dispatcher.
 
 Dispatch():
   Checks the in-memory cache first (O(1) lookup). On cache miss, parses
