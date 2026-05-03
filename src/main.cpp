@@ -12,7 +12,6 @@
 #include "Engines/Include/RubyContext.h"
 #include "Engines/Include/SandboxContext.h"
 #include "Engines/Include/SetupContext.h"
-#include "Ui/Include/TerminalUi.h"
 #include "Ui/Include/BridgeTerminal.h"
 #include "Ui/Include/OutputSink.h"
 #include "Engines/Include/MetaParser.h"
@@ -50,44 +49,6 @@ namespace {
             result.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
         }
         return result;
-    }
-
-    [[nodiscard]] std::vector<std::string> SplitPipeline(std::string_view input) {
-        std::vector<std::string> stages;
-        std::string current;
-        bool inQuotes = false;
-        bool escape = false;
-
-        for (char c : input) {
-            if (escape) {
-                current.push_back(c);
-                escape = false;
-                continue;
-            }
-
-            if (c == '\\') {
-                escape = true;
-                current.push_back(c);
-                continue;
-            }
-
-            if (c == '"') {
-                inQuotes = !inQuotes;
-                current.push_back(c);
-                continue;
-            }
-
-            if (c == '|' && !inQuotes) {
-                stages.emplace_back(std::string{ Trim(current) });
-                current.clear();
-                continue;
-            }
-
-            current.push_back(c);
-        }
-
-        stages.emplace_back(std::string{ Trim(current) });
-        return stages;
     }
 
     [[nodiscard]] std::unique_ptr<Zeri::Engines::IContext> BuildContext(const std::string& name) {
@@ -479,77 +440,65 @@ namespace {
 
 int main(int argc, char* argv[]) {
     auto pipeArg = ParsePipeArg(argc, argv);
-    bool headless = pipeArg.has_value();
+    if (!pipeArg.has_value()) {
+        std::fprintf(stderr, "[ZERI_ENGINE] Missing required --yuumi-pipe <name> argument. Local C++ UI is disabled.\n");
+        std::fflush(stderr);
+        return 1;
+    }
 
     std::unique_ptr<Zeri::Ui::ITerminal> terminalOwner;
     std::unique_ptr<yuumi::Bridge> bridgeOwner;
     std::unique_ptr<Zeri::Ui::OutputSink> sinkOwner;
     Zeri::Ui::BridgeTerminal* bridgeTerminal = nullptr;
 
-    if (headless) {
-        bridgeOwner = std::make_unique<yuumi::Bridge>();
-        auto& bridge = *bridgeOwner;
+    bridgeOwner = std::make_unique<yuumi::Bridge>();
+    auto& bridge = *bridgeOwner;
 
-        sinkOwner = std::make_unique<Zeri::Ui::OutputSink>(bridge);
+    sinkOwner = std::make_unique<Zeri::Ui::OutputSink>(bridge);
 
-        auto bt = std::make_unique<Zeri::Ui::BridgeTerminal>(*sinkOwner);
-        bridgeTerminal = bt.get();
-        terminalOwner = std::move(bt);
+    auto bt = std::make_unique<Zeri::Ui::BridgeTerminal>(*sinkOwner);
+    bridgeTerminal = bt.get();
+    terminalOwner = std::move(bt);
 
-        bridge.on_message([bridgeTerminal](const nlohmann::json& msg, yuumi::Channel) {
-            std::string type = msg.value("type", "");
+    bridge.on_message([bridgeTerminal](const nlohmann::json& msg, yuumi::Channel) {
+        std::string type = msg.value("type", "");
 
-            if (type == "command") {
-                std::string payload = msg.value("payload", "");
-                bridgeTerminal->EnqueueCommand(payload);
-            } else if (type == "input_response") {
-                std::string payload = msg.value("payload", "");
-                bridgeTerminal->EnqueueInputResponse(payload);
-            }
-        });
-
-        bridge.on_error([bridgeTerminal](yuumi::Error) {
-            bridgeTerminal->RequestShutdown();
-        });
-
-        if (auto res = bridge.start(*pipeArg, 0); !res) {
-            std::fprintf(stderr, "[ZERI_ENGINE] bridge.start() failed: %s\n",
-                std::string(yuumi::to_string(res.error())).c_str());
-            std::fflush(stderr);
-            return 1;
+        if (type == "command") {
+            std::string payload = msg.value("payload", "");
+            bridgeTerminal->EnqueueCommand(payload);
+        } else if (type == "input_response") {
+            std::string payload = msg.value("payload", "");
+            bridgeTerminal->EnqueueInputResponse(payload);
         }
+    });
 
-        sinkOwner->SetConnected(true);
-        sinkOwner->Flush();
+    bridge.on_error([bridgeTerminal](yuumi::Error) {
+        bridgeTerminal->RequestShutdown();
+    });
+
+    if (auto res = bridge.start(*pipeArg, 0); !res) {
+        std::fprintf(stderr, "[ZERI_ENGINE] bridge.start() failed: %s\n",
+            std::string(yuumi::to_string(res.error())).c_str());
+        std::fflush(stderr);
+        return 1;
     }
+
+    sinkOwner->SetConnected(true);
+    sinkOwner->Flush();
 
     Zeri::Core::RuntimeState runtimeState;
     Zeri::Engines::Defaults::MetaParser parser;
     Zeri::Engines::Defaults::DefaultDispatcher baseDispatcher;
     Zeri::Engines::Defaults::CachedDispatcher dispatcher(parser, baseDispatcher);
 
-    if (headless) {
-        runtimeState.PushContext(std::make_unique<Zeri::Engines::Defaults::GlobalContext>());
+    runtimeState.PushContext(std::make_unique<Zeri::Engines::Defaults::GlobalContext>());
 
-        nlohmann::json readyMsg;
-        readyMsg["type"] = "ready";
-        sinkOwner->Send(readyMsg);
-
-    } else {
-        terminalOwner = std::make_unique<Zeri::Ui::TerminalUi>();
-    }
+    nlohmann::json readyMsg;
+    readyMsg["type"] = "ready";
+    sinkOwner->Send(readyMsg);
 
     Zeri::Ui::ITerminal& terminal = *terminalOwner;
-
-    if (!headless) {
-        auto health = Zeri::Core::SystemGuard::CheckEnvironment();
-        if (!health.IsReady()) {
-            Zeri::Core::SystemGuard::PrintGuide(health, terminal);
-        }
-
-        runtimeState.PushContext(std::make_unique<Zeri::Engines::Defaults::GlobalContext>());
-        runtimeState.GetCurrentContext()->OnEnter(terminal);
-    }
+    runtimeState.GetCurrentContext()->OnEnter(terminal);
 
     while (!runtimeState.IsExitRequested()) {
         auto* currentCtx = runtimeState.GetCurrentContext();
@@ -584,20 +533,8 @@ int main(int argc, char* argv[]) {
             continue;
         }
 
-        auto stages = SplitPipeline(input);
-        if (std::ranges::any_of(stages, [](const std::string& s) { return Trim(s).empty(); })) {
-            terminal.WriteError("Invalid pipeline syntax: empty stage detected around '|'.");
-            continue;
-        }
-
         std::optional<std::string> pipedValue;
-        bool ok = true;
-        for (const auto& stage : stages) {
-            if (!ExecuteStage(stage, dispatcher, runtimeState, terminal, pipedValue, sinkOwner.get())) {
-                ok = false;
-                break;
-            }
-        }
+        bool ok = ExecuteStage(input, dispatcher, runtimeState, terminal, pipedValue, sinkOwner.get());
 
         if (!ok) {
             continue;
@@ -609,70 +546,32 @@ int main(int argc, char* argv[]) {
 }
 
 /*
-main.cpp — ZeriEngine entry point with bridge-first headless architecture.
+main.cpp — ZeriEngine entry point in bridge-only mode.
 
-Interactive mode (no arguments):
-  TerminalUi provides console I/O via replxx (history, highlighting,
-  completions). This is the standard standalone REPL experience.
+Execution model:
+  - --yuumi-pipe <name> is mandatory.
+  - The process initializes yuumi::Bridge, OutputSink, and BridgeTerminal.
+  - RuntimeState and the REPL dispatch pipeline are started only after
+    bridge.start() succeeds.
 
-Headless mode (--yuumi-pipe <name>):
-  The IPC bridge is established BEFORE any REPL state is initialized.
-  Initialization order in headless mode:
-    1. Parse --yuumi-pipe argument
-    2. Create yuumi::Bridge and OutputSink (transport abstraction)
-    3. Create BridgeTerminal (ITerminal over the sink)
-    4. Register on_message / on_error handlers
-    5. bridge.start() — blocks until handshake completes (Handshake Protocol)
-    6. SetConnected(true) + Flush() — drain any buffered boot messages
-    7. Create RuntimeState, parser, dispatcher (REPL initialization)
-    8. Push GlobalContext, send "ready" through the sink
-    9. Enter shared REPL loop
+Transport model:
+  - OutputSink is the single outbound transport abstraction.
+  - Messages produced before connection are buffered and flushed when
+    SetConnected(true) is applied.
+  - Core code never sends directly through yuumi::Bridge.
 
-  Bridge-First guarantee: no REPL state exists until the transport layer
-  has a verified peer connection. This prevents output loss during boot.
+Bridge protocol (high-level):
+  - Input from Go UI:
+      {"type": "command", "payload": "<user input>"}
+      {"type": "input_response", "payload": "<wizard reply>"}
+  - Output to Go UI:
+      {"type": "ready"}
+      {"type": "output"|"error"|"info"|"success", "payload": "<text>"}
+      {"type": "context_changed", "context": "<name>", "prompt": "<prompt>"}
+      {"type": "req_input", "prompt": "<text>"}
 
-  Transport Abstraction: OutputSink wraps bridge.send() with connection
-  awareness. Before the handshake, messages are buffered internally.
-  After SetConnected(true), messages flow directly to the bridge.
-  No component in the core calls bridge.send() directly.
-
-  The headless path produces zero writes to stdout or stderr. All output
-  is structured JSON routed through OutputSink -> yuumi::Bridge -> TUI.
-
-Headless message protocol:
-  TUI -> Engine:
-    {"type": "command", "payload": "<user input>"}
-    {"type": "input_response", "payload": "<wizard reply>"}
-  Engine -> TUI:
-    {"type": "ready"}
-    {"type": "output", "payload": "<text>"}
-    {"type": "error", "payload": "<text>"}
-    {"type": "info", "payload": "<text>"}
-    {"type": "success", "payload": "<text>"}
-    {"type": "context_changed", "context": "<name>", "prompt": "<prompt>"}
-    {"type": "req_input", "prompt": "<text>"}
-
-The main REPL loop is shared between both modes: ReadLine blocks on stdin
-(interactive) or on the command queue (headless), and the dispatch pipeline
-is identical in both cases.
-
-QA Changes:
-  - SwitchContext(), HandleGlobalCommand(), ExecuteStage() now accept an
-    optional OutputSink* parameter. When non-null (headless mode), a
-    context_changed JSON frame is sent after every successful context switch,
-    /back pop, and /reset.
-  - /status handler: returns current context name, local variable count,
-    local function count, and function registry revision.
-  - /reset handler: calls RuntimeState::ResetSession() to clear local/session
-    variables and functions, pops all contexts back to global, then sends
-    context_changed.
-  - mode_request handler removed from bridge.on_message (no longer needed
-    after removing /lang).
-  - ToLower() helper: normalizes commands and context names to lowercase,
-    satisfying the meta-language spec requirement for case-insensitive matching.
-  - HandleGlobalCommand(): routes /context, /back, /status, /reset, /exit,
-    /save from any sub-context before delegating to the active context.
-  - ExecuteSystemOp(): executes ! prefixed system commands via popen/_popen.
-  - HandleOutcome(): semantic formatting — confirmations route through
-    WriteSuccess, data through WriteLine, errors through WriteError.
+Behavior notes:
+  - Global commands (/context, /back, /status, /reset, /exit, /save) are
+    handled centrally before delegating to the active context.
+  - Context changes and reset events emit context_changed when a sink exists.
 */
