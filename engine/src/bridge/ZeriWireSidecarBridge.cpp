@@ -228,7 +228,10 @@ namespace Zeri::Bridge {
             result.exitCode = -1;
         }
 
-        if (result.stderrText == "Execution timed out" || result.exitCode == -1 && result.stderrText.find("timed out") != std::string::npos) {
+        if (
+            result.stderrText == "Execution timed out" ||
+            (result.exitCode == -1 && result.stderrText.find("timed out") != std::string::npos)
+        ) {
             return std::unexpected(Zeri::Engines::ExecutionError{
                 "SIDECAR_TIMEOUT",
                 "Execution exceeded watchdog timeout and was interrupted.",
