@@ -1,5 +1,6 @@
 #include "RuntimeState.h"
 #include "../../Engines/Include/Interface/IContext.h"
+#include "../../Modules/Include/ModuleManager.h"
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <iostream>
@@ -93,8 +94,9 @@ namespace {
 
 namespace Zeri::Core {
 
-    RuntimeState::RuntimeState() {
-        m_moduleManager.StartBackgroundScan();
+    RuntimeState::RuntimeState()
+        : m_moduleManager(std::make_unique<Zeri::Modules::ModuleManager>()) {
+        m_moduleManager->StartBackgroundScan();
 
         auto loadResult = LoadSession(kDefaultStatePath);
         if (!loadResult.has_value()) {
@@ -109,7 +111,7 @@ namespace Zeri::Core {
     }
 
     Zeri::Modules::ModuleManager& RuntimeState::GetModuleManager() {
-        return m_moduleManager;
+        return *m_moduleManager;
     }
 
     Zeri::Core::ContextManager& RuntimeState::GetContextManager() {
