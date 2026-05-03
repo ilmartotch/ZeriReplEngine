@@ -29,6 +29,26 @@
 #include <vector>
 #include <optional>
 
+namespace Zeri::Platform {
+#ifdef _WIN32
+    inline FILE* POpen(const char* cmd, const char* mode) {
+        return _popen(cmd, mode);
+    }
+
+    inline int PClose(FILE* pipe) {
+        return _pclose(pipe);
+    }
+#else
+    inline FILE* POpen(const char* cmd, const char* mode) {
+        return popen(cmd, mode);
+    }
+
+    inline int PClose(FILE* pipe) {
+        return pclose(pipe);
+    }
+#endif
+}
+
 namespace {
     [[nodiscard]] bool CanReachContext(std::string_view from, std::string_view target) {
         const auto reachable = Zeri::Core::HelpCatalog::Instance().ReachableFrom(from);
@@ -285,20 +305,12 @@ namespace {
             return false;
         }
 
-#ifdef _WIN32
         std::string fullCmd = shellCmd + " 2>&1";
-#else
-        std::string fullCmd = shellCmd + " 2>&1";
-#endif
 
         std::array<char, 256> buffer{};
         std::string output;
 
-#ifdef _WIN32
-        FILE* pipe = _popen(fullCmd.c_str(), "r");
-#else
-        FILE* pipe = popen(fullCmd.c_str(), "r");
-#endif
+        FILE* pipe = Zeri::Platform::POpen(fullCmd.c_str(), "r");
 
         if (!pipe) {
             terminal.WriteError("Failed to execute system command: " + shellCmd);
@@ -309,11 +321,7 @@ namespace {
             output += buffer.data();
         }
 
-#ifdef _WIN32
-        int exitCode = _pclose(pipe);
-#else
-        int exitCode = pclose(pipe);
-#endif
+        int exitCode = Zeri::Platform::PClose(pipe);
 
         if (!output.empty()) {
             if (output.back() == '\n') output.pop_back();
@@ -574,4 +582,6 @@ Behavior notes:
   - Global commands (/context, /back, /status, /reset, /exit, /save) are
     handled centrally before delegating to the active context.
   - Context changes and reset events emit context_changed when a sink exists.
+  - System command execution uses Zeri::Platform::POpen/PClose wrappers to keep
+    cross-platform process pipe handling localized.
 */
