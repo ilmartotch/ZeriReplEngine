@@ -17,6 +17,7 @@
 #include "Engines/Include/MetaParser.h"
 #include "Engines/Include/DefaultDispatcher.h"
 #include "Engines/Include/CachedDispatcher.h"
+#include "Engines/Include/GlobalCommandRegistry.h"
 
 #include <yuumi/bridge.hpp>
 
@@ -185,6 +186,10 @@ namespace {
         Zeri::Ui::ITerminal& terminal,
         Zeri::Ui::OutputSink* sink = nullptr
     ) {
+        if (!Zeri::Engines::IsGlobalCommand(cmd.commandName)) {
+            return false;
+        }
+
         if (cmd.commandName == "context") {
             const auto* current = runtimeState.GetCurrentContext();
             const std::string currentName = ToLower(current ? current->GetName() : "global");
@@ -518,11 +523,9 @@ int main(int argc, char* argv[]) {
         std::string input = *inputOpt;
         if (Trim(input).empty()) continue;
 
-        if (auto* editor = dynamic_cast<Zeri::Engines::ScriptEditorContext*>(runtimeState.GetCurrentContext())) {
-            Zeri::Engines::Command rawCmd;
-            rawCmd.rawInput = input;
-            rawCmd.type = Zeri::Engines::InputType::Expression;
-            auto outcome = editor->HandleCommand(rawCmd, runtimeState, terminal);
+        auto* activeContext = runtimeState.GetCurrentContext();
+        if (activeContext != nullptr && activeContext->WantsRawInput()) {
+            auto outcome = activeContext->HandleRawLine(input, runtimeState, terminal);
             HandleOutcome(outcome, terminal);
             continue;
         }

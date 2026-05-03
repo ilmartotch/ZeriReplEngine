@@ -109,6 +109,17 @@ namespace Zeri::Engines {
         return "";
     }
 
+    ExecutionOutcome ScriptEditorContext::HandleRawLine(
+        const std::string& line,
+        Zeri::Core::RuntimeState& state,
+        Zeri::Ui::ITerminal& terminal
+    ) {
+        Command rawCommand;
+        rawCommand.rawInput = line;
+        rawCommand.type = InputType::Expression;
+        return HandleCommand(rawCommand, state, terminal);
+    }
+
     std::string ScriptEditorContext::GetPrompt() const {
         return "zeri::edit::" + m_language + ">";
     }
@@ -131,4 +142,6 @@ parse sintattico contestuale, con comandi interni /run, /save, /cancel.
 /run crea un Command sintetico con rawInput joinato su newline e delega a IExecutor;
 /save persiste il buffer via ScriptRegistry usando chiave "{lang}::scripts::{name}";
 /cancel scarta lo stato locale. In tutti i percorsi terminali viene effettuato PopContext.
+HandleRawLine permette al chiamante di inviare input grezzo via interfaccia IContext
+senza dipendere da controlli RTTI nel loop principale.
 */
