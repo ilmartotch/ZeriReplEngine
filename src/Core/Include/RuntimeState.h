@@ -124,9 +124,7 @@ namespace Zeri::Core {
         std::string m_activeContext;
         mutable std::shared_mutex m_activeContextMutex;
 
-        std::vector<Zeri::Engines::ContextPtr> m_contextStack;
         Zeri::Core::ContextManager m_contextManager;
-        mutable std::mutex m_stackMutex;
 
         bool m_exitRequested{ false };
         mutable std::mutex m_lifecycleMutex;
