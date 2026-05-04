@@ -7,7 +7,16 @@ namespace fs = std::filesystem;
 
 namespace Zeri::Modules {
 
-    ModuleManager::ModuleManager() {
+    ModuleManager::ModuleManager()
+        : ModuleManager(std::filesystem::path{ ModuleManager::kModulesRoot }) {
+    }
+
+    ModuleManager::ModuleManager(std::filesystem::path modulesRoot)
+        : m_modulesRoot(std::move(modulesRoot)) {
+        if (m_modulesRoot.empty()) {
+            m_modulesRoot = std::filesystem::path{ ModuleManager::kModulesRoot };
+        }
+
         if (!fs::exists(m_modulesRoot)) {
             fs::create_directory(m_modulesRoot);
         }
@@ -130,7 +139,8 @@ namespace Zeri::Modules {
 }
 
 /*
-Uses std::filesystem to iterate over the 'modules' directory.
+Uses std::filesystem to iterate over m_modulesRoot configured at construction.
+Default construction resolves m_modulesRoot from ModuleManager::kModulesRoot.
 The ScanTask runs on a separate thread. It locks the m_mutex ONLY when writing to the map,
 minimizing contention with the main thread (which reads the map).
 Uses nlohmann::json for robust manifest parsing with proper error handling.

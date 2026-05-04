@@ -13,8 +13,15 @@
 #include <expected>
 #include <filesystem>
 #include "ContextManager.h"
-#include "../../Modules/Include/ModuleManager.h"
-#include "../../Engines/Include/Interface/IContext.h"
+
+namespace Zeri::Engines {
+    class IContext;
+    using ContextPtr = std::unique_ptr<IContext>;
+}
+
+namespace Zeri::Modules {
+    class ModuleManager;
+}
 
 namespace Zeri::Core {
 
@@ -117,14 +124,12 @@ namespace Zeri::Core {
         std::string m_activeContext;
         mutable std::shared_mutex m_activeContextMutex;
 
-        std::vector<Zeri::Engines::ContextPtr> m_contextStack;
         Zeri::Core::ContextManager m_contextManager;
-        mutable std::mutex m_stackMutex;
 
         bool m_exitRequested{ false };
         mutable std::mutex m_lifecycleMutex;
 
-        Zeri::Modules::ModuleManager m_moduleManager;
+        std::unique_ptr<Zeri::Modules::ModuleManager> m_moduleManager;
     };
 
 }
@@ -133,6 +138,12 @@ namespace Zeri::Core {
 RuntimeState manages the entire state of the REPL session.
 It holds variables and functions with different scopes (Local, Session, Global, Persisted),
 and manages the context stack and lifecycle.
+Engine context types are forward-declared in this header to avoid direct include coupling
+between Core and the concrete engine interface definition.
+ModuleManager is forward-declared to keep RuntimeState public declarations lightweight
+and avoid importing module subsystem headers in Core includes.
+RuntimeState owns ModuleManager through std::unique_ptr to preserve stable public APIs
+while allowing forward declaration of the module subsystem type.
 
 SaveSession:
 Serialize persisted variables to a JSON file on disk.

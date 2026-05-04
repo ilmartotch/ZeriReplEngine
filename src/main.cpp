@@ -17,6 +17,7 @@
 #include "Engines/Include/MetaParser.h"
 #include "Engines/Include/DefaultDispatcher.h"
 #include "Engines/Include/CachedDispatcher.h"
+#include "Engines/Include/GlobalCommandRegistry.h"
 
 #include <yuumi/bridge.hpp>
 
@@ -28,6 +29,26 @@
 #include <string_view>
 #include <vector>
 #include <optional>
+
+namespace Zeri::Platform {
+#ifdef _WIN32
+    inline FILE* POpen(const char* cmd, const char* mode) {
+        return _popen(cmd, mode);
+    }
+
+    inline int PClose(FILE* pipe) {
+        return _pclose(pipe);
+    }
+#else
+    inline FILE* POpen(const char* cmd, const char* mode) {
+        return popen(cmd, mode);
+    }
+
+    inline int PClose(FILE* pipe) {
+        return pclose(pipe);
+    }
+#endif
+}
 
 namespace {
     [[nodiscard]] bool CanReachContext(std::string_view from, std::string_view target) {
@@ -165,6 +186,10 @@ namespace {
         Zeri::Ui::ITerminal& terminal,
         Zeri::Ui::OutputSink* sink = nullptr
     ) {
+        if (!Zeri::Engines::IsGlobalCommand(cmd.commandName)) {
+            return false;
+        }
+
         if (cmd.commandName == "context") {
             const auto* current = runtimeState.GetCurrentContext();
             const std::string currentName = ToLower(current ? current->GetName() : "global");
@@ -285,20 +310,12 @@ namespace {
             return false;
         }
 
-#ifdef _WIN32
         std::string fullCmd = shellCmd + " 2>&1";
-#else
-        std::string fullCmd = shellCmd + " 2>&1";
-#endif
 
         std::array<char, 256> buffer{};
         std::string output;
 
-#ifdef _WIN32
-        FILE* pipe = _popen(fullCmd.c_str(), "r");
-#else
-        FILE* pipe = popen(fullCmd.c_str(), "r");
-#endif
+        FILE* pipe = Zeri::Platform::POpen(fullCmd.c_str(), "r");
 
         if (!pipe) {
             terminal.WriteError("Failed to execute system command: " + shellCmd);
@@ -309,11 +326,7 @@ namespace {
             output += buffer.data();
         }
 
-#ifdef _WIN32
-        int exitCode = _pclose(pipe);
-#else
-        int exitCode = pclose(pipe);
-#endif
+        int exitCode = Zeri::Platform::PClose(pipe);
 
         if (!output.empty()) {
             if (output.back() == '\n') output.pop_back();
@@ -510,11 +523,9 @@ int main(int argc, char* argv[]) {
         std::string input = *inputOpt;
         if (Trim(input).empty()) continue;
 
-        if (auto* editor = dynamic_cast<Zeri::Engines::ScriptEditorContext*>(runtimeState.GetCurrentContext())) {
-            Zeri::Engines::Command rawCmd;
-            rawCmd.rawInput = input;
-            rawCmd.type = Zeri::Engines::InputType::Expression;
-            auto outcome = editor->HandleCommand(rawCmd, runtimeState, terminal);
+        auto* activeContext = runtimeState.GetCurrentContext();
+        if (activeContext != nullptr && activeContext->WantsRawInput()) {
+            auto outcome = activeContext->HandleRawLine(input, runtimeState, terminal);
             HandleOutcome(outcome, terminal);
             continue;
         }
@@ -574,4 +585,6 @@ Behavior notes:
   - Global commands (/context, /back, /status, /reset, /exit, /save) are
     handled centrally before delegating to the active context.
   - Context changes and reset events emit context_changed when a sink exists.
+  - System command execution uses Zeri::Platform::POpen/PClose wrappers to keep
+    cross-platform process pipe handling localized.
 */

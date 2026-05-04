@@ -1,10 +1,9 @@
 #pragma once
 
 #include "Interface/IContext.h"
+#include "GlobalCommandRegistry.h"
 #include <map>
 #include <any>
-#include <vector>
-#include <algorithm>
 
 namespace Zeri::Engines {
 
@@ -14,8 +13,7 @@ namespace Zeri::Engines {
         void OnExit(Zeri::Ui::ITerminal& terminal) override { (void)terminal; }
 
         [[nodiscard]] bool IsGlobalCommand(const std::string& name) const override {
-            static const std::vector<std::string> globals = { "exit", "back", "save", "context", "status", "reset" };
-            return std::find(globals.begin(), globals.end(), name) != globals.end();
+            return Zeri::Engines::IsGlobalCommand(name);
         }
 
     protected:
@@ -42,10 +40,9 @@ BaseContext.h — Default base implementation for IContext.
 
 Responsabilità:
   - Provides default no-op OnEnter/OnExit.
-  - Implements IsGlobalCommand() with the canonical global command list
-    (exit, back, save, context, status, reset).
+  - Delegates IsGlobalCommand() to GlobalCommandRegistry.
   - Offers protected local variable storage (m_localVariables) with
     SetLocalVariable, GetLocalVariable, HasLocalVariable helpers.
 
-Dipendenze: IContext.
+Dipendenze: IContext, GlobalCommandRegistry.
 */

@@ -1,5 +1,6 @@
 #include "RuntimeState.h"
 #include "../../Engines/Include/Interface/IContext.h"
+#include "../../Modules/Include/ModuleManager.h"
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <iostream>
@@ -93,8 +94,9 @@ namespace {
 
 namespace Zeri::Core {
 
-    RuntimeState::RuntimeState() {
-        m_moduleManager.StartBackgroundScan();
+    RuntimeState::RuntimeState()
+        : m_moduleManager(std::make_unique<Zeri::Modules::ModuleManager>()) {
+        m_moduleManager->StartBackgroundScan();
 
         auto loadResult = LoadSession(kDefaultStatePath);
         if (!loadResult.has_value()) {
@@ -109,7 +111,7 @@ namespace Zeri::Core {
     }
 
     Zeri::Modules::ModuleManager& RuntimeState::GetModuleManager() {
-        return m_moduleManager;
+        return *m_moduleManager;
     }
 
     Zeri::Core::ContextManager& RuntimeState::GetContextManager() {
@@ -241,7 +243,7 @@ namespace Zeri::Core {
             return false;
         }
 
-        const auto value = it->second;
+        const auto &value = it->second;
         bool updated = false;
 
         switch (targetScope) {
@@ -431,7 +433,7 @@ namespace Zeri::Core {
             return false;
         }
 
-        auto function = it->second;
+        auto &function = it->second;
         bool updated = false;
 
         switch (targetScope) {
@@ -518,24 +520,16 @@ namespace Zeri::Core {
     }
 
     void RuntimeState::PushContext(Zeri::Engines::ContextPtr context) {
-        std::scoped_lock lock(m_stackMutex, m_varMutex, m_functionMutex);
-        const auto newContextName = context ? context->GetName() : "unknown";
-        const auto* current = m_contextStack.empty() ? nullptr : m_contextStack.back().get();
-
-        ExecutionContext meta{};
-        meta.name = newContextName;
-        meta.activatedBy = current ? current->GetName() : "system";
-
-        m_contextStack.push_back(std::move(context));
-        m_contextManager.Push(meta);
+        std::scoped_lock lock(m_varMutex, m_functionMutex);
+        m_contextManager.Push(std::move(context));
         m_localVariables.emplace_back();
         m_localFunctions.emplace_back();
     }
 
     void RuntimeState::PopContext() {
-        std::scoped_lock lock(m_stackMutex, m_varMutex, m_functionMutex);
-        if (m_contextStack.size() > 1) {
-            m_contextStack.pop_back();
+        std::scoped_lock lock(m_varMutex, m_functionMutex);
+        const auto beforeSize = m_contextManager.Size();
+        if (beforeSize > 1) {
             m_contextManager.Pop();
             if (m_localVariables.size() > 1) {
                 m_localVariables.pop_back();
@@ -547,14 +541,11 @@ namespace Zeri::Core {
     }
 
     Zeri::Engines::IContext* RuntimeState::GetCurrentContext() const {
-        std::lock_guard<std::mutex> lock(m_stackMutex);
-        if (m_contextStack.empty()) return nullptr;
-        return m_contextStack.back().get();
+        return m_contextManager.Current();
     }
 
     bool RuntimeState::HasContexts() const {
-        std::lock_guard<std::mutex> lock(m_stackMutex);
-        return !m_contextStack.empty();
+        return !m_contextManager.IsEmpty();
     }
 
     void RuntimeState::RequestExit() {
@@ -652,9 +643,8 @@ namespace Zeri::Core {
             ++m_functionRevision;
         }
         {
-            std::scoped_lock lock(m_stackMutex, m_varMutex, m_functionMutex);
-            while (m_contextStack.size() > 1) {
-                m_contextStack.pop_back();
+            std::scoped_lock lock(m_varMutex, m_functionMutex);
+            while (m_contextManager.Size() > 1) {
                 m_contextManager.Pop();
             }
             m_localVariables.clear();
@@ -671,6 +661,9 @@ RuntimeState Implementation
 Handles variable evaluation, context switching and execution state management.
 Additionally supports variable and policy merging on contexts, and handles the persistence 
 of the runtime state variables and functions in and across the sessions (SaveSession/LoadSession).
+Context stack ownership is centralized in ContextManager to avoid dual-stack drift.
+Context stack synchronization is internal to ContextManager; RuntimeState protects
+only local variable/function frame alignment around push/pop/reset transitions.
 
 ResetSession:
   Clears all local and session variables and functions. Pops the context

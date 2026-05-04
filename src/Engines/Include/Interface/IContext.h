@@ -26,6 +26,21 @@ namespace Zeri::Engines {
             Zeri::Ui::ITerminal& terminal
         ) = 0;
 
+        [[nodiscard]] virtual bool WantsRawInput() const {
+            return false;
+        }
+
+        [[nodiscard]] virtual ExecutionOutcome HandleRawLine(
+            const std::string& line,
+            Zeri::Core::RuntimeState& state,
+            Zeri::Ui::ITerminal& terminal
+        ) {
+            Command rawCommand;
+            rawCommand.rawInput = line;
+            rawCommand.type = InputType::Expression;
+            return HandleCommand(rawCommand, state, terminal);
+        }
+
         [[nodiscard]] virtual bool IsGlobalCommand(const std::string& name) const = 0;
     };
 
@@ -36,6 +51,7 @@ namespace Zeri::Engines {
 /*
 Each instance represents a specific logical engine (e.g., $math, $global).
 - HandleCommand: Process local commands.
+- WantsRawInput/HandleRawLine: Optional polymorphic path for raw editor-like input.
 - OnEnter/OnExit: Lifecycle hooks for wizards or welcome messages.
 - ITerminal is passed to allow interactive "Wizards" (y/n questions) within the execution.
 */

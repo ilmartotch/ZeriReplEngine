@@ -25,6 +25,14 @@ namespace Zeri::Engines {
             Zeri::Ui::ITerminal& terminal
         ) override;
 
+        [[nodiscard]] bool WantsRawInput() const override { return true; }
+
+        [[nodiscard]] ExecutionOutcome HandleRawLine(
+            const std::string& line,
+            Zeri::Core::RuntimeState& state,
+            Zeri::Ui::ITerminal& terminal
+        ) override;
+
         [[nodiscard]] std::string GetName() const override { return "script_editor"; }
         [[nodiscard]] std::string GetPrompt() const override;
         void OnEnter(Zeri::Ui::ITerminal& terminal) override;
@@ -45,4 +53,5 @@ Definisce un contesto editor modale language-agnostic che accumula input grezzo
 in memoria e delega l'esecuzione finale a un IExecutor fornito dal chiamante.
 Espone i comandi interni /run, /save e /cancel, mantenendo il contesto generico
 riutilizzabile per runtime differenti senza dipendenze dal parser specifico.
+Espone WantsRawInput/HandleRawLine per evitare downcast nel loop REPL.
 */

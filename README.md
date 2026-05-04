@@ -140,7 +140,6 @@ The TUI frontend is provided by **Yuumi**, an internal Go package (`ui/`) that h
 ### C++ (ZeriEngine)
 - [asio](https://think-async.com/Asio/) — async networking / IPC transport
 - [nlohmann/json](https://github.com/nlohmann/json) — JSON protocol
-- [replxx](https://github.com/AmokHuginnsson/replxx) — line editing (interactive mode)
 - [Lua 5.4](https://www.lua.org/) — scripting engine
 - [exprtk](https://github.com/ArashPartow/exprtk) — expression evaluation
 
@@ -182,7 +181,7 @@ Release strategy:
   - `zeri-macos-arm64.tar.gz`
 
 Windows distribution:
-- Keep `build.ps1` copying vcpkg runtime DLLs (`lua.dll`, `replxx.dll`)
+- Keep `build.ps1` copying vcpkg runtime DLLs
 - Keep `build.ps1` copying MSVC runtime DLLs from VS redist (if available)
 - Keep `preflight_windows.go` runtime checks as guard rail.
 
