@@ -14,6 +14,9 @@
 #else
     #include <cerrno>
     #include <csignal>
+    #ifdef __APPLE__
+        #include <sys/event.h>
+    #endif
     #include <unistd.h>
     #include <sys/wait.h>
     #ifdef __linux__
@@ -307,6 +310,62 @@ namespace Zeri::Engines::Defaults {
 #else
     namespace {
         using Zeri::Link::ScopedFd;
+
+#ifdef __APPLE__
+        [[nodiscard]] bool RegisterProcExitEvent(const int kqueueFd, const pid_t pid) {
+            struct kevent change{};
+            EV_SET(&change, pid, EVFILT_PROC, EV_ADD | EV_ONESHOT, NOTE_EXIT, 0, nullptr);
+            return kevent(kqueueFd, &change, 1, nullptr, 0, nullptr) == 0;
+        }
+
+        void LaunchMacParentDeathMonitor(const pid_t parentPid, const pid_t childPid) {
+            const pid_t intermediatePid = fork();
+            if (intermediatePid < 0) {
+                return;
+            }
+
+            if (intermediatePid == 0) {
+                const pid_t daemonPid = fork();
+                if (daemonPid < 0) {
+                    _exit(0);
+                }
+
+                if (daemonPid > 0) {
+                    _exit(0);
+                }
+
+                const int kqueueFd = kqueue();
+                if (kqueueFd < 0) {
+                    _exit(0);
+                }
+
+                if (!RegisterProcExitEvent(kqueueFd, parentPid) || !RegisterProcExitEvent(kqueueFd, childPid)) {
+                    _exit(0);
+                }
+
+                while (true) {
+                    struct kevent event{};
+                    const int eventCount = kevent(kqueueFd, nullptr, 0, &event, 1, nullptr);
+                    if (eventCount == 1) {
+                        if (static_cast<pid_t>(event.ident) == parentPid) {
+                            (void)kill(childPid, SIGTERM);
+                        }
+                        _exit(0);
+                    }
+
+                    if (eventCount < 0 && errno == EINTR) {
+                        continue;
+                    }
+
+                    _exit(0);
+                }
+            }
+
+            int status = 0;
+            while (waitpid(intermediatePid, &status, 0) == -1 && errno == EINTR) {
+            }
+        }
+#endif
     }
 
     ExecutionOutcome ProcessBridge::Run(
@@ -378,6 +437,10 @@ namespace Zeri::Engines::Defaults {
             execvp(pathStr.c_str(), argv.data());
             _exit(127);
         }
+
+#ifdef __APPLE__
+        LaunchMacParentDeathMonitor(getpid(), pid);
+#endif
 
         m_impl->childPid = static_cast<int>(pid);
         m_impl->stdoutRead.Reset(outRead.Release());
@@ -599,6 +662,10 @@ namespace Zeri::Engines::Defaults {
             execvp(pathStr.c_str(), argv.data());
             _exit(127);
         }
+
+#ifdef __APPLE__
+        LaunchMacParentDeathMonitor(getpid(), pid);
+#endif
 
         int status = 0;
         waitpid(pid, &status, 0);
