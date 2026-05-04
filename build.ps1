@@ -77,7 +77,7 @@ if (-not (Test-Path $EngineSource)) {
 }
 Copy-Item $EngineSource -Destination $Dist
 
-# Copy vcpkg runtime DLLs required by ZeriEngine (lua, replxx)
+# Copy vcpkg runtime DLLs required by ZeriEngine
 $VcpkgBin = Join-Path $BuildDir "vcpkg_installed"
 $VcpkgBin = Join-Path $VcpkgBin "x64-windows"
 $VcpkgBin = Join-Path $VcpkgBin "bin"
