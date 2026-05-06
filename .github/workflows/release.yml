@@ -6,21 +6,49 @@ on:
       - 'v*'
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  VCPKG_COMMIT: 7a9071743140154391b0e18b77d46cc66c5f3663
 
 jobs:
   build-windows:
     runs-on: windows-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache
+      VCPKG_FEATURE_FLAGS: manifests,binarycaching
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Restore vcpkg cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/.vcpkg-cache
+            ${{ github.workspace }}/vcpkg/downloads
+          key: ${{ runner.os }}-vcpkg-${{ hashFiles('vcpkg.json', 'CMakeLists.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-
 
       - name: Install vcpkg
         shell: pwsh
         run: |
-          git clone https://github.com/microsoft/vcpkg.git vcpkg
+          if (Test-Path .\vcpkg) { Remove-Item -Recurse -Force .\vcpkg }
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git vcpkg
+          git -C .\vcpkg fetch --depth 1 origin $env:VCPKG_COMMIT
+          git -C .\vcpkg checkout --detach $env:VCPKG_COMMIT
           .\vcpkg\bootstrap-vcpkg.bat -disableMetrics
           echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg" >> $env:GITHUB_ENV
 
@@ -52,18 +80,41 @@ jobs:
         with:
           name: zeri-windows-amd64
           path: zeri-windows-amd64.zip
+          if-no-files-found: error
+          retention-days: 14
 
   build-linux:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache
+      VCPKG_FEATURE_FLAGS: manifests,binarycaching
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Restore vcpkg cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/.vcpkg-cache
+            ${{ github.workspace }}/vcpkg/downloads
+          key: ${{ runner.os }}-vcpkg-${{ hashFiles('vcpkg.json', 'CMakeLists.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-
 
       - name: Install vcpkg
         run: |
-          git clone https://github.com/microsoft/vcpkg.git vcpkg
+          rm -rf vcpkg
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git vcpkg
+          git -C vcpkg fetch --depth 1 origin "$VCPKG_COMMIT"
+          git -C vcpkg checkout --detach "$VCPKG_COMMIT"
           ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
           echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg" >> $GITHUB_ENV
 
@@ -95,18 +146,41 @@ jobs:
         with:
           name: zeri-linux-amd64
           path: zeri-linux-amd64.tar.gz
+          if-no-files-found: error
+          retention-days: 14
 
   build-macos:
     runs-on: macos-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache
+      VCPKG_FEATURE_FLAGS: manifests,binarycaching
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Restore vcpkg cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/.vcpkg-cache
+            ${{ github.workspace }}/vcpkg/downloads
+          key: ${{ runner.os }}-vcpkg-${{ hashFiles('vcpkg.json', 'CMakeLists.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-
 
       - name: Install vcpkg
         run: |
-          git clone https://github.com/microsoft/vcpkg.git vcpkg
+          rm -rf vcpkg
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git vcpkg
+          git -C vcpkg fetch --depth 1 origin "$VCPKG_COMMIT"
+          git -C vcpkg checkout --detach "$VCPKG_COMMIT"
           ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
           echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg" >> $GITHUB_ENV
 
@@ -139,13 +213,24 @@ jobs:
         with:
           name: zeri-macos-arm64
           path: zeri-macos-arm64.tar.gz
+          if-no-files-found: error
+          retention-days: 14
 
   release:
     needs: [build-windows, build-linux, build-macos]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@v4
+
+      - name: Validate release artifacts
+        run: |
+          test -f zeri-windows-amd64/zeri-windows-amd64.zip
+          test -f zeri-linux-amd64/zeri-linux-amd64.tar.gz
+          test -f zeri-macos-arm64/zeri-macos-arm64.tar.gz
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
@@ -155,5 +240,6 @@ jobs:
             zeri-windows-amd64/zeri-windows-amd64.zip
             zeri-linux-amd64/zeri-linux-amd64.tar.gz
             zeri-macos-arm64/zeri-macos-arm64.tar.gz
+          fail_on_unmatched_files: true
           generate_release_notes: true
 # Workflow note: version.txt is written in each build job before archive creation so every release package contains the current tag.
