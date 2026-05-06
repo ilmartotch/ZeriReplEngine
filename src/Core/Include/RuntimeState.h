@@ -102,12 +102,11 @@ namespace Zeri::Core {
         [[nodiscard]] std::expected<void, std::string> SaveSession(const std::filesystem::path& path) const;
 
         [[nodiscard]] std::expected<void, std::string> LoadSession(const std::filesystem::path& path);
+        [[nodiscard]] bool WasSessionCorrupted() const;
 
         void ResetSession();
 
     private:
-        static constexpr const char* kDefaultStatePath = ".zeri/state.json";
-
         std::vector<std::map<std::string, std::any>> m_localVariables;
         std::map<std::string, std::any> m_sessionVariables;
         std::map<std::string, std::any> m_globalVariables;
@@ -127,6 +126,8 @@ namespace Zeri::Core {
         Zeri::Core::ContextManager m_contextManager;
 
         bool m_exitRequested{ false };
+        bool m_sessionCorrupted{ false };
+        std::string m_startupWarning;
         mutable std::mutex m_lifecycleMutex;
 
         std::unique_ptr<Zeri::Modules::ModuleManager> m_moduleManager;

@@ -43,25 +43,36 @@ else
     VCPKG_TRIPLET="x64-linux"
 fi
 
-echo "Building ZeriEngine ($CONFIG, $VCPKG_TRIPLET)"
+echo "Building zeri-engine ($CONFIG, $VCPKG_TRIPLET)"
 cmake --fresh -B "$BUILD_DIR" -S "$SCRIPT_DIR" \
     -DCMAKE_BUILD_TYPE="$CONFIG" \
     -DVCPKG_TARGET_TRIPLET="$VCPKG_TRIPLET"
 
 cmake --build "$BUILD_DIR" --config "$CONFIG"
 
-ENGINE_SRC="$BUILD_DIR/ZeriEngine"
+ENGINE_SRC="$BUILD_DIR/zeri-engine"
 if [ ! -f "$ENGINE_SRC" ]; then
-    ENGINE_SRC="$BUILD_DIR/$CONFIG/ZeriEngine"
+    ENGINE_SRC="$BUILD_DIR/$CONFIG/zeri-engine"
 fi
 
 if [ ! -f "$ENGINE_SRC" ]; then
-    echo "ERROR: ZeriEngine was not produced by the CMake build."
+    echo "ERROR: zeri-engine was not produced by the CMake build."
     exit 1
 fi
 
-cp "$ENGINE_SRC" "$DIST/ZeriEngine"
-chmod +x "$DIST/ZeriEngine"
+cp "$ENGINE_SRC" "$DIST/zeri-engine"
+chmod +x "$DIST/zeri-engine"
+
+VERSION="unknown"
+CACHE_FILE="$BUILD_DIR/CMakeCache.txt"
+if [ -f "$CACHE_FILE" ]; then
+    VERSION_LINE="$(grep 'ZeriEngine_VERSION:STATIC' "$CACHE_FILE" || true)"
+    if [ -n "$VERSION_LINE" ]; then
+        VERSION="$(printf '%s' "$VERSION_LINE" | sed -E 's/.*=([0-9]+\.[0-9]+\.[0-9]+).*/\1/')"
+    fi
+fi
+printf '%s\n' "$VERSION" > "$DIST/version.txt"
+echo "Wrote dist/version.txt with version: $VERSION"
 
 VCPKG_LIB_DIR="$BUILD_DIR/vcpkg_installed/$VCPKG_TRIPLET/lib"
 if [ -d "$VCPKG_LIB_DIR" ]; then

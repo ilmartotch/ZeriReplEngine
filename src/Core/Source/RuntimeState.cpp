@@ -1,4 +1,5 @@
 #include "RuntimeState.h"
+#include "../Include/UserPaths.h"
 #include "../../Engines/Include/Interface/IContext.h"
 #include "../../Modules/Include/ModuleManager.h"
 #include <nlohmann/json.hpp>
@@ -98,13 +99,15 @@ namespace Zeri::Core {
         : m_moduleManager(std::make_unique<Zeri::Modules::ModuleManager>()) {
         m_moduleManager->StartBackgroundScan();
 
-        auto loadResult = LoadSession(kDefaultStatePath);
+        auto sessionPath = Zeri::Core::ResolveSessionPath();
+        auto loadResult = LoadSession(sessionPath);
         if (!loadResult.has_value()) {
+            m_startupWarning = loadResult.error();
         }
     }
 
     RuntimeState::~RuntimeState() {
-        auto saveResult = SaveSession(kDefaultStatePath);
+        auto saveResult = SaveSession(Zeri::Core::ResolveSessionPath());
         if (!saveResult.has_value()) {
             std::cerr << "[RuntimeState] Failed to save session: " << saveResult.error() << "\n";
         }
@@ -558,6 +561,11 @@ namespace Zeri::Core {
         return m_exitRequested;
     }
 
+    bool RuntimeState::WasSessionCorrupted() const {
+        std::lock_guard<std::mutex> lock(m_lifecycleMutex);
+        return m_sessionCorrupted;
+    }
+
     std::expected<void, std::string> RuntimeState::SaveSession(const std::filesystem::path& path) const {
         std::shared_lock lock(m_varMutex);
 
@@ -586,32 +594,47 @@ namespace Zeri::Core {
                 std::filesystem::create_directories(parent);
             }
 
-            std::ofstream file(path);
-            if (!file.is_open()) {
-                return std::unexpected("Failed to open file for writing: " + path.string());
+            const std::filesystem::path tempPath = path.string() + ".tmp";
+            const std::filesystem::path backupPath = path.string() + ".bak";
+            const std::string serialized = root.dump(2);
+
+            {
+                std::ofstream tempFile(tempPath, std::ios::trunc);
+                if (!tempFile.is_open()) {
+                    throw std::runtime_error("Failed to open temp state file for writing: " + tempPath.string());
+                }
+                tempFile << serialized;
+                if (!tempFile.good()) {
+                    throw std::runtime_error("Failed to write serialized session to temp file: " + tempPath.string());
+                }
             }
 
-            file << root.dump(2);
+            if (std::filesystem::exists(path)) {
+                if (std::filesystem::exists(backupPath)) {
+                    std::filesystem::remove(backupPath);
+                }
+                std::filesystem::rename(path, backupPath);
+            }
+
+            std::filesystem::rename(tempPath, path);
             return {};
         } catch (const std::exception& e) {
+            try {
+                std::filesystem::remove(path.string() + ".tmp");
+            } catch (...) {
+            }
             return std::unexpected(std::string("Save failed: ") + e.what());
         }
     }
 
     std::expected<void, std::string> RuntimeState::LoadSession(const std::filesystem::path& path) {
         if (!std::filesystem::exists(path)) {
-            return std::unexpected("State file does not exist: " + path.string());
+            return std::unexpected("State file not found: " + path.string());
         }
 
-        try {
-            std::ifstream file(path);
-            if (!file.is_open()) {
-                return std::unexpected("Failed to open file for reading: " + path.string());
-            }
-
-            nlohmann::json root = nlohmann::json::parse(file);
-
+        const auto applyJsonToPersisted = [this](const nlohmann::json& root) {
             std::unique_lock lock(m_varMutex);
+            m_persistedVariables.clear();
             for (const auto& [key, jsonVal] : root.items()) {
                 if (jsonVal.is_string()) {
                     m_persistedVariables[key] = jsonVal.get<std::string>();
@@ -623,8 +646,44 @@ namespace Zeri::Core {
                     m_persistedVariables[key] = jsonVal.get<double>();
                 }
             }
+        };
 
+        try {
+            std::ifstream primaryFile(path);
+            if (!primaryFile.is_open()) {
+                return std::unexpected("Failed to open file for reading: " + path.string());
+            }
+
+            nlohmann::json root = nlohmann::json::parse(primaryFile);
+            applyJsonToPersisted(root);
+            {
+                std::lock_guard<std::mutex> lock(m_lifecycleMutex);
+                m_sessionCorrupted = false;
+            }
             return {};
+        } catch (const nlohmann::json::parse_error&) {
+            {
+                std::lock_guard<std::mutex> lock(m_lifecycleMutex);
+                m_sessionCorrupted = true;
+            }
+
+            const std::filesystem::path backupPath = path.string() + ".bak";
+            try {
+                std::ifstream backupFile(backupPath);
+                if (!backupFile.is_open()) {
+                    return std::unexpected("Session corrupted, no valid backup found.");
+                }
+
+                nlohmann::json backupRoot = nlohmann::json::parse(backupFile);
+                applyJsonToPersisted(backupRoot);
+                return std::unexpected("Session file was corrupted; loaded from backup.");
+            } catch (const std::exception&) {
+                {
+                    std::lock_guard<std::mutex> lock(m_lifecycleMutex);
+                    m_sessionCorrupted = true;
+                }
+                return std::unexpected("Session corrupted, no valid backup found.");
+            }
         } catch (const std::exception& e) {
             return std::unexpected(std::string("Load failed: ") + e.what());
         }

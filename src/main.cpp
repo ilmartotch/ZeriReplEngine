@@ -1,6 +1,7 @@
 #include "Core/Include/RuntimeState.h"
 #include "Core/Include/HelpCatalog.h"
 #include "Core/Include/SystemGuard.h"
+#include "Core/Include/UserPaths.h"
 #include "Engines/Include/GlobalContext.h"
 #include "Engines/Include/CustomCommandContext.h"
 #include "Engines/Include/JsContext.h"
@@ -282,7 +283,8 @@ namespace {
         }
 
         if (cmd.commandName == "save") {
-            auto result = runtimeState.SaveSession(".zeri/state.json");
+            auto sessionPath = Zeri::Core::ResolveSessionPath();
+            auto result = runtimeState.SaveSession(sessionPath);
             if (result.has_value()) {
                 terminal.WriteSuccess("Session saved successfully.");
             } else {
@@ -506,6 +508,14 @@ int main(int argc, char* argv[]) {
 
     runtimeState.PushContext(std::make_unique<Zeri::Engines::Defaults::GlobalContext>());
 
+    if (runtimeState.WasSessionCorrupted()) {
+        terminalOwner->WriteError(
+            "Warning: the previous session file was corrupted or "
+            "could not be loaded. A backup recovery was attempted. "
+            "Use /save to write a fresh session."
+        );
+    }
+
     nlohmann::json readyMsg;
     readyMsg["type"] = "ready";
     sinkOwner->Send(readyMsg);
@@ -553,6 +563,8 @@ int main(int argc, char* argv[]) {
     }
 
     terminal.WriteLine("Goodbye.");
+    auto sessionPath = Zeri::Core::ResolveSessionPath();
+    [[maybe_unused]] auto saveResult = runtimeState.SaveSession(sessionPath);
     return 0;
 }
 

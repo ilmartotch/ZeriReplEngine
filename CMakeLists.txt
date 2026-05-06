@@ -6,7 +6,7 @@ if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
     elseif(EXISTS "${CMAKE_SOURCE_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake")
         set(CMAKE_TOOLCHAIN_FILE "${CMAKE_SOURCE_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake" CACHE STRING "")
     else()
-        message(FATAL_ERROR "VCPKG_ROOT non impostato e toolchain vcpkg locale non trovata. Imposta VCPKG_ROOT o clona vcpkg in ${CMAKE_SOURCE_DIR}/vcpkg.")
+        message(FATAL_ERROR "VCPKG_ROOT is not set and no local vcpkg toolchain was found. Set VCPKG_ROOT or clone vcpkg into ${CMAKE_SOURCE_DIR}/vcpkg.")
     endif()
 endif()
 
@@ -14,6 +14,14 @@ project(ZeriEngine
     VERSION 1.0.0
     DESCRIPTION "Modular REPL Orchestrator"
     LANGUAGES CXX
+)
+
+include(GNUInstallDirs)
+
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/version.h.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/version.h"
+    @ONLY
 )
 
 set(CMAKE_CXX_STANDARD 23)
@@ -58,6 +66,7 @@ set(CORE_SOURCES
     src/Core/Source/HelpCatalog.cpp
     src/Core/Source/RuntimeState.cpp
     src/Core/Source/SystemGuard.cpp
+    src/Core/Source/UserPaths.cpp
     src/Core/Source/VariableScope.cpp
 )
 
@@ -129,6 +138,8 @@ add_executable(ZeriEngine
     ${UI_SOURCES}
 )
 
+set_target_properties(ZeriEngine PROPERTIES OUTPUT_NAME "zeri-engine")
+
 target_include_directories(ZeriEngine PRIVATE
     src
     src/Core/Include
@@ -137,6 +148,7 @@ target_include_directories(ZeriEngine PRIVATE
     src/Extensions/Include
     src/ZeriLink/Include
     src/Ui/Include
+    "${CMAKE_CURRENT_BINARY_DIR}/generated"
     ${EXPRTK_INCLUDE_DIRS}
     ${LUA_INCLUDE_DIR}
 )
@@ -167,6 +179,10 @@ add_custom_command(TARGET ZeriEngine POST_BUILD
         "${CMAKE_SOURCE_DIR}/runtime"
         "$<TARGET_FILE_DIR:ZeriEngine>/Runtime"
     COMMENT "Copying ZeriLink runtimes to output directory"
+)
+
+install(TARGETS ZeriEngine
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
 message(STATUS "Project Zeri v${PROJECT_VERSION} configured successfully.")

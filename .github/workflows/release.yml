@@ -39,6 +39,10 @@ jobs:
         shell: pwsh
         run: .\build.ps1 -Config Release
 
+      - name: Write version file
+        shell: pwsh
+        run: $env:GITHUB_REF_NAME | Out-File -FilePath dist\version.txt -Encoding utf8 -NoNewline
+
       - name: Create Windows archive
         shell: pwsh
         run: Compress-Archive -Path dist\* -DestinationPath zeri-windows-amd64.zip
@@ -79,6 +83,9 @@ jobs:
 
       - name: Build Linux
         run: ./build.sh Release
+
+      - name: Write version file
+        run: echo "${{ github.ref_name }}" > dist/version.txt
 
       - name: Create Linux archive
         run: tar -czf zeri-linux-amd64.tar.gz -C dist .
@@ -121,6 +128,9 @@ jobs:
           CMAKE_OSX_ARCHITECTURES: arm64
         run: ./build.sh Release
 
+      - name: Write version file
+        run: echo "${{ github.ref_name }}" > dist/version.txt
+
       - name: Create macOS archive
         run: tar -czf zeri-macos-arm64.tar.gz -C dist .
 
@@ -146,3 +156,4 @@ jobs:
             zeri-linux-amd64/zeri-linux-amd64.tar.gz
             zeri-macos-arm64/zeri-macos-arm64.tar.gz
           generate_release_notes: true
+# Workflow note: version.txt is written in each build job before archive creation so every release package contains the current tag.

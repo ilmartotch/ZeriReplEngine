@@ -20,9 +20,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	engineName := "ZeriEngine"
+	engineName := "zeri-engine"
 	if runtime.GOOS == "windows" {
-		engineName = "ZeriEngine.exe"
+		engineName = "zeri-engine.exe"
 	}
 
 	envEnginePath, hasEnvEnginePath := os.LookupEnv("ZERI_ENGINE_PATH")
