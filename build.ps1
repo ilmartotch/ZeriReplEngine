@@ -7,14 +7,14 @@ $toolchainPath = $null
 # --- Pre-flight checks ---
 function Assert-Command($name, $hint) {
     if (-not (Get-Command $name -ErrorAction SilentlyContinue)) {
-        Write-Host "ERRORE: '$name' non trovato in PATH." -ForegroundColor Red
+        Write-Host "ERROR: '$name' was not found in PATH." -ForegroundColor Red
         Write-Host "        $hint" -ForegroundColor Yellow
         exit 1
     }
 }
-Assert-Command "cmake" "Installa CMake da https://cmake.org/download/ e aggiungilo al PATH."
-Assert-Command "go"    "Installa Go da https://go.dev/dl/ e aggiungilo al PATH."
-Assert-Command "git"   "Installa Git da https://git-scm.com/ (richiesto da vcpkg)."
+Assert-Command "cmake" "Install CMake from https://cmake.org/download/ and add it to PATH."
+Assert-Command "go"    "Install Go from https://go.dev/dl/ and add it to PATH."
+Assert-Command "git"   "Install Git from https://git-scm.com/ (required by vcpkg)."
 
 function Resolve-VcpkgToolchain([string]$root, [string]$vsInstallPath) {
     $candidates = @()
@@ -28,7 +28,7 @@ function Resolve-VcpkgToolchain([string]$root, [string]$vsInstallPath) {
     foreach ($candidate in $candidates) {
         if (Test-Path $candidate) { return $candidate }
     }
-    throw "Toolchain vcpkg non trovata. Imposta VCPKG_ROOT o clona vcpkg in $root\vcpkg."
+    throw "vcpkg toolchain was not found. Set VCPKG_ROOT or clone vcpkg into $root\vcpkg."
 }
 
 # --- VS Environment Setup ---
@@ -39,55 +39,55 @@ if (-not (Test-Path $vsWhere)) {
     $vsWhere = Join-Path $env:ProgramFiles "Microsoft Visual Studio\Installer\vswhere.exe"
 }
 if (-not (Test-Path $vsWhere)) {
-    throw "vswhere.exe non trovato. Installa Visual Studio Build Tools."
+    throw "vswhere.exe was not found. Install Visual Studio Build Tools."
 }
 $vsPath = & $vsWhere -latest -property installationPath
 $devShellDll = Join-Path $vsPath "Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
 
-# Se cl.exe è già nel PATH (es. ilammy/msvc-dev-cmd in CI), salta VsDevShell.
+# If cl.exe is already in PATH (for example ilammy/msvc-dev-cmd in CI), skip VsDevShell.
 if (Get-Command "cl.exe" -ErrorAction SilentlyContinue) {
-    Write-Host "VS environment già attivo (cl.exe trovato in PATH), salto VsDevShell."
+    Write-Host "Visual Studio environment is already active (cl.exe found in PATH), skipping VsDevShell."
 } else {
     if (-not (Test-Path $devShellDll)) {
-        throw "Microsoft.VisualStudio.DevShell.dll non trovato in: $devShellDll"
+        throw "Microsoft.VisualStudio.DevShell.dll was not found at: $devShellDll"
     }
     Import-Module $devShellDll -ErrorAction Stop
     Enter-VsDevShell -VsInstallPath $vsPath -SkipAutomaticLocation -Arch x64 | Out-Null
-    Write-Host "VS environment attivo: $vsPath"
+    Write-Host "Visual Studio environment active: $vsPath"
 }
 # ---
 
 $toolchainPath = Resolve-VcpkgToolchain $Root $vsPath
 
-Write-Host "Pulizia e creazione dist/"
+Write-Host "Cleaning and creating dist/"
 if (Test-Path $Dist) { Remove-Item $Dist -Recurse -Force }
 New-Item -ItemType Directory -Path $Dist | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $Dist "runtime") | Out-Null
 
-Write-Host "Build ZeriEngine (C++, $Config)"
+Write-Host "Building zeri-engine (C++, $Config)"
 $BuildDir = Join-Path $Root "build-release"
 cmake --fresh -B $BuildDir -S $Root "-DCMAKE_BUILD_TYPE=$Config" "-DVCPKG_TARGET_TRIPLET=x64-windows" "-DCMAKE_TOOLCHAIN_FILE=$toolchainPath"
-if ($LASTEXITCODE -ne 0) { throw "CMake configure fallito." }
+if ($LASTEXITCODE -ne 0) { throw "CMake configure failed." }
 cmake --build $BuildDir --config $Config
-if ($LASTEXITCODE -ne 0) { throw "CMake build fallito." }
-$EngineSource = Join-Path (Join-Path (Join-Path $Root "build-release") $Config) "ZeriEngine.exe"
+if ($LASTEXITCODE -ne 0) { throw "CMake build failed." }
+$EngineSource = Join-Path (Join-Path (Join-Path $Root "build-release") $Config) "zeri-engine.exe"
 if (-not (Test-Path $EngineSource)) {
     # Ninja single-config: binary is directly in build dir, not in a Config subfolder
-    $EngineSource = Join-Path $BuildDir "ZeriEngine.exe"
+    $EngineSource = Join-Path $BuildDir "zeri-engine.exe"
 }
 Copy-Item $EngineSource -Destination $Dist
 
-# Copy vcpkg runtime DLLs required by ZeriEngine
+# Copy vcpkg runtime DLLs required by zeri-engine
 $VcpkgBin = Join-Path $BuildDir "vcpkg_installed"
 $VcpkgBin = Join-Path $VcpkgBin "x64-windows"
 $VcpkgBin = Join-Path $VcpkgBin "bin"
 if (Test-Path $VcpkgBin) {
     Get-ChildItem $VcpkgBin -Filter "*.dll" | ForEach-Object {
         Copy-Item $_.FullName -Destination $Dist
-        Write-Host "Copiata DLL: $($_.Name)"
+        Write-Host "Copied DLL: $($_.Name)"
     }
 } else {
-    Write-Warning "vcpkg bin non trovato in $VcpkgBin DLL non copiate."
+    Write-Warning "vcpkg bin was not found at $VcpkgBin. DLL files were not copied."
 }
 
 # Copy MSVC runtime DLLs if available in Visual Studio redist folder.
@@ -100,24 +100,36 @@ if (Test-Path $MsvcRedistRoot) {
     if ($crtDir) {
         Get-ChildItem $crtDir.FullName -Filter "*.dll" | ForEach-Object {
             Copy-Item $_.FullName -Destination $Dist
-            Write-Host "Copiata runtime MSVC: $($_.Name)"
+            Write-Host "Copied MSVC runtime: $($_.Name)"
         }
     } else {
-        Write-Warning "Cartella runtime MSVC x64 CRT non trovata sotto $MsvcRedistRoot"
+        Write-Warning "MSVC x64 CRT runtime directory was not found under $MsvcRedistRoot"
     }
 } else {
-    Write-Warning "Directory redist MSVC non trovata: $MsvcRedistRoot"
+    Write-Warning "MSVC redist directory was not found: $MsvcRedistRoot"
 }
+
+$Version = "unknown"
+$CachePath = Join-Path $BuildDir "CMakeCache.txt"
+if (Test-Path $CachePath) {
+    $CacheContent = Get-Content $CachePath -Raw
+    $VersionMatch = [regex]::Match($CacheContent, 'ZeriEngine_VERSION:STATIC=([0-9]+\.[0-9]+\.[0-9]+)')
+    if ($VersionMatch.Success) {
+        $Version = $VersionMatch.Groups[1].Value
+    }
+}
+Set-Content -Path (Join-Path $Dist "version.txt") -Value $Version
+Write-Host "Wrote dist/version.txt with version: $Version"
 
 Write-Host "Build TUI Go (zeri.exe)"
 $YuumiUi = Join-Path $Root "ui"
 Push-Location $YuumiUi
 $env:GOOS = "windows"; $env:GOARCH = "amd64"
 go build -o (Join-Path $Dist "zeri.exe") ./cmd/zeri-tui/
-if ($LASTEXITCODE -ne 0) { Pop-Location; throw "go build TUI fallito." }
+if ($LASTEXITCODE -ne 0) { Pop-Location; throw "go build TUI failed." }
 Pop-Location
 
-Write-Host "Copia runtime sidecar"
+Write-Host "Copying sidecar runtime"
 $RuntimeSrc = Join-Path $Root "src"
 $RuntimeSrc = Join-Path $RuntimeSrc "ZeriLink"
 $RuntimeSrc = Join-Path $RuntimeSrc "Runtime"
@@ -126,9 +138,9 @@ Copy-Item (Join-Path $RuntimeSrc "*") -Destination (Join-Path $Dist "runtime") -
 $ManifestSrc = Join-Path $Root "runtime\runtime_manifest.json"
 if (Test-Path $ManifestSrc) {
     Copy-Item $ManifestSrc -Destination (Join-Path $Dist "runtime")
-    Write-Host "Copiato runtime_manifest.json"
+    Write-Host "Copied runtime_manifest.json"
 } else {
-    Write-Warning "runtime\runtime_manifest.json non trovato in $Root"
+    Write-Warning "runtime\runtime_manifest.json was not found in $Root"
 }
 
 Write-Host ""

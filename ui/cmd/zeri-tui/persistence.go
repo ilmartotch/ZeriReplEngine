@@ -38,11 +38,24 @@ func ZeriBaseDir() (string, error) {
 		return filepath.Join(appData, "Zeri"), nil
 	}
 
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("cannot resolve home directory: %w", err)
+	if runtime.GOOS == "darwin" {
+		home := strings.TrimSpace(os.Getenv("HOME"))
+		if home == "" {
+			return "", fmt.Errorf("HOME is not set")
+		}
+		return filepath.Join(home, "Library", "Application Support", "zeri"), nil
 	}
-	return filepath.Join(home, ".zeri"), nil
+
+	xdgConfigHome := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME"))
+	if xdgConfigHome != "" {
+		return filepath.Join(xdgConfigHome, "zeri"), nil
+	}
+
+	home := strings.TrimSpace(os.Getenv("HOME"))
+	if home == "" {
+		return "", fmt.Errorf("HOME is not set")
+	}
+	return filepath.Join(home, ".config", "zeri"), nil
 }
 
 func ZeriScriptsDir(language string) (string, error) {
@@ -68,11 +81,7 @@ func ensureZeriDirectories() error {
 	}
 
 	dirs := []string{
-		filepath.Join(base, "scripts", "lua"),
-		filepath.Join(base, "scripts", "py"),
-		filepath.Join(base, "scripts", "js"),
-		filepath.Join(base, "scripts", "ts"),
-		filepath.Join(base, "scripts", "ruby"),
+		filepath.Join(base, "scripts"),
 		filepath.Join(base, "sessions"),
 	}
 
