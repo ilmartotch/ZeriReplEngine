@@ -45,6 +45,7 @@ fi
 
 echo "Building zeri-engine ($CONFIG, $VCPKG_TRIPLET)"
 cmake --fresh -B "$BUILD_DIR" -S "$SCRIPT_DIR" \
+    -G Ninja \
     -DCMAKE_BUILD_TYPE="$CONFIG" \
     -DVCPKG_TARGET_TRIPLET="$VCPKG_TRIPLET"
 

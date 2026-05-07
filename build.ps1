@@ -66,7 +66,7 @@ New-Item -ItemType Directory -Path (Join-Path $Dist "runtime") | Out-Null
 
 Write-Host "Building zeri-engine (C++, $Config)"
 $BuildDir = Join-Path $Root "build-release"
-cmake --fresh -B $BuildDir -S $Root "-DCMAKE_BUILD_TYPE=$Config" "-DVCPKG_TARGET_TRIPLET=x64-windows" "-DCMAKE_TOOLCHAIN_FILE=$toolchainPath"
+cmake --fresh -G Ninja -B $BuildDir -S $Root "-DCMAKE_BUILD_TYPE=$Config" "-DVCPKG_TARGET_TRIPLET=x64-windows" "-DCMAKE_TOOLCHAIN_FILE=$toolchainPath"
 if ($LASTEXITCODE -ne 0) { throw "CMake configure failed." }
 cmake --build $BuildDir --config $Config
 if ($LASTEXITCODE -ne 0) { throw "CMake build failed." }
