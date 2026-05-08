@@ -130,9 +130,14 @@ if ($LASTEXITCODE -ne 0) { Pop-Location; throw "go build TUI failed." }
 Pop-Location
 
 Write-Host "Copying sidecar runtime"
-$RuntimeSrc = Join-Path $Root "src"
-$RuntimeSrc = Join-Path $RuntimeSrc "ZeriLink"
-$RuntimeSrc = Join-Path $RuntimeSrc "Runtime"
+$RuntimeCandidates = @(
+    (Join-Path $Root "runtime"),
+    (Join-Path (Join-Path (Join-Path $Root "src") "ZeriLink") "Runtime")
+)
+$RuntimeSrc = $RuntimeCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $RuntimeSrc) {
+    throw "Runtime directory was not found. Checked: $($RuntimeCandidates -join ', ')"
+}
 Copy-Item (Join-Path $RuntimeSrc "*") -Destination (Join-Path $Dist "runtime") -Recurse
 
 $ManifestSrc = Join-Path $Root "runtime\runtime_manifest.json"
