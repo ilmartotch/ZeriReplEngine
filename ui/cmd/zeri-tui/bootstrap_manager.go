@@ -64,6 +64,7 @@ type RuntimeValidationResult struct {
 const bootstrapStateVersion = 1
 const runtimeManifestVersion = 1
 const runtimeManifestRelativePath = "runtime/runtime_manifest.json"
+const runtimeManifestPathEnv = "ZERI_RUNTIME_MANIFEST_PATH"
 const bootstrapModeEnv = "ZERI_BOOTSTRAP_MODE"
 const bootstrapModeInstall = "install"
 const bootstrapModeValidate = "validate"
@@ -167,6 +168,26 @@ func loadRuntimeManifest() (RuntimeManifest, error) {
 
 
 func resolveRuntimeManifestPath() (string, bool) {
+    explicitPath := strings.TrimSpace(os.Getenv(runtimeManifestPathEnv))
+	if explicitPath != "" {
+		candidate := explicitPath
+		if !filepath.IsAbs(candidate) {
+			if cwd, err := os.Getwd(); err == nil {
+				candidate = filepath.Join(cwd, candidate)
+			}
+		}
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, true
+		}
+	}
+
+	if executablePath, err := os.Executable(); err == nil {
+		candidate := filepath.Join(filepath.Dir(executablePath), runtimeManifestRelativePath)
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, true
+		}
+	}
+
 	start, err := os.Getwd()
 	if err != nil {
 		return "", false
@@ -269,16 +290,6 @@ func validateRequiredRuntimes(manifest RuntimeManifest) []RuntimeValidationResul
 		results = append(results, RuntimeValidationResult{Runtime: runtime, Status: RuntimeStatusOK, Binary: resolved})
 	}
   return results
-}
-
-func countBlocking(results []RuntimeValidationResult) int {
-	count := 0
-	for _, result := range results {
-		if result.Status != RuntimeStatusOK {
-			count++
-		}
-	}
-	return count
 }
 
 func resolveBinary(candidates []string) (string, bool) {

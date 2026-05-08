@@ -34,3 +34,5 @@
 - In Go, prefer minimal internal spacing with at most a single space/tab between tokens (e.g., `bridge bridge.YuumiClient`), avoiding vertical alignments with multiple spaces. Establish a categorical rule to prevent recurring manual corrections.
 
 - Mandatory enforcement rule: never generate or preserve vertical alignment padding in Go declarations or literals (`name     type` and `field:    value` are forbidden). Always emit `name type` and `field: value`.
+
+- Prefer structural solutions over placeholders: no empty files, no arbitrary hardcoded paths; release/build architecture must be justified, functional, and clear.

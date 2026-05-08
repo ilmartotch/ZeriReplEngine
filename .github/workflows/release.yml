@@ -67,6 +67,23 @@ jobs:
           go-version: '1.25.0'
           cache-dependency-path: ui/go.sum
 
+      - name: Validate tracked Go files are non-empty
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $emptyFiles = git ls-files "*.go" | Where-Object { (Get-Item $_).Length -eq 0 }
+          if ($emptyFiles) {
+            Write-Error ("Empty Go source files detected:`n" + ($emptyFiles -join "`n"))
+          }
+
+      - name: Validate Go TUI package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Push-Location "ui"
+          go build ./cmd/zeri-tui
+          Pop-Location
+
       - name: Setup MSVC
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@a102174a2b586eec2ea151a69e6fd14404a8ce7c
