@@ -11,3 +11,5 @@ vcpkg/downloads/
 vcpkg/installed/
 .zeri/
 ui/vendor/
+
+copilot-instructions.md
