@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="ilmartotch/ReplZeriEmgine"
+REPO="ilmartotch/ZeriReplEngine"
 FORCE=false
 SYSTEM_INSTALL=false
 UNINSTALL=false
