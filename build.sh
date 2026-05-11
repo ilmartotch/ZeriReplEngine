@@ -102,6 +102,17 @@ else
     echo "WARNING: runtime/runtime_manifest.json not found in project root."
 fi
 
+# Copy install script into dist
+INSTALL_SCRIPT="$SCRIPT_DIR/install.sh"
+if [ -f "$INSTALL_SCRIPT" ]; then
+    cp "$INSTALL_SCRIPT" "$DIST/install.sh"
+    chmod +x "$DIST/install.sh"
+    echo "Copied install.sh to dist/"
+else
+    echo "ERROR: install.sh not found in repo root."
+    exit 1
+fi
+
 echo ""
 echo "Build completed."
 find "$DIST" -type f | sort

@@ -81,13 +81,21 @@ Copy-Item $EngineSource -Destination $Dist
 $VcpkgBin = Join-Path $BuildDir "vcpkg_installed"
 $VcpkgBin = Join-Path $VcpkgBin "x64-windows"
 $VcpkgBin = Join-Path $VcpkgBin "bin"
-if (Test-Path $VcpkgBin) {
-    Get-ChildItem $VcpkgBin -Filter "*.dll" | ForEach-Object {
-        Copy-Item $_.FullName -Destination $Dist
-        Write-Host "Copied DLL: $($_.Name)"
+if (-not (Test-Path $VcpkgBin)) {
+    $altBin = Get-ChildItem "$BuildDir" -Recurse -Directory -Filter "bin" |
+        Where-Object { $_.FullName -match "vcpkg_installed" } |
+        Select-Object -First 1
+    if ($altBin) {
+        $VcpkgBin = $altBin.FullName
+        Write-Host "Found vcpkg bin at alternate path: $VcpkgBin"
+    } else {
+        throw "vcpkg bin directory not found. DLLs cannot be copied. Build aborted."
     }
-} else {
-    Write-Warning "vcpkg bin was not found at $VcpkgBin. DLL files were not copied."
+}
+
+Get-ChildItem $VcpkgBin -Filter "*.dll" | ForEach-Object {
+    Copy-Item $_.FullName -Destination $Dist
+    Write-Host "Copied DLL: $($_.Name)"
 }
 
 # Copy MSVC runtime DLLs if available in Visual Studio redist folder.
@@ -147,6 +155,23 @@ if (Test-Path $ManifestSrc) {
 } else {
     Write-Warning "runtime\runtime_manifest.json was not found in $Root"
 }
+
+# Copy install script into dist
+$InstallScript = Join-Path $Root "install.ps1"
+if (Test-Path $InstallScript) {
+    Copy-Item $InstallScript -Destination (Join-Path $Dist "install.ps1")
+    Write-Host "Copied install.ps1 to dist/"
+} else {
+    throw "install.ps1 not found in repo root. Cannot include in release package."
+}
+
+$required = @("zeri.exe", "zeri-engine.exe", "vcruntime140.dll", "msvcp140.dll")
+foreach ($f in $required) {
+    if (-not (Test-Path (Join-Path $Dist $f))) {
+        throw "Required file missing from dist: $f"
+    }
+}
+Write-Host "All required files verified in dist/."
 
 Write-Host ""
 Write-Host "Build complete."

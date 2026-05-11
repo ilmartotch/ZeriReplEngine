@@ -20,18 +20,43 @@ $ zeri
 
 ### Windows
 
-Download `zeri-setup.exe` from the [latest release](https://github.com/your-username/zeri/releases/latest) and run it.
+Open PowerShell and run:
 
-The installer adds `zeri` to your `PATH` automatically.
+```powershell
+irm https://github.com/ilmartotch/ZeriReplEngine/releases/latest/download/install.ps1 | iex
+```
+
+Open a new terminal and type `zeri` to start.
 
 ### macOS / Linux
 
-Download the latest release archive, extract it, and add the directory to your `PATH`:
+Open a terminal and run:
 
 ```bash
-tar -xzf zeri-linux-amd64.tar.gz
-sudo mv zeri ZeriEngine /usr/local/bin/
+curl -fsSL https://github.com/ilmartotch/ZeriReplEngine/releases/latest/download/install.sh | bash
 ```
+
+Open a new terminal and type `zeri` to start.
+
+---
+
+> **First time?** Open a **new** terminal window after installation —
+> the current session does not pick up PATH changes automatically.
+
+### Options
+
+| Flag | Description |
+|------|-------------|
+| `-Force` / `--force` | Reinstall even if already up to date |
+| `-System` / `--system` | Install system-wide (requires admin / sudo) |
+| `-Uninstall` / `--uninstall` | Remove Zeri and all user data |
+
+### Manual installation
+
+Download the latest archive from the
+[Releases page](https://github.com/ilmartotch/ZeriReplEngine/releases/latest),
+extract it, and run the included `install.ps1` (Windows) or `install.sh`
+(macOS / Linux) from inside the extracted folder.
 
 ## Quick Start
 

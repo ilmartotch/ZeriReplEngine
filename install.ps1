@@ -5,7 +5,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$Repo = "ilmartotch/ReplZeriEmgine"
+$Repo = "ilmartotch/ZeriReplEngine"
 $BinDir = if ($System) { "C:\Program Files\Zeri" } else { "$env:LOCALAPPDATA\Zeri" }
 $UserDataDir = "$env:APPDATA\Zeri"
 $ManifestFile = "$BinDir\zeri-manifest.json"
