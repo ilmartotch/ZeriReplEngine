@@ -1,13 +1,37 @@
 #include "../Include/HelpCatalog.h"
+#include "../Include/AppPaths.h"
 
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
 #include <fstream>
+#include <cstdlib>
+#include <string>
 #include <stdexcept>
 
 namespace Zeri::Core {
+
+    namespace {
+        [[nodiscard]] std::string ReadEnvVar(const char* name) {
+#if defined(_WIN32)
+            char* value = nullptr;
+            std::size_t length = 0;
+            if (_dupenv_s(&value, &length, name) != 0 || value == nullptr) {
+                return {};
+            }
+            std::string out(value);
+            std::free(value);
+            return out;
+#else
+            if (const char* value = std::getenv(name); value != nullptr) {
+                return std::string(value);
+            }
+            return {};
+#endif
+        }
+    }
 
     HelpCatalog& HelpCatalog::Instance() {
         static HelpCatalog instance;
@@ -75,48 +99,69 @@ namespace Zeri::Core {
         return result;
     }
 
+    bool HelpCatalog::IsLoaded() const {
+        return m_loaded;
+    }
+
     void HelpCatalog::Load() {
-        const auto path = ResolveCatalogPath();
-        std::ifstream stream(path);
-        if (!stream.is_open()) {
-            throw std::runtime_error("Unable to open help catalog: " + path.string());
-        }
-
-        nlohmann::json doc;
-        stream >> doc;
-
-        m_contexts.clear();
-        m_reachable.clear();
-        m_commands.clear();
-
-        for (const auto& context : doc.at("contexts")) {
-            HelpContextEntry entry;
-            entry.name = context.at("name").get<std::string>();
-            entry.description = context.at("description").get<std::string>();
-            m_contexts.push_back(std::move(entry));
-        }
-
-        for (const auto& [key, values] : doc.at("reachable").items()) {
-            std::vector<std::string> targets;
-            for (const auto& value : values) {
-                targets.push_back(ToLower(value.get<std::string>()));
+        try {
+            const auto path = ResolveCatalogPath();
+            std::ifstream stream(path);
+            if (!stream.is_open()) {
+                m_loaded = false;
+                return;
             }
-            m_reachable.emplace(ToLower(key), std::move(targets));
-        }
 
-        for (const auto& [group, values] : doc.at("commands").items()) {
-            std::vector<HelpCommandEntry> entries;
-            for (const auto& item : values) {
-                HelpCommandEntry command;
-                command.command = item.at("command").get<std::string>();
-                command.synopsis = item.at("synopsis").get<std::string>();
-                entries.push_back(std::move(command));
+            nlohmann::json doc;
+            stream >> doc;
+
+            m_contexts.clear();
+            m_reachable.clear();
+            m_commands.clear();
+
+            for (const auto& context : doc.at("contexts")) {
+                HelpContextEntry entry;
+                entry.name = context.at("name").get<std::string>();
+                entry.description = context.at("description").get<std::string>();
+                m_contexts.push_back(std::move(entry));
             }
-            m_commands.emplace(ToLower(group), std::move(entries));
+
+            for (const auto& [key, values] : doc.at("reachable").items()) {
+                std::vector<std::string> targets;
+                for (const auto& value : values) {
+                    targets.push_back(ToLower(value.get<std::string>()));
+                }
+                m_reachable.emplace(ToLower(key), std::move(targets));
+            }
+
+            for (const auto& [group, values] : doc.at("commands").items()) {
+                std::vector<HelpCommandEntry> entries;
+                for (const auto& item : values) {
+                    HelpCommandEntry command;
+                    command.command = item.at("command").get<std::string>();
+                    command.synopsis = item.at("synopsis").get<std::string>();
+                    entries.push_back(std::move(command));
+                }
+                m_commands.emplace(ToLower(group), std::move(entries));
+            }
+
+            m_loaded = true;
+        } catch (...) {
+            m_loaded = false;
         }
     }
 
     std::filesystem::path HelpCatalog::ResolveCatalogPath() {
+        if (const std::string explicitPath = ReadEnvVar("ZERI_HELP_CATALOG_PATH"); !explicitPath.empty()) {
+            return std::filesystem::path(explicitPath);
+        }
+
+        const std::filesystem::path exeDir = ResolveExecutableDir();
+        const auto exeCandidate = exeDir / "help" / "help_catalog.json";
+        if (std::filesystem::exists(exeCandidate)) {
+            return exeCandidate;
+        }
+
         std::filesystem::path current = std::filesystem::current_path();
         while (!current.empty()) {
             const auto candidate = current / "help" / "help_catalog.json";
@@ -131,7 +176,7 @@ namespace Zeri::Core {
             current = parent;
         }
 
-        return std::filesystem::path("help") / "help_catalog.json";
+        return exeCandidate;
     }
 
     std::string HelpCatalog::ToLower(std::string_view value) {

@@ -63,6 +63,7 @@ Write-Host "Cleaning and creating dist/"
 if (Test-Path $Dist) { Remove-Item $Dist -Recurse -Force }
 New-Item -ItemType Directory -Path $Dist | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $Dist "runtime") | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $Dist "help") | Out-Null
 
 Write-Host "Building zeri-engine (C++, $Config)"
 $BuildDir = Join-Path $Root "build-release"
@@ -148,6 +149,12 @@ if (-not $RuntimeSrc) {
 }
 Copy-Item (Join-Path $RuntimeSrc "*") -Destination (Join-Path $Dist "runtime") -Recurse
 
+$HelpSrc = Join-Path $Root "help"
+if (-not (Test-Path $HelpSrc)) {
+    throw "help directory not found in repo root. Build aborted."
+}
+Copy-Item (Join-Path $HelpSrc "*") -Destination (Join-Path $Dist "help") -Recurse
+
 $ManifestSrc = Join-Path $Root "runtime\runtime_manifest.json"
 if (Test-Path $ManifestSrc) {
     Copy-Item $ManifestSrc -Destination (Join-Path $Dist "runtime")
@@ -165,7 +172,14 @@ if (Test-Path $InstallScript) {
     throw "install.ps1 not found in repo root. Cannot include in release package."
 }
 
-$required = @("zeri.exe", "zeri-engine.exe", "vcruntime140.dll", "msvcp140.dll")
+$required = @(
+    "zeri.exe",
+    "zeri-engine.exe",
+    "vcruntime140.dll",
+    "msvcp140.dll",
+    "runtime\runtime_manifest.json",
+    "help\help_catalog.json"
+)
 foreach ($f in $required) {
     if (-not (Test-Path (Join-Path $Dist $f))) {
         throw "Required file missing from dist: $f"
