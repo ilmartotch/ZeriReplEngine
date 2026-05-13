@@ -190,7 +190,7 @@ jobs:
             --inline-suppr \
             --suppress=missingIncludeSystem \
             --suppress=unusedFunction \
-            --exclude=src/Tests \
+            -i src/Tests \
             src
 
   sanitizers:
