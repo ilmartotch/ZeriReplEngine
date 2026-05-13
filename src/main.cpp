@@ -1,6 +1,7 @@
 #include "Core/Include/RuntimeState.h"
 #include "Core/Include/HelpCatalog.h"
 #include "Core/Include/SystemGuard.h"
+#include "Core/Include/StartupDiagnostics.h"
 #include "Core/Include/UserPaths.h"
 #include "Engines/Include/GlobalContext.h"
 #include "Engines/Include/CustomCommandContext.h"
@@ -30,6 +31,7 @@
 #include <string_view>
 #include <vector>
 #include <optional>
+#include <exception>
 
 namespace Zeri::Platform {
 #ifdef _WIN32
@@ -451,9 +453,33 @@ namespace {
         }
         return std::nullopt;
     }
+
+    void LogStartupLine(const std::string& text) {
+        std::fprintf(stderr, "[ZERI_ENGINE][STARTUP] %s\n", text.c_str());
+        std::fflush(stderr);
+    }
+
+    void EmitStartupDiagnostics(
+        const Zeri::Core::StartupDiagnosticsReport& diagnostics,
+        Zeri::Ui::ITerminal* terminal
+    ) {
+        const std::string base = "Executable directory: " + diagnostics.executableDir.string();
+        LogStartupLine(base);
+        if (terminal != nullptr) {
+            terminal->WriteInfo(base);
+        }
+
+        for (const auto& issue : diagnostics.issues) {
+            const std::string line = issue.code + " - " + issue.message + " Hint: " + issue.hint;
+            LogStartupLine(line);
+            if (terminal != nullptr) {
+                terminal->WriteError("[startup] " + line);
+            }
+        }
+    }
 }
 
-int main(int argc, char* argv[]) {
+int RunMain(int argc, char* argv[]) {
     auto pipeArg = ParsePipeArg(argc, argv);
     if (!pipeArg.has_value()) {
         std::fprintf(stderr, "[ZERI_ENGINE] Missing required --yuumi-pipe <name> argument. Local C++ UI is disabled.\n");
@@ -465,6 +491,8 @@ int main(int argc, char* argv[]) {
     std::unique_ptr<yuumi::Bridge> bridgeOwner;
     std::unique_ptr<Zeri::Ui::OutputSink> sinkOwner;
     Zeri::Ui::BridgeTerminal* bridgeTerminal = nullptr;
+    const auto startupDiagnostics = Zeri::Core::CollectStartupDiagnostics();
+    EmitStartupDiagnostics(startupDiagnostics, nullptr);
 
     bridgeOwner = std::make_unique<yuumi::Bridge>();
     auto& bridge = *bridgeOwner;
@@ -521,6 +549,15 @@ int main(int argc, char* argv[]) {
     sinkOwner->Send(readyMsg);
 
     Zeri::Ui::ITerminal& terminal = *terminalOwner;
+    EmitStartupDiagnostics(startupDiagnostics, &terminal);
+
+    if (!Zeri::Core::HelpCatalog::Instance().IsLoaded()) {
+        terminal.WriteError(
+            "Help catalog is unavailable. /help output may be incomplete. "
+            "Ensure help/help_catalog.json is packaged next to the executable."
+        );
+    }
+
     runtimeState.GetCurrentContext()->OnEnter(terminal);
 
     while (!runtimeState.IsExitRequested()) {
@@ -566,6 +603,20 @@ int main(int argc, char* argv[]) {
     auto sessionPath = Zeri::Core::ResolveSessionPath();
     [[maybe_unused]] auto saveResult = runtimeState.SaveSession(sessionPath);
     return 0;
+}
+
+int main(int argc, char* argv[]) {
+    try {
+        return RunMain(argc, argv);
+    } catch (const std::exception& ex) {
+        std::fprintf(stderr, "[ZERI_ENGINE][FATAL] Unhandled exception: %s\n", ex.what());
+        std::fflush(stderr);
+        return 1;
+    } catch (...) {
+        std::fprintf(stderr, "[ZERI_ENGINE][FATAL] Unhandled non-standard exception.\n");
+        std::fflush(stderr);
+        return 1;
+    }
 }
 
 /*

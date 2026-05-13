@@ -27,6 +27,7 @@ namespace Zeri::Core {
         [[nodiscard]] std::vector<std::string> ReachableFrom(std::string_view contextName) const;
         [[nodiscard]] const std::vector<HelpCommandEntry>& CommandsForGroup(std::string_view group) const;
         [[nodiscard]] std::vector<HelpCommandEntry> CommandsForContext(std::string_view contextName) const;
+        [[nodiscard]] bool IsLoaded() const;
 
     private:
         HelpCatalog();
@@ -38,6 +39,7 @@ namespace Zeri::Core {
         std::vector<HelpContextEntry> m_contexts;
         std::unordered_map<std::string, std::vector<std::string>> m_reachable;
         std::unordered_map<std::string, std::vector<HelpCommandEntry>> m_commands;
+        bool m_loaded{ false };
     };
 
 }

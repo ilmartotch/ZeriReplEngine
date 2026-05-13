@@ -17,6 +17,7 @@ project(ZeriEngine
 )
 
 include(GNUInstallDirs)
+include(CTest)
 
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/version.h.in"
@@ -62,9 +63,11 @@ if(WIN32)
 endif()
 
 set(CORE_SOURCES
+    src/Core/Source/AppPaths.cpp
     src/Core/Source/ContextManager.cpp
     src/Core/Source/HelpCatalog.cpp
     src/Core/Source/RuntimeState.cpp
+    src/Core/Source/StartupDiagnostics.cpp
     src/Core/Source/SystemGuard.cpp
     src/Core/Source/UserPaths.cpp
     src/Core/Source/VariableScope.cpp
@@ -181,8 +184,82 @@ add_custom_command(TARGET ZeriEngine POST_BUILD
     COMMENT "Copying ZeriLink runtimes to output directory"
 )
 
+add_custom_command(TARGET ZeriEngine POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/runtime"
+        "$<TARGET_FILE_DIR:ZeriEngine>/runtime"
+    COMMENT "Copying runtime assets to output directory"
+)
+
+add_custom_command(TARGET ZeriEngine POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/help"
+        "$<TARGET_FILE_DIR:ZeriEngine>/help"
+    COMMENT "Copying help catalog to output directory"
+)
+
 install(TARGETS ZeriEngine
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
+
+install(DIRECTORY "${CMAKE_SOURCE_DIR}/runtime"
+    DESTINATION .
+)
+
+install(DIRECTORY "${CMAKE_SOURCE_DIR}/help"
+    DESTINATION .
+)
+
+if(BUILD_TESTING)
+    add_executable(zeri_help_catalog_smoke
+        src/Tests/HelpCatalogSmoke.cpp
+        src/Core/Source/AppPaths.cpp
+        src/Core/Source/HelpCatalog.cpp
+    )
+
+    target_include_directories(zeri_help_catalog_smoke PRIVATE
+        src
+        src/Core/Include
+        "${CMAKE_CURRENT_BINARY_DIR}/generated"
+    )
+
+    target_link_libraries(zeri_help_catalog_smoke PRIVATE
+        nlohmann_json::nlohmann_json
+    )
+
+    if(MSVC)
+        target_compile_options(zeri_help_catalog_smoke PRIVATE /W4 /WX /permissive- /bigobj /wd4702)
+    else()
+        target_compile_options(zeri_help_catalog_smoke PRIVATE -Wall -Wextra -Werror -pedantic -Wno-ignored-attributes
+                -Wno-missing-field-initializers
+            )
+    endif()
+
+    add_test(
+        NAME helpcatalog-missing-safe
+        COMMAND zeri_help_catalog_smoke --expect-loaded=false
+    )
+    set_tests_properties(helpcatalog-missing-safe PROPERTIES
+        ENVIRONMENT "ZERI_HELP_CATALOG_PATH=${CMAKE_BINARY_DIR}/_missing_help_catalog.json"
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+    )
+
+    add_test(
+        NAME helpcatalog-loaded-explicit
+        COMMAND zeri_help_catalog_smoke --expect-loaded=true
+    )
+    set_tests_properties(helpcatalog-loaded-explicit PROPERTIES
+        ENVIRONMENT "ZERI_HELP_CATALOG_PATH=${CMAKE_SOURCE_DIR}/help/help_catalog.json"
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+    )
+
+    add_test(
+        NAME helpcatalog-random-cwd-no-crash
+        COMMAND zeri_help_catalog_smoke
+    )
+    set_tests_properties(helpcatalog-random-cwd-no-crash PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+    )
+endif()
 
 message(STATUS "Project Zeri v${PROJECT_VERSION} configured successfully.")

@@ -122,6 +122,26 @@ func loadHelpCatalog() helpCatalogData {
 }
 
 func resolveHelpCatalogPath() (string, bool) {
+	explicitPath := strings.TrimSpace(os.Getenv("ZERI_HELP_CATALOG_PATH"))
+	if explicitPath != "" {
+		candidate := explicitPath
+		if !filepath.IsAbs(candidate) {
+			if cwd, err := os.Getwd(); err == nil {
+				candidate = filepath.Join(cwd, candidate)
+			}
+		}
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, true
+		}
+	}
+
+	if executablePath, err := os.Executable(); err == nil {
+		candidate := filepath.Join(filepath.Dir(executablePath), "help", "help_catalog.json")
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, true
+		}
+	}
+
 	start, err := os.Getwd()
 	if err != nil {
 		return "", false

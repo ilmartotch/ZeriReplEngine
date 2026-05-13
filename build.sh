@@ -32,6 +32,7 @@ fi
 echo "Cleaning dist/"
 rm -rf "$DIST"
 mkdir -p "$DIST/runtime"
+mkdir -p "$DIST/help"
 
 if [ "$(uname -s)" = "Darwin" ]; then
     if [ "${CMAKE_OSX_ARCHITECTURES:-}" = "arm64" ]; then
@@ -89,10 +90,23 @@ go build -o "$DIST/zeri" ./cmd/zeri-tui/
 chmod +x "$DIST/zeri"
 
 echo "Copying sidecar runtime"
-RUNTIME_SRC="$SCRIPT_DIR/src/ZeriLink/Runtime"
-if [ -d "$RUNTIME_SRC" ]; then
-    cp -r "$RUNTIME_SRC/." "$DIST/runtime/"
+RUNTIME_CANDIDATES=(
+    "$SCRIPT_DIR/runtime"
+    "$SCRIPT_DIR/src/ZeriLink/Runtime"
+)
+RUNTIME_SRC=""
+for candidate in "${RUNTIME_CANDIDATES[@]}"; do
+    if [ -d "$candidate" ]; then
+        RUNTIME_SRC="$candidate"
+        break
+    fi
+done
+
+if [ -z "$RUNTIME_SRC" ]; then
+    echo "ERROR: runtime directory not found."
+    exit 1
 fi
+cp -r "$RUNTIME_SRC/." "$DIST/runtime/"
 
 MANIFEST_SRC="$SCRIPT_DIR/runtime/runtime_manifest.json"
 if [ -f "$MANIFEST_SRC" ]; then
@@ -101,6 +115,13 @@ if [ -f "$MANIFEST_SRC" ]; then
 else
     echo "WARNING: runtime/runtime_manifest.json not found in project root."
 fi
+
+HELP_SRC="$SCRIPT_DIR/help"
+if [ ! -d "$HELP_SRC" ]; then
+    echo "ERROR: help directory not found in project root."
+    exit 1
+fi
+cp -r "$HELP_SRC/." "$DIST/help/"
 
 # Copy install script into dist
 INSTALL_SCRIPT="$SCRIPT_DIR/install.sh"
@@ -115,4 +136,12 @@ fi
 
 echo ""
 echo "Build completed."
+if [ ! -f "$DIST/help/help_catalog.json" ]; then
+    echo "ERROR: dist/help/help_catalog.json is missing."
+    exit 1
+fi
+if [ ! -f "$DIST/runtime/runtime_manifest.json" ]; then
+    echo "ERROR: dist/runtime/runtime_manifest.json is missing."
+    exit 1
+fi
 find "$DIST" -type f | sort

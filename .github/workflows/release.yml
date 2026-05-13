@@ -141,13 +141,24 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $required = @("dist\zeri.exe", "dist\zeri-engine.exe", "dist\vcruntime140.dll")
+          $required = @(
+            "dist\zeri.exe",
+            "dist\zeri-engine.exe",
+            "dist\vcruntime140.dll",
+            "dist\runtime\runtime_manifest.json",
+            "dist\help\help_catalog.json"
+          )
           foreach ($f in $required) {
             if (-not (Test-Path $f)) {
               throw "Missing required file in dist: $f"
             }
           }
           Write-Host "dist/ contents verified."
+
+      - name: Run startup smoke tests (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ctest --test-dir build-release --output-on-failure -C Release
 
       - name: Create Windows archive
         if: runner.os == 'Windows'
@@ -164,6 +175,21 @@ jobs:
             export CMAKE_OSX_ARCHITECTURES=arm64
           fi
           ./build.sh Release
+
+      - name: Verify Unix dist contents
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f dist/zeri
+          test -f dist/zeri-engine
+          test -f dist/runtime/runtime_manifest.json
+          test -f dist/help/help_catalog.json
+
+      - name: Run startup smoke tests (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: ctest --test-dir build-release --output-on-failure
 
       - name: Create Unix archive
         if: runner.os != 'Windows'
