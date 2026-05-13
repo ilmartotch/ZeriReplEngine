@@ -46,6 +46,7 @@ namespace Zeri::Engines::Defaults {
         std::thread m_errorThread;
         std::unique_ptr<Impl> m_impl;
 
+        void TerminateImpl();
         void JoinIoThreads();
     };
 

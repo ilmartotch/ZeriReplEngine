@@ -53,7 +53,41 @@ namespace Zeri::Engines::Defaults {
     ProcessBridge::ProcessBridge() : m_impl(std::make_unique<Impl>()) {}
 
     ProcessBridge::~ProcessBridge() {
-        Terminate();
+        TerminateImpl();
+    }
+
+    void ProcessBridge::TerminateImpl() {
+        m_running = false;
+
+#ifdef _WIN32
+        m_impl->stdInWrite.Reset();
+        m_impl->stdOutRead.Reset();
+        m_impl->stdErrRead.Reset();
+
+        if (m_impl->jobObject.IsValid()) {
+            m_impl->jobObject.Reset();
+        }
+
+        if (m_impl->childProcess.IsValid()) {
+            TerminateProcess(m_impl->childProcess.Get(), 0);
+            (void)WaitForSingleObject(m_impl->childProcess.Get(), INFINITE);
+            m_lastExitCode = 0;
+            m_impl->childProcess.Reset();
+        }
+#else
+        m_impl->stdinWrite.Reset();
+        m_impl->stdoutRead.Reset();
+        m_impl->stderrRead.Reset();
+
+        if (m_impl->childPid > 0) {
+            kill(m_impl->childPid, SIGTERM);
+            (void)waitpid(m_impl->childPid, nullptr, 0);
+            m_lastExitCode = 0;
+            m_impl->childPid = -1;
+        }
+#endif
+
+        JoinIoThreads();
     }
 
 #ifdef _WIN32
@@ -287,24 +321,7 @@ namespace Zeri::Engines::Defaults {
     }
 
     void ProcessBridge::Terminate() {
-        m_running = false;
-
-        m_impl->stdInWrite.Reset();
-        m_impl->stdOutRead.Reset();
-        m_impl->stdErrRead.Reset();
-
-        if (m_impl->jobObject.IsValid()) {
-            m_impl->jobObject.Reset();
-        }
-
-        if (m_impl->childProcess.IsValid()) {
-            TerminateProcess(m_impl->childProcess.Get(), 0);
-            (void)WaitForSingleObject(m_impl->childProcess.Get(), INFINITE);
-            m_lastExitCode = 0;
-            m_impl->childProcess.Reset();
-        }
-
-        JoinIoThreads();
+        TerminateImpl();
     }
 
 #else
@@ -521,20 +538,7 @@ namespace Zeri::Engines::Defaults {
     }
 
     void ProcessBridge::Terminate() {
-        m_running = false;
-
-        m_impl->stdinWrite.Reset();
-        m_impl->stdoutRead.Reset();
-        m_impl->stderrRead.Reset();
-
-        if (m_impl->childPid > 0) {
-            kill(m_impl->childPid, SIGTERM);
-            (void)waitpid(m_impl->childPid, nullptr, 0);
-            m_lastExitCode = 0;
-            m_impl->childPid = -1;
-        }
-
-        JoinIoThreads();
+        TerminateImpl();
     }
 #endif
 
