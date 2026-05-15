@@ -1,5 +1,6 @@
 #include "Ui/Include/OutputSink.h"
 
+#include <iostream>
 #include <utility>
 
 namespace Zeri::Ui {
@@ -20,16 +21,15 @@ namespace Zeri::Ui {
         if (m_connected.load(std::memory_order_acquire)) {
             try {
                 m_bridge.send(message, channel);
-            } catch (...) {
+            } catch (const std::exception& ex) {
                 m_connected.store(false, std::memory_order_release);
-                std::lock_guard lock(m_mutex);
-                m_buffer.emplace_back(message, channel);
+                std::cerr << "[OutputSink] Bridge send failed, buffering message: " << ex.what() << "\n";
+                BufferMessage(message, channel);
             }
             return;
         }
 
-        std::lock_guard lock(m_mutex);
-        m_buffer.emplace_back(message, channel);
+        BufferMessage(message, channel);
     }
 
     void OutputSink::SetConnected(bool connected) {
@@ -40,22 +40,44 @@ namespace Zeri::Ui {
         return m_connected.load(std::memory_order_acquire);
     }
 
+    void OutputSink::BufferMessage(const nlohmann::json& message, yuumi::Channel channel) {
+        std::lock_guard lock(m_mutex);
+        if (m_buffer.size() >= kMaxBufferedMessages) {
+            m_buffer.pop_front();
+            const std::size_t previousDropped = m_droppedBufferedMessages.fetch_add(1, std::memory_order_acq_rel);
+            if (previousDropped == 0) {
+                std::cerr << "[OutputSink] Buffer overflow while disconnected. Oldest messages will be dropped.\n";
+            }
+        }
+        m_buffer.emplace_back(message, channel);
+    }
+
     void OutputSink::Flush() {
-        std::vector<std::pair<nlohmann::json, yuumi::Channel>> pending;
+        std::deque<std::pair<nlohmann::json, yuumi::Channel>> pending;
 
         {
             std::lock_guard lock(m_mutex);
             pending.swap(m_buffer);
         }
 
-        for (size_t idx = 0; idx < pending.size(); ++idx) {
+        const std::size_t dropped = m_droppedBufferedMessages.exchange(0, std::memory_order_acq_rel);
+        if (dropped > 0) {
+            nlohmann::json warning;
+            warning["type"] = "error";
+            warning["payload"] = "Output buffer overflow while disconnected: dropped " +
+                std::to_string(dropped) + " message(s).";
+            pending.emplace_front(std::move(warning), yuumi::Channel::Command);
+        }
+
+        for (std::size_t idx = 0; idx < pending.size(); ++idx) {
             const auto& [msg, ch] = pending[idx];
             try {
                 m_bridge.send(msg, ch);
-            } catch (...) {
+            } catch (const std::exception& ex) {
                 m_connected.store(false, std::memory_order_release);
+                std::cerr << "[OutputSink] Flush failed, preserving pending messages: " << ex.what() << "\n";
                 std::lock_guard lock(m_mutex);
-                for (size_t rest = idx; rest < pending.size(); ++rest) {
+                for (std::size_t rest = idx; rest < pending.size(); ++rest) {
                     m_buffer.emplace_back(std::move(pending[rest]));
                 }
                 break;

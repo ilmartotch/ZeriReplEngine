@@ -110,11 +110,11 @@ namespace Zeri::Engines::Defaults {
                 return "Variable not found.";
             }
 
-            try {
-                return std::any_cast<std::string>(val);
-            } catch (...) {
+            if (val.type() != typeid(std::string)) {
                 return "Value is not a string.";
             }
+
+            return std::any_cast<std::string>(val);
         }
 
         return std::unexpected(ExecutionError{

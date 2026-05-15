@@ -10,6 +10,8 @@
 #include <cstdlib>
 #include <string>
 #include <stdexcept>
+#include <sstream>
+#include <vector>
 
 namespace Zeri::Core {
 
@@ -30,6 +32,72 @@ namespace Zeri::Core {
             }
             return {};
 #endif
+        }
+
+        [[nodiscard]] std::vector<unsigned char> ReadAllBytes(
+            const std::filesystem::path& path,
+            std::string& error
+        ) {
+            std::ifstream stream(path, std::ios::binary);
+            if (!stream.is_open()) {
+                error = "Failed to open help catalog file: " + path.string();
+                return {};
+            }
+
+            stream.seekg(0, std::ios::end);
+            const std::streamoff size = stream.tellg();
+            if (size < 0) {
+                error = "Failed to read help catalog size: " + path.string();
+                return {};
+            }
+
+            stream.seekg(0, std::ios::beg);
+            std::vector<unsigned char> bytes(static_cast<std::size_t>(size));
+            if (!bytes.empty()) {
+                stream.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+                if (!stream.good() && !stream.eof()) {
+                    error = "Failed while reading help catalog bytes: " + path.string();
+                    return {};
+                }
+            }
+
+            return bytes;
+        }
+
+        [[nodiscard]] std::string DecodeUtf8JsonText(
+            const std::vector<unsigned char>& bytes,
+            const std::filesystem::path& path,
+            std::string& error
+        ) {
+            if (bytes.empty()) {
+                error = "Help catalog file is empty: " + path.string();
+                return {};
+            }
+
+            if (bytes.size() >= 2U) {
+                const bool utf16LeBom = bytes[0] == 0xFFU && bytes[1] == 0xFEU;
+                const bool utf16BeBom = bytes[0] == 0xFEU && bytes[1] == 0xFFU;
+                if (utf16LeBom || utf16BeBom) {
+                    error = "Help catalog uses UTF-16 encoding. Use UTF-8 JSON: " + path.string();
+                    return {};
+                }
+            }
+
+            const bool hasNullByte = std::find(bytes.begin(), bytes.end(), static_cast<unsigned char>(0)) != bytes.end();
+            if (hasNullByte) {
+                error = "Help catalog contains NUL bytes and is not valid UTF-8 text JSON: " + path.string();
+                return {};
+            }
+
+            std::size_t offset = 0U;
+            if (bytes.size() >= 3U && bytes[0] == 0xEFU && bytes[1] == 0xBBU && bytes[2] == 0xBFU) {
+                offset = 3U;
+            }
+
+            return std::string(
+                reinterpret_cast<const char*>(bytes.data() + offset),
+                reinterpret_cast<const char*>(bytes.data() + bytes.size())
+            );
         }
     }
 
@@ -103,21 +171,45 @@ namespace Zeri::Core {
         return m_loaded;
     }
 
+    const std::string& HelpCatalog::LastError() const {
+        return m_lastError;
+    }
+
+    const std::filesystem::path& HelpCatalog::SourcePath() const {
+        return m_sourcePath;
+    }
+
     void HelpCatalog::Load() {
+        m_loaded = false;
+        m_contexts.clear();
+        m_reachable.clear();
+        m_commands.clear();
+        m_lastError.clear();
+
         try {
             const auto path = ResolveCatalogPath();
-            std::ifstream stream(path);
-            if (!stream.is_open()) {
-                m_loaded = false;
+            m_sourcePath = path;
+
+            if (!std::filesystem::exists(path)) {
+                m_lastError = "Help catalog file not found: " + path.string();
                 return;
             }
 
-            nlohmann::json doc;
-            stream >> doc;
+            std::string readError;
+            const auto bytes = ReadAllBytes(path, readError);
+            if (!readError.empty()) {
+                m_lastError = readError;
+                return;
+            }
 
-            m_contexts.clear();
-            m_reachable.clear();
-            m_commands.clear();
+            std::string decodeError;
+            const std::string jsonText = DecodeUtf8JsonText(bytes, path, decodeError);
+            if (!decodeError.empty()) {
+                m_lastError = decodeError;
+                return;
+            }
+
+            nlohmann::json doc = nlohmann::json::parse(jsonText);
 
             for (const auto& context : doc.at("contexts")) {
                 HelpContextEntry entry;
@@ -146,7 +238,19 @@ namespace Zeri::Core {
             }
 
             m_loaded = true;
-        } catch (...) {
+        } catch (const nlohmann::json::parse_error& e) {
+            std::ostringstream oss;
+            oss << "Failed to parse help catalog JSON at byte " << e.byte << ": " << e.what();
+            m_lastError = oss.str();
+            m_loaded = false;
+        } catch (const nlohmann::json::type_error& e) {
+            m_lastError = std::string("Help catalog schema type error: ") + e.what();
+            m_loaded = false;
+        } catch (const nlohmann::json::out_of_range& e) {
+            m_lastError = std::string("Help catalog schema key is missing: ") + e.what();
+            m_loaded = false;
+        } catch (const std::exception& e) {
+            m_lastError = std::string("Failed to load help catalog: ") + e.what();
             m_loaded = false;
         }
     }
@@ -194,4 +298,6 @@ namespace Zeri::Core {
 HelpCatalog.cpp
 Loads and exposes shared help metadata from `help/help_catalog.json`.
 The catalog is consumed by engine and terminal UI to keep command/context text synchronized.
+Load validates UTF-8 text input, rejects UTF-16/NUL-byte payloads, and records actionable
+failure diagnostics for CI and runtime reporting.
 */

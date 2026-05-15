@@ -388,6 +388,7 @@ namespace Zeri::Engines::Defaults {
             "  /context                 — List available contexts\n"
             "  /back                    — Return to previous context\n"
             "  /save                    — Save session state to disk\n"
+            "  /bug report              — Show bug-report instructions\n"
             "  /exit                    — Exit the REPL\n"
             "\n"
             "Math Commands:\n"

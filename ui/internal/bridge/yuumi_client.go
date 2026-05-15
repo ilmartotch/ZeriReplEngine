@@ -9,8 +9,8 @@ import (
 )
 
 type RealYuumiClient struct {
-	client *yuumi.Client
-	program *tea.Program
+	client       *yuumi.Client
+	program      *tea.Program
 	messageMutex sync.Mutex
 	handlerCtx   context.Context
 	handlerStop  context.CancelFunc
@@ -147,6 +147,19 @@ func (r *RealYuumiClient) RegisterMessageHandler() {
 		case "req_input":
 			prompt, _ := data["prompt"].(string)
 			program.Send(InputRequestMsg{Prompt: prompt})
+		case "sel_request":
+			title, _ := data["title"].(string)
+			options := make([]string, 0)
+			if optionsRaw, ok := data["options"].([]interface{}); ok {
+				for _, optionRaw := range optionsRaw {
+					optionText, ok := optionRaw.(string)
+					if !ok {
+						continue
+					}
+					options = append(options, optionText)
+				}
+			}
+			program.Send(SelectionRequestMsg{Title: title, Options: options})
 		case "context_changed":
 			name, _ := data["context"].(string)
 			active, ok := data["active"].(bool)

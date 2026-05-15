@@ -1,7 +1,9 @@
 #include "../Include/StartupDiagnostics.h"
 #include "../Include/AppPaths.h"
 
+#include <algorithm>
 #include <array>
+#include <vector>
 
 namespace Zeri::Core {
 
@@ -11,27 +13,89 @@ namespace Zeri::Core {
             return std::filesystem::exists(path, ec) && !ec;
         }
 
-        [[nodiscard]] std::filesystem::path ResolveRuntimeDir(const std::filesystem::path& executableDir) {
-            const auto lower = executableDir / "runtime";
-            if (ExistsNoThrow(lower)) {
-                return lower;
+        void AppendUniquePath(
+            std::vector<std::filesystem::path>& out,
+            const std::filesystem::path& path
+        ) {
+            if (path.empty()) {
+                return;
             }
 
-            const auto upper = executableDir / "Runtime";
-            if (ExistsNoThrow(upper)) {
-                return upper;
+            const auto alreadyPresent = std::ranges::find(out, path) != out.end();
+            if (!alreadyPresent) {
+                out.push_back(path);
+            }
+        }
+
+        void AppendAncestors(std::vector<std::filesystem::path>& out, std::filesystem::path start) {
+            std::error_code ec;
+            while (!start.empty()) {
+                AppendUniquePath(out, start);
+                const auto parent = start.parent_path();
+                if (parent == start) {
+                    break;
+                }
+                start = parent;
+                ec.clear();
+            }
+        }
+
+        [[nodiscard]] std::vector<std::filesystem::path> ResolveSearchRoots(const std::filesystem::path& executableDir) {
+            std::vector<std::filesystem::path> roots;
+            AppendAncestors(roots, executableDir);
+
+            std::error_code cwdEc;
+            const auto cwd = std::filesystem::current_path(cwdEc);
+            if (!cwdEc) {
+                AppendAncestors(roots, cwd);
             }
 
-            return lower;
+            return roots;
+        }
+
+        [[nodiscard]] bool HasHelpCatalog(const std::vector<std::filesystem::path>& roots) {
+            for (const auto& root : roots) {
+                if (ExistsNoThrow(root / "help" / "help_catalog.json")) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        [[nodiscard]] bool HasRuntimeManifest(const std::vector<std::filesystem::path>& roots) {
+            for (const auto& root : roots) {
+                if (ExistsNoThrow(root / "runtime" / "runtime_manifest.json")) {
+                    return true;
+                }
+                if (ExistsNoThrow(root / "Runtime" / "runtime_manifest.json")) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        [[nodiscard]] bool HasRuntimeScript(
+            const std::vector<std::filesystem::path>& roots,
+            std::string_view scriptName
+        ) {
+            for (const auto& root : roots) {
+                if (ExistsNoThrow(root / "runtime" / scriptName)) {
+                    return true;
+                }
+                if (ExistsNoThrow(root / "Runtime" / scriptName)) {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 
     StartupDiagnosticsReport CollectStartupDiagnostics() {
         StartupDiagnosticsReport report;
         report.executableDir = ResolveExecutableDir();
+        const auto searchRoots = ResolveSearchRoots(report.executableDir);
 
-        const auto helpCatalogPath = report.executableDir / "help" / "help_catalog.json";
-        if (!ExistsNoThrow(helpCatalogPath)) {
+        if (!HasHelpCatalog(searchRoots)) {
             report.issues.push_back({
                 "HELP_CATALOG_MISSING",
                 "help/help_catalog.json not found next to executable.",
@@ -39,9 +103,7 @@ namespace Zeri::Core {
             });
         }
 
-        const auto runtimeDir = ResolveRuntimeDir(report.executableDir);
-        const auto runtimeManifestPath = runtimeDir / "runtime_manifest.json";
-        if (!ExistsNoThrow(runtimeManifestPath)) {
+        if (!HasRuntimeManifest(searchRoots)) {
             report.issues.push_back({
                 "RUNTIME_MANIFEST_MISSING",
                 "runtime_manifest.json not found next to executable runtime assets.",
@@ -56,8 +118,7 @@ namespace Zeri::Core {
             "bootstrap_ruby.rb"
         };
         for (const auto scriptName : runtimeScripts) {
-            const auto scriptPath = runtimeDir / scriptName;
-            if (ExistsNoThrow(scriptPath)) {
+            if (HasRuntimeScript(searchRoots, scriptName)) {
                 continue;
             }
 

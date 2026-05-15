@@ -63,6 +63,45 @@ jobs:
           go-version: '1.25.0'
           cache-dependency-path: ui/go.sum
 
+      - name: Validate help catalog encoding and JSON
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $path = Join-Path $env:GITHUB_WORKSPACE "help/help_catalog.json"
+          if (-not (Test-Path $path)) {
+            throw "Missing required file: $path"
+          }
+
+          $bytes = [System.IO.File]::ReadAllBytes($path)
+          if ($bytes.Length -eq 0) {
+            throw "help/help_catalog.json is empty."
+          }
+
+          if ($bytes.Length -ge 2) {
+            $isUtf16Le = $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE
+            $isUtf16Be = $bytes[0] -eq 0xFE -and $bytes[1] -eq 0xFF
+            if ($isUtf16Le -or $isUtf16Be) {
+              throw "help/help_catalog.json must be UTF-8. UTF-16 BOM detected."
+            }
+          }
+
+          if ($bytes -contains 0) {
+            throw "help/help_catalog.json contains NUL bytes. Expected UTF-8 text JSON."
+          }
+
+          $utf8 = [System.Text.UTF8Encoding]::new($false, $true)
+          try {
+            $text = $utf8.GetString($bytes)
+          } catch {
+            throw "help/help_catalog.json is not valid UTF-8: $($_.Exception.Message)"
+          }
+
+          try {
+            $null = $text | ConvertFrom-Json -Depth 100
+          } catch {
+            throw "help/help_catalog.json is not valid JSON: $($_.Exception.Message)"
+          }
+
       - name: Configure vcpkg environment
         shell: pwsh
         run: |

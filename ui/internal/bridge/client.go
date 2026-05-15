@@ -6,15 +6,19 @@ type DataMsg struct{ Content string }
 type ErrorMsg struct{ Content string }
 type StatusMsg struct {
 	Connected bool
-	Lang string
-	MemMB uint64
+	Lang      string
+	MemMB     uint64
 }
 type ConnectedMsg struct{}
 type DisconnectedMsg struct{ Reason string }
 type InputRequestMsg struct{ Prompt string }
+type SelectionRequestMsg struct {
+	Title   string
+	Options []string
+}
 type ContextChangedMsg struct {
 	ContextName string
-	Active bool
+	Active      bool
 }
 
 type YuumiClient interface {
