@@ -28,6 +28,8 @@ namespace Zeri::Core {
         [[nodiscard]] const std::vector<HelpCommandEntry>& CommandsForGroup(std::string_view group) const;
         [[nodiscard]] std::vector<HelpCommandEntry> CommandsForContext(std::string_view contextName) const;
         [[nodiscard]] bool IsLoaded() const;
+        [[nodiscard]] const std::string& LastError() const;
+        [[nodiscard]] const std::filesystem::path& SourcePath() const;
 
     private:
         HelpCatalog();
@@ -40,6 +42,8 @@ namespace Zeri::Core {
         std::unordered_map<std::string, std::vector<std::string>> m_reachable;
         std::unordered_map<std::string, std::vector<HelpCommandEntry>> m_commands;
         bool m_loaded{ false };
+        std::filesystem::path m_sourcePath;
+        std::string m_lastError;
     };
 
 }
@@ -48,4 +52,5 @@ namespace Zeri::Core {
 HelpCatalog.h
 Defines the shared help/command metadata API used by engine and terminal UI.
 Data is loaded from `help/help_catalog.json` and exposed through a process-wide singleton.
+LastError() and SourcePath() expose failure diagnostics for runtime and smoke tests.
 */

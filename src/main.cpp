@@ -3,6 +3,8 @@
 #include "Core/Include/SystemGuard.h"
 #include "Core/Include/StartupDiagnostics.h"
 #include "Core/Include/UserPaths.h"
+#include "Core/Include/AppPaths.h"
+#include "Core/Include/BugSnapshot.h"
 #include "Engines/Include/GlobalContext.h"
 #include "Engines/Include/CustomCommandContext.h"
 #include "Engines/Include/JsContext.h"
@@ -32,6 +34,8 @@
 #include <vector>
 #include <optional>
 #include <exception>
+#include <sstream>
+#include <filesystem>
 
 namespace Zeri::Platform {
 #ifdef _WIN32
@@ -54,6 +58,79 @@ namespace Zeri::Platform {
 }
 
 namespace {
+    [[nodiscard]] bool IsUnreservedUrlChar(unsigned char c) {
+        return std::isalnum(c) != 0 || c == '-' || c == '_' || c == '.' || c == '~';
+    }
+
+    [[nodiscard]] std::string UrlEncode(std::string_view input) {
+        static constexpr char kHex[] = "0123456789ABCDEF";
+        std::string encoded;
+        encoded.reserve(input.size() * 3U);
+
+        for (unsigned char c : input) {
+            if (IsUnreservedUrlChar(c)) {
+                encoded.push_back(static_cast<char>(c));
+            } else {
+                encoded.push_back('%');
+                encoded.push_back(kHex[(c >> 4U) & 0x0FU]);
+                encoded.push_back(kHex[c & 0x0FU]);
+            }
+        }
+
+        return encoded;
+    }
+
+    [[nodiscard]] std::string BuildIssueReportBody(
+        const Zeri::Core::RuntimeState& runtimeState,
+        const Zeri::Core::StartupDiagnosticsReport* startupDiagnostics
+    ) {
+        const auto* ctx = runtimeState.GetCurrentContext();
+        const std::string contextName = ctx ? ctx->GetName() : "global";
+        const auto localVars = runtimeState.GetCurrentLocalVariables();
+        const auto localFuncs = runtimeState.GetCurrentLocalFunctions();
+        const auto& helpCatalog = Zeri::Core::HelpCatalog::Instance();
+
+        std::string body;
+        body += "## Bug description\n";
+        body += "Describe what happened and how to reproduce it.\n\n";
+        body += "## Diagnostics snapshot\n";
+        body += "- Context: " + contextName + "\n";
+        body += "- Local variables: " + std::to_string(localVars.size()) + "\n";
+        body += "- Local functions: " + std::to_string(localFuncs.size()) + "\n";
+        body += "- Function registry revision: " + std::to_string(runtimeState.GetFunctionRegistryRevision()) + "\n";
+        body += "- Session was corrupted: " + std::string(runtimeState.WasSessionCorrupted() ? "yes" : "no") + "\n";
+        body += "- Help catalog loaded: " + std::string(helpCatalog.IsLoaded() ? "yes" : "no") + "\n";
+        body += "- Help catalog source: `" + helpCatalog.SourcePath().string() + "`\n";
+
+        if (helpCatalog.LastError().empty()) {
+            body += "- Help catalog error: none\n";
+        } else {
+            body += "- Help catalog error: " + helpCatalog.LastError() + "\n";
+        }
+
+        if (startupDiagnostics != nullptr) {
+            body += "- Executable directory: `" + startupDiagnostics->executableDir.string() + "`\n";
+            body += "- Startup issue count: " + std::to_string(startupDiagnostics->issues.size()) + "\n";
+            for (const auto& issue : startupDiagnostics->issues) {
+                body += "  - " + issue.code + ": " + issue.message + " (Hint: " + issue.hint + ")\n";
+            }
+        }
+
+        body += "\n## Logs\n";
+        body += "Attach generated bug snapshot and steps already attempted.\n";
+        return body;
+    }
+
+    [[nodiscard]] std::string BuildPrefilledIssueUrl(
+        const Zeri::Core::RuntimeState& runtimeState,
+        const Zeri::Core::StartupDiagnosticsReport* startupDiagnostics
+    ) {
+        const std::string baseUrl = "https://github.com/ilmartotch/ZeriReplEngine/issues/new";
+        const std::string title = "Bug report: describe the failure here";
+        const std::string body = BuildIssueReportBody(runtimeState, startupDiagnostics);
+        return baseUrl + "?title=" + UrlEncode(title) + "&body=" + UrlEncode(body);
+    }
+
     [[nodiscard]] bool CanReachContext(std::string_view from, std::string_view target) {
         const auto reachable = Zeri::Core::HelpCatalog::Instance().ReachableFrom(from);
         return std::ranges::find(reachable, std::string(target)) != reachable.end();
@@ -73,6 +150,48 @@ namespace {
             result.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
         }
         return result;
+    }
+
+    [[nodiscard]] std::string CommandKindFromInput(std::string_view input) {
+        const std::string trimmed = ToLower(std::string(Trim(input)));
+        if (trimmed.empty()) return "empty";
+        if (trimmed.starts_with("$")) return "context_switch";
+        if (trimmed.starts_with("/")) return "slash_command";
+        return "expression";
+    }
+
+    [[nodiscard]] std::string CommandPreviewFromInput(std::string_view input) {
+        std::string trimmed = std::string(Trim(input));
+        if (trimmed.empty()) {
+            return "<empty>";
+        }
+        if (!trimmed.starts_with('/') && !trimmed.starts_with('$')) {
+            return "<expression>";
+        }
+        static constexpr std::size_t kMaxPreviewLength = 160;
+        if (trimmed.size() > kMaxPreviewLength) {
+            trimmed.resize(kMaxPreviewLength);
+            trimmed += "...";
+        }
+        return trimmed;
+    }
+
+    void AppendCommandHistory(
+        std::vector<Zeri::Core::BugSnapshotCommandRecord>& history,
+        std::string_view input,
+        bool success,
+        std::string responseCode
+    ) {
+        static constexpr std::size_t kMaxHistory = 50;
+        Zeri::Core::BugSnapshotCommandRecord record;
+        record.command = CommandPreviewFromInput(input);
+        record.kind = CommandKindFromInput(input);
+        record.success = success;
+        record.responseCode = responseCode.empty() ? (success ? "OK" : "FAILED") : std::move(responseCode);
+        history.push_back(std::move(record));
+        while (history.size() > kMaxHistory) {
+            history.erase(history.begin());
+        }
     }
 
     [[nodiscard]] std::unique_ptr<Zeri::Engines::IContext> BuildContext(const std::string& name) {
@@ -187,7 +306,9 @@ namespace {
         const Zeri::Engines::Command& cmd,
         Zeri::Core::RuntimeState& runtimeState,
         Zeri::Ui::ITerminal& terminal,
-        Zeri::Ui::OutputSink* sink = nullptr
+        Zeri::Ui::OutputSink* sink = nullptr,
+        const Zeri::Core::StartupDiagnosticsReport* startupDiagnostics = nullptr,
+        const std::vector<Zeri::Core::BugSnapshotCommandRecord>* commandHistory = nullptr
     ) {
         if (!Zeri::Engines::IsGlobalCommand(cmd.commandName)) {
             return false;
@@ -295,6 +416,65 @@ namespace {
             return true;
         }
 
+        if (cmd.commandName == "bug") {
+            if (cmd.args.empty() || (cmd.args.size() == 1 && ToLower(cmd.args[0]) == "report")) {
+                const std::string trackerUrl = "https://github.com/ilmartotch/ZeriReplEngine/issues";
+
+                std::string message = "Bug Report Guide\n";
+                message += "1. Open issue tracker: " + trackerUrl + "\n";
+                message += "2. Create project snapshot: /bug snapshot\n";
+                message += "3. Attach generated snapshot file to the GitHub issue\n";
+                message += "4. Add exact reproduction steps and expected vs actual behavior.\n";
+                terminal.WriteLine(message);
+                return true;
+            }
+
+            if (cmd.args.size() == 1 && ToLower(cmd.args[0]) == "snapshot") {
+                const auto selection = terminal.SelectMenu(
+                    "Create bug snapshot now?",
+                    {"Yes - create snapshot", "No - cancel"}
+                );
+                if (!selection.has_value() || selection.value() != 0) {
+                    terminal.WriteInfo("Bug snapshot generation canceled.");
+                    return true;
+                }
+
+                terminal.WriteInfo("Creating bug snapshot, please wait...");
+
+                std::error_code ec;
+                auto projectRoot = std::filesystem::current_path(ec);
+                if (ec) {
+                    projectRoot = startupDiagnostics ? startupDiagnostics->executableDir : Zeri::Core::ResolveExecutableDir();
+                }
+
+                const auto diagnostics = startupDiagnostics ? *startupDiagnostics : Zeri::Core::CollectStartupDiagnostics();
+                Zeri::Core::BugSnapshotMetadata metadata;
+                metadata.triggerCommand = "/bug snapshot";
+                if (commandHistory != nullptr) {
+                    metadata.commandHistory = *commandHistory;
+                }
+                metadata.commandHistory.push_back({
+                    "/bug snapshot",
+                    "slash_command",
+                    "REQUESTED",
+                    true
+                });
+                const auto snapshotResult = Zeri::Core::CreateBugSnapshot(runtimeState, diagnostics, projectRoot, metadata);
+                if (!snapshotResult.has_value()) {
+                    terminal.WriteError("Failed to generate bug snapshot: " + snapshotResult.error());
+                    return true;
+                }
+
+                terminal.WriteSuccess("Bug snapshot generated successfully.");
+                terminal.WriteLine("Snapshot file: " + snapshotResult->string());
+                terminal.WriteLine("Attach this file to your GitHub issue.");
+                return true;
+            }
+
+            terminal.WriteInfo("Usage: /bug report | /bug snapshot");
+            return true;
+        }
+
         return false;
     }
 
@@ -353,7 +533,9 @@ namespace {
         Zeri::Core::RuntimeState& runtimeState,
         Zeri::Ui::ITerminal& terminal,
         std::optional<std::string>& pipedValue,
-        Zeri::Ui::OutputSink* sink = nullptr
+        Zeri::Ui::OutputSink* sink = nullptr,
+        const Zeri::Core::StartupDiagnosticsReport* startupDiagnostics = nullptr,
+        const std::vector<Zeri::Core::BugSnapshotCommandRecord>* commandHistory = nullptr
     ) {
         auto dispatchResult = dispatcher.Dispatch(stageInput);
         if (!dispatchResult.has_value()) {
@@ -389,7 +571,7 @@ namespace {
 
             if (cmd.type == Zeri::Engines::InputType::Command &&
                 currentCtx->IsGlobalCommand(cmd.commandName)) {
-                if (HandleGlobalCommand(cmd, runtimeState, terminal, sink)) {
+                if (HandleGlobalCommand(cmd, runtimeState, terminal, sink, startupDiagnostics, commandHistory)) {
                     return true;
                 }
             }
@@ -533,6 +715,7 @@ int RunMain(int argc, char* argv[]) {
     Zeri::Engines::Defaults::MetaParser parser;
     Zeri::Engines::Defaults::DefaultDispatcher baseDispatcher;
     Zeri::Engines::Defaults::CachedDispatcher dispatcher(parser, baseDispatcher);
+    std::vector<Zeri::Core::BugSnapshotCommandRecord> commandHistory;
 
     runtimeState.PushContext(std::make_unique<Zeri::Engines::Defaults::GlobalContext>());
 
@@ -552,9 +735,12 @@ int RunMain(int argc, char* argv[]) {
     EmitStartupDiagnostics(startupDiagnostics, &terminal);
 
     if (!Zeri::Core::HelpCatalog::Instance().IsLoaded()) {
+        const auto& error = Zeri::Core::HelpCatalog::Instance().LastError();
+        const std::string details = error.empty() ? "No additional diagnostics available." : error;
         terminal.WriteError(
             "Help catalog is unavailable. /help output may be incomplete. "
-            "Ensure help/help_catalog.json is packaged next to the executable."
+            "Ensure help/help_catalog.json is packaged next to the executable. "
+            "Details: " + details
         );
     }
 
@@ -574,25 +760,30 @@ int RunMain(int argc, char* argv[]) {
         if (activeContext != nullptr && activeContext->WantsRawInput()) {
             auto outcome = activeContext->HandleRawLine(input, runtimeState, terminal);
             HandleOutcome(outcome, terminal);
+            AppendCommandHistory(commandHistory, input, outcome.has_value(), outcome.has_value() ? "OK" : outcome.error().code);
             continue;
         }
 
         const std::string lowered = ToLower(input);
         if (lowered == "$code") {
             (void)SwitchContext("code", runtimeState, terminal, sinkOwner.get());
+            AppendCommandHistory(commandHistory, input, true, "CONTEXT_SWITCH");
             continue;
         }
         if (lowered == "$customcommand") {
             (void)SwitchContext("customcommand", runtimeState, terminal, sinkOwner.get());
+            AppendCommandHistory(commandHistory, input, true, "CONTEXT_SWITCH");
             continue;
         }
 
         if (TryExecuteInlineSandbox(input, dispatcher, runtimeState, terminal)) {
+            AppendCommandHistory(commandHistory, input, true, "INLINE_SANDBOX");
             continue;
         }
 
         std::optional<std::string> pipedValue;
-        bool ok = ExecuteStage(input, dispatcher, runtimeState, terminal, pipedValue, sinkOwner.get());
+        bool ok = ExecuteStage(input, dispatcher, runtimeState, terminal, pipedValue, sinkOwner.get(), &startupDiagnostics, &commandHistory);
+        AppendCommandHistory(commandHistory, input, ok, ok ? "OK" : "FAILED");
 
         if (!ok) {
             continue;
@@ -601,7 +792,10 @@ int RunMain(int argc, char* argv[]) {
 
     terminal.WriteLine("Goodbye.");
     auto sessionPath = Zeri::Core::ResolveSessionPath();
-    [[maybe_unused]] auto saveResult = runtimeState.SaveSession(sessionPath);
+    auto saveResult = runtimeState.SaveSession(sessionPath);
+    if (!saveResult.has_value()) {
+        terminal.WriteError("Failed to save session on shutdown: " + saveResult.error());
+    }
     return 0;
 }
 
@@ -645,7 +839,7 @@ Bridge protocol (high-level):
       {"type": "req_input", "prompt": "<text>"}
 
 Behavior notes:
-  - Global commands (/context, /back, /status, /reset, /exit, /save) are
+  - Global commands (/context, /back, /status, /reset, /bug report, /exit, /save) are
     handled centrally before delegating to the active context.
   - Context changes and reset events emit context_changed when a sink exists.
   - System command execution uses Zeri::Platform::POpen/PClose wrappers to keep

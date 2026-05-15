@@ -50,8 +50,8 @@ func defaultHelpCatalog() helpCatalogData {
 			{Name: "setup", Description: "Configuration wizard"},
 		},
 		Reachable: map[string][]string{
-			"global": {"global", "code", "customcommand", "math", "sandbox", "setup"},
-			"code": {"global", "lua", "python", "js", "ts", "ruby"},
+			"global":  {"global", "code", "customcommand", "math", "sandbox", "setup"},
+			"code":    {"global", "lua", "python", "js", "ts", "ruby"},
 			"default": {"global"},
 		},
 		Commands: map[string][]helpCatalogCommandEntry{
@@ -67,6 +67,8 @@ func defaultHelpCatalog() helpCatalogData {
 				{Command: "/back", Synopsis: "Return to previous context"},
 				{Command: "/reset", Synopsis: "Reset the current session"},
 				{Command: "/status", Synopsis: "Show engine diagnostics"},
+				{Command: "/bug report", Synopsis: "Show bug-report instructions"},
+				{Command: "/bug snapshot", Synopsis: "Create a diagnostic snapshot file for issue attachments"},
 				{Command: "/save", Synopsis: "Save session state to disk"},
 				{Command: "/load", Synopsis: "Load a saved session from disk"},
 			},

@@ -63,6 +63,7 @@ if(WIN32)
 endif()
 
 set(CORE_SOURCES
+    src/Core/Source/BugSnapshot.cpp
     src/Core/Source/AppPaths.cpp
     src/Core/Source/ContextManager.cpp
     src/Core/Source/HelpCatalog.cpp
@@ -211,6 +212,9 @@ install(DIRECTORY "${CMAKE_SOURCE_DIR}/help"
 )
 
 if(BUILD_TESTING)
+    file(WRITE "${CMAKE_BINARY_DIR}/_invalid_help_catalog.json" "{ invalid json }\n")
+    file(WRITE "${CMAKE_BINARY_DIR}/_invalid_schema_help_catalog.json" "{ \"contexts\": [] }\n")
+
     add_executable(zeri_help_catalog_smoke
         src/Tests/HelpCatalogSmoke.cpp
         src/Core/Source/AppPaths.cpp
@@ -237,7 +241,7 @@ if(BUILD_TESTING)
 
     add_test(
         NAME helpcatalog-missing-safe
-        COMMAND zeri_help_catalog_smoke --expect-loaded=false
+        COMMAND zeri_help_catalog_smoke --expect-loaded=false --expect-error-contains=not found
     )
     set_tests_properties(helpcatalog-missing-safe PROPERTIES
         ENVIRONMENT "ZERI_HELP_CATALOG_PATH=${CMAKE_BINARY_DIR}/_missing_help_catalog.json"
@@ -250,6 +254,24 @@ if(BUILD_TESTING)
     )
     set_tests_properties(helpcatalog-loaded-explicit PROPERTIES
         ENVIRONMENT "ZERI_HELP_CATALOG_PATH=${CMAKE_SOURCE_DIR}/help/help_catalog.json"
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+    )
+
+    add_test(
+        NAME helpcatalog-invalid-json-explicit
+        COMMAND zeri_help_catalog_smoke --expect-loaded=false --expect-error-contains=parse
+    )
+    set_tests_properties(helpcatalog-invalid-json-explicit PROPERTIES
+        ENVIRONMENT "ZERI_HELP_CATALOG_PATH=${CMAKE_BINARY_DIR}/_invalid_help_catalog.json"
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+    )
+
+    add_test(
+        NAME helpcatalog-invalid-schema-explicit
+        COMMAND zeri_help_catalog_smoke --expect-loaded=false --expect-error-contains=schema
+    )
+    set_tests_properties(helpcatalog-invalid-schema-explicit PROPERTIES
+        ENVIRONMENT "ZERI_HELP_CATALOG_PATH=${CMAKE_BINARY_DIR}/_invalid_schema_help_catalog.json"
         WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
     )
 

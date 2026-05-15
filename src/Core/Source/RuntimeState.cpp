@@ -621,7 +621,8 @@ namespace Zeri::Core {
         } catch (const std::exception& e) {
             try {
                 std::filesystem::remove(path.string() + ".tmp");
-            } catch (...) {
+            } catch (const std::exception& cleanupEx) {
+                std::cerr << "[RuntimeState] Failed to cleanup temp file after save error: " << cleanupEx.what() << "\n";
             }
             return std::unexpected(std::string("Save failed: ") + e.what());
         }

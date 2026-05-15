@@ -33,9 +33,11 @@ namespace Zeri::Engines {
             ReplContext context;
         };
 
-        static constexpr std::array<CommandSpec, 19> kCommands = {{
+        static constexpr std::array<CommandSpec, 21> kCommands = {{
             {"/help", "Show help for current context", ReplContext::Global},
             {"/context", "List available contexts", ReplContext::Global},
+            {"/bug report", "Show bug-report instructions", ReplContext::Global},
+            {"/bug snapshot", "Create diagnostic snapshot for bug reports", ReplContext::Global},
             {"/exit", "Exit the REPL", ReplContext::Global},
             {"/back", "Return to previous context", ReplContext::Global},
             {"/save", "Save session state to disk", ReplContext::Global},
@@ -70,6 +72,6 @@ and parent context (Global, Math, Sandbox, Setup). Used for programmatic
 autocompletion and hint generation.
 
 QA Changes:
-  - Array expanded 16 -> 19: added /save (Global), /lua (Global), and /context (Global).
+  - Array expanded 16 -> 21: added /save (Global), /lua (Global), /context (Global), /bug report, and /bug snapshot.
   - All descriptions translated from Italian to English.
 */

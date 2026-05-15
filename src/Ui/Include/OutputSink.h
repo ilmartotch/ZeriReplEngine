@@ -3,6 +3,7 @@
 #include <yuumi/bridge.hpp>
 
 #include <vector>
+#include <deque>
 #include <mutex>
 #include <atomic>
 #include <string>
@@ -26,9 +27,13 @@ namespace Zeri::Ui {
         void Flush();
 
     private:
+        void BufferMessage(const nlohmann::json& message, yuumi::Channel channel);
+
         yuumi::Bridge& m_bridge;
+        static constexpr std::size_t kMaxBufferedMessages = 2048;
         std::atomic<bool> m_connected{ false };
-        std::vector<std::pair<nlohmann::json, yuumi::Channel>> m_buffer;
+        std::atomic<std::size_t> m_droppedBufferedMessages{ 0 };
+        std::deque<std::pair<nlohmann::json, yuumi::Channel>> m_buffer;
         std::mutex m_mutex;
     };
 
@@ -46,8 +51,10 @@ called, Send() forwards structured JSON payloads immediately.
 
 When the bridge is not yet connected (boot phase) or has been
 disconnected (error), Send() appends messages to a small internal
-buffer protected by a mutex. Once connectivity is restored and Flush()
-is called, all buffered messages are drained in FIFO order.
+buffer protected by a mutex. The buffer is bounded (kMaxBufferedMessages)
+to prevent unbounded memory growth while disconnected. Once connectivity
+is restored and Flush() is called, buffered messages are drained in FIFO
+order and any dropped-message count is reported as an explicit diagnostic.
 
 This design satisfies the Transport Abstraction requirement: the core
 engine never calls bridge.send() directly, and no output is silently

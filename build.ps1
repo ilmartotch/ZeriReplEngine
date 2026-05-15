@@ -59,11 +59,37 @@ if (Get-Command "cl.exe" -ErrorAction SilentlyContinue) {
 
 $toolchainPath = Resolve-VcpkgToolchain $Root $vsPath
 
-Write-Host "Cleaning and creating dist/"
-if (Test-Path $Dist) { Remove-Item $Dist -Recurse -Force }
-New-Item -ItemType Directory -Path $Dist | Out-Null
-New-Item -ItemType Directory -Path (Join-Path $Dist "runtime") | Out-Null
-New-Item -ItemType Directory -Path (Join-Path $Dist "help") | Out-Null
+Write-Host "Preparing dist/"
+if (-not (Test-Path $Dist)) {
+    New-Item -ItemType Directory -Path $Dist | Out-Null
+}
+
+$cleanupTargets = @(
+    "runtime",
+    "help",
+    "version.txt",
+    "zeri.exe",
+    "zeri-engine.exe",
+    "install.ps1"
+)
+foreach ($target in $cleanupTargets) {
+    $path = Join-Path $Dist $target
+    if (-not (Test-Path $path)) {
+        continue
+    }
+    try {
+        Remove-Item $path -Recurse -Force -ErrorAction Stop
+    } catch {
+        Write-Warning "Could not remove $path because it is in use. Continuing build and overwriting what is available."
+    }
+}
+
+if (-not (Test-Path (Join-Path $Dist "runtime"))) {
+    New-Item -ItemType Directory -Path (Join-Path $Dist "runtime") | Out-Null
+}
+if (-not (Test-Path (Join-Path $Dist "help"))) {
+    New-Item -ItemType Directory -Path (Join-Path $Dist "help") | Out-Null
+}
 
 Write-Host "Building zeri-engine (C++, $Config)"
 $BuildDir = Join-Path $Root "build-release"

@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 	"yuumi/internal/bridge"
@@ -39,16 +40,16 @@ const (
 	copyCommandModeLast   = "last"
 	copyCommandModeAll    = "all"
 	defaultScriptLanguage = "js"
-	saveCommandPrefix    = "/save"
-	loadCommandPrefix    = "/load"
-	newCommandPrefix     = "/new"
-	editCommandPrefix    = "/edit"
-	showCommandPrefix    = "/show"
-	runCommandPrefix     = "/run"
-	deleteCommandPrefix  = "/delete"
-	runtimeStatusCommand = "/runtime-status"
-	restartCoreCommand   = "/restart core"
-	restartCommand       = "restart"
+	saveCommandPrefix     = "/save"
+	loadCommandPrefix     = "/load"
+	newCommandPrefix      = "/new"
+	editCommandPrefix     = "/edit"
+	showCommandPrefix     = "/show"
+	runCommandPrefix      = "/run"
+	deleteCommandPrefix   = "/delete"
+	runtimeStatusCommand  = "/runtime-status"
+	restartCoreCommand    = "/restart core"
+	restartCommand        = "restart"
 )
 
 const (
@@ -169,6 +170,10 @@ type AppModel struct {
 	sandboxProcessRunning       bool
 	pendingContextPath          string
 	pendingInputPrompt          string
+	selectionMenuVisible        bool
+	selectionMenuTitle          string
+	selectionMenuOptions        []string
+	selectionMenuCursor         int
 	isCommandMode               bool
 	pendingReset                bool
 	pendingScriptExecution      bool
@@ -299,6 +304,10 @@ func (m *AppModel) autocompleteHeight() int {
 func (m *AppModel) replAuxiliaryPanelHeight() int {
 	height := m.autocompleteHeight()
 
+	if m.selectionMenuVisible {
+		height += lg.Height(m.renderSelectionMenu())
+	}
+
 	if m.sessionOverwriteVisible {
 		height += lg.Height(m.renderSessionOverwriteMenu())
 	}
@@ -421,6 +430,7 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.bridgeConnected = false
 		m.sandboxProcessRunning = false
 		m.pendingInputPrompt = ""
+		m.clearSelectionMenu()
 		if !m.startupInProgress {
 			m.addSystemMessage("ZeriEngine disconnected. Type '/restart' to reconnect.")
 			if reason := strings.TrimSpace(msg.Reason); reason != "" {
@@ -435,6 +445,7 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case engineConnectedMsg:
 		m.flushEngineBatch(false)
 		m.pendingInputPrompt = ""
+		m.clearSelectionMenu()
 		m.runner = msg.Runner
 		m.client = msg.Client
 		if msg.Runner != nil {
@@ -458,6 +469,7 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.bridgeConnected = false
 		m.sandboxProcessRunning = false
 		m.pendingInputPrompt = ""
+		m.clearSelectionMenu()
 		m.addErrorMessage("✗ Reconnect failed: " + msg.Error + "\nType 'restart' to retry.")
 		for _, tip := range m.disconnectionHints(msg.Error) {
 			m.addSystemMessage(tip)
@@ -474,6 +486,7 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case bridge.InputRequestMsg:
 		m.flushEngineBatch(false)
+		m.clearSelectionMenu()
 		m.pendingInputPrompt = strings.TrimSpace(msg.Prompt)
 		if m.pendingInputPrompt == "" {
 			m.addSystemMessage("Input required by running process.")
@@ -482,9 +495,23 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case bridge.SelectionRequestMsg:
+		m.flushEngineBatch(false)
+		m.pendingInputPrompt = ""
+		m.selectionMenuTitle = strings.TrimSpace(msg.Title)
+		m.selectionMenuOptions = append([]string{}, msg.Options...)
+		if len(m.selectionMenuOptions) == 0 {
+			m.selectionMenuOptions = []string{"Cancel"}
+		}
+		m.selectionMenuCursor = 0
+		m.selectionMenuVisible = true
+		m.recalculateLayout()
+		return m, nil
+
 	case bridge.ContextChangedMsg:
 		m.flushEngineBatch(false)
 		m.pendingInputPrompt = ""
+		m.clearSelectionMenu()
 		if msg.Active {
 			normalizedContext := normaliseContextName(msg.ContextName)
 			m.activeContext = leafContextFromPath(normalizedContext)
@@ -514,6 +541,7 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case startupFailedMsg:
 		m.flushEngineBatch(false)
 		m.pendingInputPrompt = ""
+		m.clearSelectionMenu()
 		m.startupInProgress = false
 		m.startupFailed = true
 		m.startupErrors = append([]string{}, msg.Errors...)
@@ -527,6 +555,7 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case startupReadyMsg:
 		m.flushEngineBatch(false)
 		m.pendingInputPrompt = ""
+		m.clearSelectionMenu()
 		m.runner = msg.Runner
 		m.client = msg.Client
 		if msg.Runner != nil {
@@ -651,6 +680,7 @@ func (m AppModel) updateScriptEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case bridge.InputRequestMsg:
 		m.flushEngineBatch(false)
+		m.clearSelectionMenu()
 		m.pendingInputPrompt = strings.TrimSpace(msg.Prompt)
 		if m.pendingInputPrompt == "" {
 			m.addSystemMessage("Input required by running process.")
@@ -659,9 +689,23 @@ func (m AppModel) updateScriptEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case bridge.SelectionRequestMsg:
+		m.flushEngineBatch(false)
+		m.pendingInputPrompt = ""
+		m.selectionMenuTitle = strings.TrimSpace(msg.Title)
+		m.selectionMenuOptions = append([]string{}, msg.Options...)
+		if len(m.selectionMenuOptions) == 0 {
+			m.selectionMenuOptions = []string{"Cancel"}
+		}
+		m.selectionMenuCursor = 0
+		m.selectionMenuVisible = true
+		m.recalculateLayout()
+		return m, nil
+
 	case bridge.ContextChangedMsg:
 		m.flushEngineBatch(false)
 		m.pendingInputPrompt = ""
+		m.clearSelectionMenu()
 		if msg.Active {
 			normalizedContext := normaliseContextName(msg.ContextName)
 			m.activeContext = leafContextFromPath(normalizedContext)
@@ -740,6 +784,10 @@ func (m AppModel) appendREPLAuxiliarySections(sections []string) []string {
 		sections = append(sections, m.autocomplete.View(m.width-4))
 	}
 
+	if m.selectionMenuVisible {
+		sections = append(sections, m.renderSelectionMenu())
+	}
+
 	if m.sessionOverwriteVisible {
 		sections = append(sections, m.renderSessionOverwriteMenu())
 	}
@@ -753,6 +801,50 @@ func (m AppModel) appendREPLAuxiliarySections(sections []string) []string {
 	}
 
 	return sections
+}
+
+func (m AppModel) renderSelectionMenu() string {
+	title := strings.TrimSpace(m.selectionMenuTitle)
+	if title == "" {
+		title = "Select an option"
+	}
+	options := m.selectionMenuOptions
+	if len(options) == 0 {
+		options = []string{"(no options available)"}
+	}
+
+	rows := make([]string, 0, len(options))
+	for idx, option := range options {
+		prefix := "   "
+		if idx == m.selectionMenuCursor {
+			prefix = " ▶ "
+		}
+		rows = append(rows, prefix+option)
+	}
+
+	panel := lg.JoinVertical(lg.Left, title, strings.Join(rows, "\n"))
+	width := m.width - 6
+	if width < 44 {
+		width = 44
+	}
+
+	return lg.NewStyle().
+		Border(lg.RoundedBorder()).
+		BorderForeground(ui.AzzurroElettrico).
+		Padding(0, 1).
+		Width(width).
+		Render(panel)
+}
+
+func (m *AppModel) clearSelectionMenu() {
+	wasVisible := m.selectionMenuVisible
+	m.selectionMenuVisible = false
+	m.selectionMenuTitle = ""
+	m.selectionMenuOptions = nil
+	m.selectionMenuCursor = 0
+	if wasVisible {
+		m.recalculateLayout()
+	}
 }
 
 func (m AppModel) renderStartupPanel() string {
@@ -1086,6 +1178,39 @@ func (m AppModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		return m, nil
+	}
+
+	if m.selectionMenuVisible {
+		switch normalizedKey {
+		case "up":
+			if m.selectionMenuCursor > 0 {
+				m.selectionMenuCursor--
+			}
+			return m, nil
+		case "down":
+			if m.selectionMenuCursor < len(m.selectionMenuOptions)-1 {
+				m.selectionMenuCursor++
+			}
+			return m, nil
+		case "esc", "escape":
+			cancelIndex := len(m.selectionMenuOptions) - 1
+			if cancelIndex < 0 {
+				cancelIndex = 0
+			}
+			m.clearSelectionMenu()
+			m.recalculateLayout()
+			return m, m.bridge.SendInputResponseCmd(strconv.Itoa(cancelIndex))
+		case "enter", "return":
+			selectedIndex := m.selectionMenuCursor
+			if selectedIndex < 0 || selectedIndex >= len(m.selectionMenuOptions) {
+				selectedIndex = 0
+			}
+			m.clearSelectionMenu()
+			m.recalculateLayout()
+			return m, m.bridge.SendInputResponseCmd(strconv.Itoa(selectedIndex))
+		default:
+			return m, nil
+		}
 	}
 
 	if m.sessionOverwriteVisible {
@@ -1782,6 +1907,9 @@ func (m *AppModel) flushEngineBatchIfSettled() {
 	if strings.TrimSpace(m.pendingInputPrompt) != "" {
 		return
 	}
+	if m.selectionMenuVisible {
+		return
+	}
 	if m.engineBatchUpdatedAt.IsZero() {
 		m.flushEngineBatch(false)
 		return
@@ -2260,6 +2388,9 @@ func (m AppModel) handleCopyCommand(cmd string) (tea.Model, tea.Cmd) {
 
 func (m AppModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 	m.flushEngineBatch(false)
+	if strings.EqualFold(strings.TrimSpace(cmd), "/bug") {
+		cmd = "/bug report"
+	}
 
 	if strings.EqualFold(strings.TrimSpace(cmd), "/back") {
 		if previous, ok := previousContextPath(m.activeContextPath); ok {

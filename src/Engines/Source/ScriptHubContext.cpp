@@ -27,6 +27,7 @@ namespace Zeri::Engines::Defaults {
             output += "  /save — Save session state to disk\n";
             output += "  /status — Show engine diagnostics\n";
             output += "  /reset — Reset the current session\n";
+            output += "  /bug report — Show bug-report instructions\n";
             output += "  /exit — Exit the REPL\n";
             output += "\n";
             output += "Context Navigation:\n";

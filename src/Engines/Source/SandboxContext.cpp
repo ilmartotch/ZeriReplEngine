@@ -356,6 +356,7 @@ namespace Zeri::Engines::Defaults {
                 "  /clear - Clear the chat history\n"
                 "  /status - Show engine diagnostics\n"
                 "  /reset - Reset the current session\n"
+                "  /bug report - Show bug-report instructions\n"
                 "  /exit - Exit the REPL\n"
                 "\n"
                 "Module Commands:\n"

@@ -23,19 +23,23 @@ namespace Zeri::Modules {
     }
 
     ModuleManager::~ModuleManager() {
-        m_stopRequested = true;
+        std::lock_guard<std::mutex> lifecycleLock(m_scanControlMutex);
+        m_stopRequested.store(true, std::memory_order_release);
         if (m_scanThread.joinable()) {
             m_scanThread.join();
         }
     }
 
     void ModuleManager::StartBackgroundScan() {
-        if (m_isScanning) return;
+        std::lock_guard<std::mutex> lifecycleLock(m_scanControlMutex);
+        if (m_isScanning.load(std::memory_order_acquire)) {
+            return;
+        }
         if (m_scanThread.joinable()) {
             m_scanThread.join();
         }
-        m_stopRequested = false;
-        m_isScanning = true;
+        m_stopRequested.store(false, std::memory_order_release);
+        m_isScanning.store(true, std::memory_order_release);
 
         m_scanThread = std::thread([this] {
             ScanTask();
@@ -43,7 +47,7 @@ namespace Zeri::Modules {
     }
 
     bool ModuleManager::IsScanning() const {
-        return m_isScanning;
+        return m_isScanning.load(std::memory_order_acquire);
     }
 
     std::vector<ModuleManifest> ModuleManager::GetModules() const {
@@ -57,9 +61,14 @@ namespace Zeri::Modules {
     }
 
     void ModuleManager::ScanTask() {
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_modules.clear();
+        }
+
         try {
             for (const auto& entry : fs::directory_iterator(m_modulesRoot)) {
-                if (m_stopRequested.load()) {
+                if (m_stopRequested.load(std::memory_order_acquire)) {
                     break;
                 }
 
@@ -73,10 +82,8 @@ namespace Zeri::Modules {
             }
         } catch (const std::exception& e) {
             std::cerr << "[ModuleManager] Exception during background scan: " << e.what() << "\n";
-        } catch (...) {
-            std::cerr << "[ModuleManager] Unknown exception during background scan.\n";
         }
-        m_isScanning = false;
+        m_isScanning.store(false, std::memory_order_release);
     }
 
     ModuleManifest ModuleManager::ParseManifest(const fs::path& dirPath) {

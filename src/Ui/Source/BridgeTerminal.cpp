@@ -1,5 +1,9 @@
 #include "Ui/Include/BridgeTerminal.h"
 
+#include <algorithm>
+#include <cctype>
+#include <stdexcept>
+
 namespace Zeri::Ui {
 
     BridgeTerminal::BridgeTerminal(OutputSink& sink)
@@ -91,10 +95,25 @@ namespace Zeri::Ui {
         auto response = std::move(m_inputQueue.front());
         m_inputQueue.pop();
 
+        std::string normalized = response;
+        std::ranges::transform(normalized, normalized.begin(), [](unsigned char c) {
+            return static_cast<char>(std::tolower(c));
+        });
+        if ((normalized == "y" || normalized == "yes") && !options.empty()) {
+            return 0;
+        }
+        if ((normalized == "n" || normalized == "no") && options.size() >= 2U) {
+            return 1;
+        }
+
         try {
             int idx = std::stoi(response);
             if (idx >= 0 && idx < static_cast<int>(options.size())) return idx;
-        } catch (...) {}
+        } catch (const std::invalid_argument&) {
+            return std::nullopt;
+        } catch (const std::out_of_range&) {
+            return std::nullopt;
+        }
         return std::nullopt;
     }
 
