@@ -419,12 +419,14 @@ namespace {
         if (cmd.commandName == "bug") {
             if (cmd.args.empty() || (cmd.args.size() == 1 && ToLower(cmd.args[0]) == "report")) {
                 const std::string trackerUrl = "https://github.com/ilmartotch/ZeriReplEngine/issues";
+                const std::string prefilledUrl = BuildPrefilledIssueUrl(runtimeState, startupDiagnostics);
 
                 std::string message = "Bug Report Guide\n";
                 message += "1. Open issue tracker: " + trackerUrl + "\n";
-                message += "2. Create project snapshot: /bug snapshot\n";
-                message += "3. Attach generated snapshot file to the GitHub issue\n";
-                message += "4. Add exact reproduction steps and expected vs actual behavior.\n";
+                message += "2. Optional prefilled issue draft: " + prefilledUrl + "\n";
+                message += "3. Create project snapshot: /bug snapshot\n";
+                message += "4. Attach generated snapshot file to the GitHub issue\n";
+                message += "5. Add exact reproduction steps and expected vs actual behavior.\n";
                 terminal.WriteLine(message);
                 return true;
             }
