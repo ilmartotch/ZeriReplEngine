@@ -4,6 +4,18 @@ param(
     [switch]$Uninstall
 )
 
+<#
+USAGE
+  Direct invocation (recommended):
+    .\install.ps1 [-Force] [-System] [-Uninstall]
+
+  One-liner install:
+    irm https://github.com/ilmartotch/ZeriReplEngine/releases/latest/download/install.ps1 | iex
+
+  One-liner uninstall (parameters cannot be passed via iex; use scriptblock syntax):
+    & ([scriptblock]::Create((irm https://github.com/ilmartotch/ZeriReplEngine/releases/latest/download/install.ps1))) -Uninstall
+#>
+
 $ErrorActionPreference = "Stop"
 $Repo = "ilmartotch/ZeriReplEngine"
 $BinDir = if ($System) { "C:\Program Files\Zeri" } else { "$env:LOCALAPPDATA\Zeri" }
@@ -55,13 +67,11 @@ function Remove-PathEntry {
 
 if ($System -and -not (Test-IsAdministrator)) {
     Write-Error "System installation requires administrator privileges. Run this script as Administrator."
-    exit 1
 }
 
 if ($Uninstall) {
     if (-not (Test-Path $ManifestFile)) {
-        Write-Host "No Zeri installation found at $BinDir."
-        exit 1
+        throw "No Zeri installation found at $BinDir."
     }
 
     $manifest = Get-Content $ManifestFile -Raw | ConvertFrom-Json
@@ -105,7 +115,7 @@ if ($Uninstall) {
     $pathTarget = if ($System) { "Machine" } else { "User" }
     Remove-PathEntry -PathToRemove $BinDir -Target $pathTarget
     Write-Host "Zeri has been completely uninstalled."
-    exit 0
+    return
 }
 
 Write-Host "Installing Zeri..."
@@ -115,22 +125,21 @@ $latestVersion = $release.tag_name
 if (Test-Path $ManifestFile) {
     $existingManifest = Get-Content $ManifestFile -Raw | ConvertFrom-Json
     if ($existingManifest.version -eq $latestVersion -and -not $Force) {
-        Write-Host "Zeri $latestVersion is already installed. Use --force to reinstall."
-        exit 0
+        Write-Host "Zeri $latestVersion is already installed. Use -Force to reinstall."
+        return
     }
 }
 
 if ($Force) {
     $confirmation = Read-Host "Warning: reinstalling may affect custom commands, variables, and saved sessions. Proceed? [y/N]"
     if ($confirmation -ne "y") {
-        exit 0
+        return
     }
 }
 
 $asset = $release.assets | Where-Object { $_.name -match "windows" } | Select-Object -First 1
 if (-not $asset) {
     Write-Error "No Windows release asset found for $Repo."
-    exit 1
 }
 
 $tempRoot = Join-Path $env:TEMP ("zeri-install-" + [Guid]::NewGuid().ToString("N"))
@@ -152,7 +161,6 @@ try {
         Select-Object -First 1
     if (-not $archiveManifestFile) {
         Write-Error "$installManifestFilename not found in release archive. Cannot install."
-        exit 1
     }
     $archiveRoot = $archiveManifestFile.DirectoryName
     $archiveManifest = Get-Content $archiveManifestFile.FullName -Raw | ConvertFrom-Json
@@ -188,7 +196,6 @@ try {
     foreach ($f in $criticalFiles) {
         if (-not (Test-Path $f)) {
             Write-Error "Critical file missing after install: $f"
-            exit 1
         }
     }
 
@@ -233,5 +240,16 @@ with a manifest-driven loop that reads install_manifest.json from the release ar
 - Uninstall updated: files_installed loop calls .Replace('/','\') for path safety;
   hardcoded Runtime+help removal replaced by a dirs_created foreach loop.
 - Critical-file verification added post-copy for the four files required for a working install.
+
+Issues 1+2 (irm | iex compatibility):
+- All `exit 0` replaced with `return` so the PowerShell host process is NOT terminated when
+  the script is piped through Invoke-Expression (irm URL | iex). The terminal stays open.
+- All `exit 1` after Write-Error removed: with $ErrorActionPreference="Stop", Write-Error
+  already throws a terminating error — exit 1 was unreachable dead code.
+- Uninstall "not found" case now uses `throw` instead of Write-Host+exit so the error is
+  visible as a proper PowerShell error in all invocation contexts.
+- USAGE comment block added at the top documenting the correct irm|iex one-liner and the
+  scriptblock syntax required to pass -Uninstall when piping from the web.
+- Fixed `-Force` hint: was "--force" (bash style), now "-Force" (correct PowerShell style).
 #>
 

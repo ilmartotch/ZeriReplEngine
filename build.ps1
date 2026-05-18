@@ -193,6 +193,15 @@ if (Test-Path $InstallScript) {
     throw "install.ps1 not found in repo root. Cannot include in release package."
 }
 
+# Copy ZIP-extraction setup script into dist
+$SetupScript = Join-Path $Root "setup.ps1"
+if (Test-Path $SetupScript) {
+    Copy-Item $SetupScript -Destination (Join-Path $Dist "setup.ps1")
+    Write-Host "Copied setup.ps1 to dist/"
+} else {
+    throw "setup.ps1 not found in repo root. Cannot include ZIP PATH setup helper in release package."
+}
+
 $installManifestFilename = "install_manifest.json"
 $manifestSchemaVersion = 1
 $assets = @()
@@ -258,4 +267,3 @@ bug where new build assets silently break installation.
   generation failure surfaces as a hard build error immediately.
 - Type heuristic: .exe=binary, .dll=dll, .so/.so.N/.dylib=lib, no-ext=binary, else=asset.
 #>
-
