@@ -75,6 +75,12 @@ func runStartupFlowAsync(ctx context.Context, p *tea.Program, bridgeClient *brid
 		if err != nil {
 			runner.Stop()
 			appendStartupLog(logPath, "ENGINE_CONNECT", []string{err.Error()})
+			if runner.EngineLogPath != "" {
+				if engineLogBytes, readErr := os.ReadFile(runner.EngineLogPath); readErr == nil && len(engineLogBytes) > 0 {
+					engineLines := strings.Split(strings.TrimRight(string(engineLogBytes), "\r\n"), "\n")
+					appendStartupLog(logPath, "ENGINE_STDERR", engineLines)
+				}
+			}
 			p.Send(startupFailedMsg{Errors: []string{"Bridge connection failed. Engine may be blocked by security policy."}, LogPath: logPath})
 			return
 		}
@@ -188,4 +194,10 @@ startup_flow.go
 Runs asynchronous startup initialization after the TUI is already visible.
 The flow emits live phase messages and final readiness/failure messages so the UI
 can render progress and clear diagnostics while keeping startup responsive.
+
+When yuumi.Connect fails, the engine stderr log (runner.EngineLogPath → logs/zeri-engine.log)
+is read and appended to the startup log under the ENGINE_STDERR section before the
+startupFailedMsg is emitted. This surfaces DLL-load crashes and C++ startup errors that
+previously made the startup log silent about the true engine-side failure cause.
+The read only runs on the failure path; the happy path is unaffected.
 */

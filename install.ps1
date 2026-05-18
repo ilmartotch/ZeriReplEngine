@@ -66,15 +66,17 @@ if ($Uninstall) {
 
     $manifest = Get-Content $ManifestFile -Raw | ConvertFrom-Json
     foreach ($fileName in $manifest.files_installed) {
-        $targetFile = Join-Path $BinDir $fileName
+        $targetFile = Join-Path $BinDir ($fileName.Replace('/', '\'))
         if (Test-Path $targetFile) {
             Remove-Item $targetFile -Force
         }
     }
 
-    $runtimeDir = Join-Path $BinDir "Runtime"
-    if (Test-Path $runtimeDir) {
-        Remove-Item $runtimeDir -Recurse -Force
+    foreach ($dirName in $manifest.dirs_created) {
+        $targetDir = Join-Path $BinDir ($dirName.Replace('/', '\'))
+        if (Test-Path $targetDir) {
+            Remove-Item $targetDir -Recurse -Force
+        }
     }
 
     if (Test-Path $ManifestFile) {
@@ -144,18 +146,51 @@ try {
 
     New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
 
-    $zeriExe = Get-ChildItem $stagingDir -Recurse -File -Filter "zeri.exe" | Select-Object -First 1
-    $engineExe = Get-ChildItem $stagingDir -Recurse -File -Filter "zeri-engine.exe" | Select-Object -First 1
-    $runtimeSource = Get-ChildItem $stagingDir -Recurse -Directory | Where-Object { $_.Name -eq "Runtime" } | Select-Object -First 1
-
-    if (-not $zeriExe -or -not $engineExe -or -not $runtimeSource) {
-        Write-Error "Release package is missing required files (zeri.exe, zeri-engine.exe, Runtime)."
+    $installManifestFilename = "install_manifest.json"
+    $manifestSchemaVersion = 1
+    $archiveManifestFile = Get-ChildItem -Path $stagingDir -Recurse -File -Filter $installManifestFilename |
+        Select-Object -First 1
+    if (-not $archiveManifestFile) {
+        Write-Error "$installManifestFilename not found in release archive. Cannot install."
         exit 1
     }
+    $archiveRoot = $archiveManifestFile.DirectoryName
+    $archiveManifest = Get-Content $archiveManifestFile.FullName -Raw | ConvertFrom-Json
+    if ($archiveManifest.version -ne $manifestSchemaVersion) {
+        Write-Warning "Manifest version $($archiveManifest.version) != expected $manifestSchemaVersion. Proceeding."
+    }
 
-    Copy-Item $zeriExe.FullName -Destination (Join-Path $BinDir "zeri.exe") -Force
-    Copy-Item $engineExe.FullName -Destination (Join-Path $BinDir "zeri-engine.exe") -Force
-    Copy-Item $runtimeSource.FullName -Destination (Join-Path $BinDir "Runtime") -Recurse -Force
+    $installedFiles = @()
+    $createdDirsSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($asset in $archiveManifest.assets) {
+        $srcPath = Join-Path $archiveRoot ($asset.src.Replace('/', '\'))
+        $destDir = if ($asset.dest -eq ".") { $BinDir } else { Join-Path $BinDir ($asset.dest.Replace('/', '\')) }
+        if (-not (Test-Path $destDir)) {
+            New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+        }
+        if (Test-Path $srcPath) {
+            Copy-Item -Path $srcPath -Destination $destDir -Force
+            $installedFiles += $asset.src
+            if ($asset.dest -ne ".") { $createdDirsSet.Add($asset.dest) | Out-Null }
+            Write-Verbose "Installed: $($asset.src) -> $destDir"
+        } else {
+            Write-Warning "Asset not found in archive: $($asset.src)"
+        }
+    }
+    $createdDirs = @($createdDirsSet)
+
+    $criticalFiles = @(
+        (Join-Path $BinDir "zeri.exe"),
+        (Join-Path $BinDir "zeri-engine.exe"),
+        (Join-Path $BinDir "help\help_catalog.json"),
+        (Join-Path $BinDir "runtime\runtime_manifest.json")
+    )
+    foreach ($f in $criticalFiles) {
+        if (-not (Test-Path $f)) {
+            Write-Error "Critical file missing after install: $f"
+            exit 1
+        }
+    }
 
     New-Item -ItemType Directory -Path (Join-Path $UserDataDir "sessions") -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $UserDataDir "scripts") -Force | Out-Null
@@ -170,8 +205,8 @@ try {
         user_data_dir = $UserDataDir
         system_install = [bool]$System
         path_modified = [bool]$pathModified
-        files_installed = @("zeri.exe", "zeri-engine.exe")
-        dirs_created = @("Runtime")
+        files_installed = $installedFiles
+        dirs_created = $createdDirs
     }
 
     $manifestJson = $manifest | ConvertTo-Json -Depth 4
@@ -185,9 +220,18 @@ try {
 }
 
 <#
-Install script now supports install, force reinstall, system-wide install, and complete uninstall.
-It separates binary deployment from user data, writes a manifest with installation metadata,
-maintains PATH for user or machine scope, and preserves controlled prompts for destructive actions.
-Release assets are fetched from GitHub, staged in a temporary directory, and only required runtime files
-are copied into the binary directory while user sessions/scripts directories are created under APPDATA.
+--- CHANGES ---
+A1/A2 (Prompt 01): Added DLL and help\ copy blocks — superseded by manifest-driven approach below.
+Prompt 02: Replaced all hardcoded copy logic (zeri.exe, zeri-engine.exe, Runtime\, *.dll, help\)
+with a manifest-driven loop that reads install_manifest.json from the release archive.
+- $installManifestFilename / $manifestSchemaVersion: constants for the archive manifest.
+- $archiveRoot: derived from the manifest's location in the extracted archive tree, so the
+  install works regardless of whether the ZIP has a top-level directory.
+- $installedFiles: dynamic list of all copied src paths fed into files_installed in the tracking
+  manifest, so uninstall correctly removes every file regardless of future build additions.
+- $createdDirs: unique set of dest subdirectories, fed into dirs_created for uninstall cleanup.
+- Uninstall updated: files_installed loop calls .Replace('/','\') for path safety;
+  hardcoded Runtime+help removal replaced by a dirs_created foreach loop.
+- Critical-file verification added post-copy for the four files required for a working install.
 #>
+
