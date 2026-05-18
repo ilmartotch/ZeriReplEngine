@@ -649,7 +649,7 @@ namespace {
     ) {
         const std::string base = "Executable directory: " + diagnostics.executableDir.string();
         LogStartupLine(base);
-        if (terminal != nullptr) {
+        if (terminal != nullptr && !diagnostics.issues.empty()) {
             terminal->WriteInfo(base);
         }
 
@@ -846,4 +846,7 @@ Behavior notes:
   - Context changes and reset events emit context_changed when a sink exists.
   - System command execution uses Zeri::Platform::POpen/PClose wrappers to keep
     cross-platform process pipe handling localized.
+  - EmitStartupDiagnostics: "Executable directory" is always logged to stderr but
+    is now only written to the TUI when there are actual startup issues. This removes
+    the unconditional informational noise from the user-facing output on clean starts.
 */

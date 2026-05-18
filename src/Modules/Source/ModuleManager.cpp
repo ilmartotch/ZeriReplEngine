@@ -1,4 +1,5 @@
 #include "../Include/ModuleManager.h"
+#include "../../Core/Include/AppPaths.h"
 #include <fstream>
 #include <iostream>
 #include <nlohmann/json.hpp>
@@ -8,7 +9,7 @@ namespace fs = std::filesystem;
 namespace Zeri::Modules {
 
     ModuleManager::ModuleManager()
-        : ModuleManager(std::filesystem::path{ ModuleManager::kModulesRoot }) {
+        : ModuleManager(Zeri::Core::ResolveExecutableDir() / ModuleManager::kModulesRoot) {
     }
 
     ModuleManager::ModuleManager(std::filesystem::path modulesRoot)
@@ -147,7 +148,10 @@ namespace Zeri::Modules {
 
 /*
 Uses std::filesystem to iterate over m_modulesRoot configured at construction.
-Default construction resolves m_modulesRoot from ModuleManager::kModulesRoot.
+Default construction resolves m_modulesRoot via Zeri::Core::ResolveExecutableDir()
+so the modules/ directory is always sibling to the executable, regardless of CWD.
+This fixes a cross-drive crash (exit status 1) that occurred when zeri was launched
+from a volume different from the install directory.
 The ScanTask runs on a separate thread. It locks the m_mutex ONLY when writing to the map,
 minimizing contention with the main thread (which reads the map).
 Uses nlohmann::json for robust manifest parsing with proper error handling.

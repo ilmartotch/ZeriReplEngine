@@ -47,6 +47,7 @@ func (r *Runner) Start(ctx context.Context) error {
 
 	ctx, r.cancel = context.WithCancel(ctx)
 	r.cmd = exec.CommandContext(ctx, r.BinaryPath, "--yuumi-pipe", r.PipeName)
+	r.cmd.Dir = filepath.Dir(r.BinaryPath)
 	r.cmd.Env = append(os.Environ(), "ZERI_SESSION_TEMP_DIR="+r.SessionTempDir)
 
 	r.cmd.Stdout = io.Discard
@@ -153,4 +154,9 @@ func (r *Runner) trapSignals() {
 
  watchProcess: Monitors cmd.Wait() and invokes OnCrash callback if
  the child exits with an error.
+
+ cmd.Dir: Set to the engine binary's own directory so the engine always
+ inherits a valid working directory regardless of the CWD from which
+ the user launched zeri. This prevents CWD-relative path failures in
+ the C++ engine when running from a different volume or directory.
 */

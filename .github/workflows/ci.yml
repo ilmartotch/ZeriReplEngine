@@ -174,6 +174,7 @@ jobs:
         shell: pwsh
         run: |
           $required = @(
+            "dist/install_manifest.json",
             "dist/help/help_catalog.json",
             "dist/runtime/runtime_manifest.json",
             "dist/runtime/bootstrap_bun.js",
@@ -184,9 +185,13 @@ jobs:
           if ($env:RUNNER_OS -eq "Windows") {
             $required += "dist/zeri.exe"
             $required += "dist/zeri-engine.exe"
+            $required += "dist/install.ps1"
+            $required += "dist/setup.ps1"
           } else {
             $required += "dist/zeri"
             $required += "dist/zeri-engine"
+            $required += "dist/install.sh"
+            $required += "dist/setup.sh"
           }
           foreach ($item in $required) {
             if (-not (Test-Path $item)) {

@@ -134,6 +134,17 @@ else
     exit 1
 fi
 
+# Copy ZIP-extraction setup script into dist
+SETUP_SCRIPT="$SCRIPT_DIR/setup.sh"
+if [ -f "$SETUP_SCRIPT" ]; then
+    cp "$SETUP_SCRIPT" "$DIST/setup.sh"
+    chmod +x "$DIST/setup.sh"
+    echo "Copied setup.sh to dist/"
+else
+    echo "ERROR: setup.sh not found in repo root. Cannot include ZIP PATH setup helper in release package."
+    exit 1
+fi
+
 INSTALL_MANIFEST_FILENAME="install_manifest.json"
 MANIFEST_SCHEMA_VERSION=1
 
@@ -194,4 +205,3 @@ find "$DIST" -type f | sort
 # - Type heuristic: *.so.*=lib, *.so=lib, *.dylib=lib, *.exe=binary, *.dll=dll,
 #   no-extension=binary (zeri, zeri-engine), everything else=asset.
 # - Added install_manifest.json presence check to the verification block.
-
