@@ -50,7 +50,7 @@ else
     exit 1
 fi
 
-RUNTIME_DIR="$SHARE_DIR/runtime"
+RUNTIME_DIR="$BIN_DIR/runtime"
 MANIFEST_FILE="$SHARE_DIR/zeri-manifest.json"
 
 manifest_version() {
@@ -140,7 +140,14 @@ if [ "$UNINSTALL" = true ]; then
         fi
     done < <(manifest_string_array "shell_rc_files" "$MANIFEST_FILE")
 
-    rm -rf "$RUNTIME_DIR"
+    while IFS= read -r dir_name; do
+        [ -z "$dir_name" ] && continue
+        target_dir="$BIN_DIR/$dir_name"
+        if [ -d "$target_dir" ]; then
+            rm -rf "$target_dir"
+        fi
+    done < <(manifest_string_array "dirs_created" "$MANIFEST_FILE")
+
     rm -f "$MANIFEST_FILE"
 
     if [ -d "$SHARE_DIR" ] && [ -z "$(ls -A "$SHARE_DIR")" ]; then
@@ -223,22 +230,62 @@ mkdir -p "$BIN_DIR"
 mkdir -p "$SHARE_DIR"
 mkdir -p "$RUNTIME_DIR"
 
-ZERI_BIN="$(find "$STAGING_DIR" -type f -name 'zeri' | head -n1)"
-ZERI_ENGINE_BIN="$(find "$STAGING_DIR" -type f -name 'zeri-engine' | head -n1)"
-RUNTIME_SRC="$(find "$STAGING_DIR" -type d \( -name 'runtime' -o -name 'Runtime' \) | head -n1)"
-
-if [ -z "$ZERI_BIN" ] || [ -z "$ZERI_ENGINE_BIN" ] || [ -z "$RUNTIME_SRC" ]; then
-    echo "Error: release package is missing zeri, zeri-engine, or runtime directory."
+INSTALL_MANIFEST_FILENAME="install_manifest.json"
+MANIFEST_SCHEMA_VERSION=1
+ARCHIVE_MANIFEST="$(find "$STAGING_DIR" -type f -name "$INSTALL_MANIFEST_FILENAME" | head -n1)"
+if [ -z "$ARCHIVE_MANIFEST" ]; then
+    echo "Error: $INSTALL_MANIFEST_FILENAME not found in release archive. Cannot install." >&2
     exit 1
 fi
+ARCHIVE_ROOT="$(dirname "$ARCHIVE_MANIFEST")"
 
-cp "$ZERI_BIN" "$BIN_DIR/zeri"
-cp "$ZERI_ENGINE_BIN" "$BIN_DIR/zeri-engine"
-chmod +x "$BIN_DIR/zeri" "$BIN_DIR/zeri-engine"
+TRACK_TEMP="$(mktemp)"
+python3 - "$ARCHIVE_MANIFEST" "$ARCHIVE_ROOT" "$BIN_DIR" "$TRACK_TEMP" "$MANIFEST_SCHEMA_VERSION" <<'PY'
+import sys, json, os, shutil, stat
 
-rm -rf "$RUNTIME_DIR"
-mkdir -p "$RUNTIME_DIR"
-cp -R "$RUNTIME_SRC"/. "$RUNTIME_DIR"/
+manifest_path = sys.argv[1]
+archive_root = sys.argv[2]
+bin_dir = sys.argv[3]
+track_file = sys.argv[4]
+expected_ver = int(sys.argv[5])
+
+with open(manifest_path) as f:
+    manifest = json.load(f)
+
+if manifest.get("version") != expected_ver:
+    print(f"Warning: manifest version {manifest.get('version')} != expected {expected_ver}", file=sys.stderr)
+
+installed_files = []
+created_dirs = set()
+
+for asset in manifest["assets"]:
+    src_path = os.path.join(archive_root, *asset["src"].split("/"))
+    dest = asset["dest"]
+    dest_dir = bin_dir if dest == "." else os.path.join(bin_dir, *dest.split("/"))
+    if dest != ".":
+        created_dirs.add(dest)
+    os.makedirs(dest_dir, exist_ok=True)
+    if os.path.exists(src_path):
+        dest_path = os.path.join(dest_dir, os.path.basename(src_path))
+        shutil.copy2(src_path, dest_path)
+        if asset["type"] == "binary":
+            st = os.stat(dest_path)
+            os.chmod(dest_path, st.st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+        installed_files.append(asset["src"])
+        print(f"Installed: {asset['src']} -> {dest_dir}")
+    else:
+        print(f"Warning: {asset['src']} not found in archive", file=sys.stderr)
+
+with open(track_file, "w") as f:
+    json.dump({"files": installed_files, "dirs": sorted(created_dirs)}, f)
+PY
+
+for f in "$BIN_DIR/zeri" "$BIN_DIR/zeri-engine" "$BIN_DIR/help/help_catalog.json" "$BIN_DIR/runtime/runtime_manifest.json"; do
+    if [ ! -f "$f" ]; then
+        echo "Error: critical file missing after install: $f" >&2
+        exit 1
+    fi
+done
 
 mkdir -p "$USER_DATA_DIR/sessions"
 mkdir -p "$USER_DATA_DIR/scripts"
@@ -261,7 +308,7 @@ fi
 
 INSTALLED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 if command -v python3 >/dev/null 2>&1; then
-    python3 - "$MANIFEST_FILE" "$LATEST_VERSION" "$INSTALLED_AT" "$BIN_DIR" "$SHARE_DIR" "$USER_DATA_DIR" "$SYSTEM_INSTALL" "$PATH_MODIFIED" "${MODIFIED_RC_FILES[@]}" <<'PY'
+    python3 - "$MANIFEST_FILE" "$LATEST_VERSION" "$INSTALLED_AT" "$BIN_DIR" "$SHARE_DIR" "$USER_DATA_DIR" "$SYSTEM_INSTALL" "$PATH_MODIFIED" "$TRACK_TEMP" "${MODIFIED_RC_FILES[@]}" <<'PY'
 import json
 import sys
 
@@ -273,7 +320,11 @@ share_dir = sys.argv[5]
 user_data_dir = sys.argv[6]
 system_install = sys.argv[7].lower() == 'true'
 path_modified = sys.argv[8].lower() == 'true'
-rc_files = sys.argv[9:]
+track_file = sys.argv[9]
+rc_files = sys.argv[10:]
+
+with open(track_file) as f:
+    tracking = json.load(f)
 
 data = {
     "version": version,
@@ -284,44 +335,36 @@ data = {
     "system_install": system_install,
     "path_modified": path_modified,
     "shell_rc_files": rc_files,
-    "files_installed": ["zeri", "zeri-engine"],
-    "dirs_created": ["runtime"],
+    "files_installed": tracking["files"],
+    "dirs_created": tracking["dirs"],
 }
 
 with open(manifest_file, 'w', encoding='utf-8') as f:
     json.dump(data, f, indent=2)
 PY
 else
-    rc_json=""
-    for rc in "${MODIFIED_RC_FILES[@]}"; do
-        if [ -n "$rc_json" ]; then
-            rc_json="$rc_json, "
-        fi
-        rc_json="$rc_json\"$rc\""
-    done
-    cat > "$MANIFEST_FILE" <<EOF
-{
-  "version": "$LATEST_VERSION",
-  "installed_at": "$INSTALLED_AT",
-  "bin_dir": "$BIN_DIR",
-  "share_dir": "$SHARE_DIR",
-  "user_data_dir": "$USER_DATA_DIR",
-  "system_install": $SYSTEM_INSTALL,
-  "path_modified": $PATH_MODIFIED,
-  "shell_rc_files": [$rc_json],
-  "files_installed": ["zeri", "zeri-engine"],
-  "dirs_created": ["runtime"]
-}
-EOF
+    echo "Error: python3 is required for Zeri installation but was not found." >&2
+    exit 1
 fi
+
+rm -f "$TRACK_TEMP"
 
 echo "Installation completed successfully."
 
-: <<'ZERI_INSTALLER_NOTE'
-/*
-This script now supports install and uninstall modes with --force and --system flags.
-It keeps binaries and shared runtime under dedicated install locations, keeps user data separate,
-tracks installation metadata in a manifest, updates shell PATH entries when needed,
-and removes installed artifacts and recorded shell entries during uninstall.
-*/
-ZERI_INSTALLER_NOTE
+
+
+#Fixed RUNTIME_DIR (SHARE_DIR -> BIN_DIR), added help/ and shared-lib copy blocks, updated
+#dirs_created in tracking manifest. Uninstall block updated to remove both runtime and help.
+
+#Replaced all hardcoded copy logic with manifest-driven python3 loop reading
+#install_manifest.json from the release archive. Key changes:
+
+#- INSTALL_MANIFEST_FILENAME / MANIFEST_SCHEMA_VERSION: constants at the top of the install block.
+#- ARCHIVE_ROOT: derived from the manifest's location so archives with a top-level subdirectory work.
+#- TRACK_TEMP: temporary JSON file written by the copy step; consumed by the tracking-manifest writer
+#  to populate files_installed and dirs_created dynamically, removing all hardcoded asset names.
+#- Bash fallback for tracking manifest removed; python3 is now required and checked explicitly.
+#- TRACK_TEMP cleaned up with rm -f before the success message.
+#- Uninstall dirs_created loop replaces hardcoded rm -rf calls using manifest_string_array helper.
+#- Binary type assets receive executable bit via chmod in the python3 copy loop.
+#- Critical-files verification block added after copy for the four required files.

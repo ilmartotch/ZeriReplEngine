@@ -4,17 +4,17 @@ $Root = $PSScriptRoot
 $Dist = Join-Path $Root "dist"
 $toolchainPath = $null
 
-# --- Pre-flight checks ---
+# Pre-flight checks
 function Assert-Command($name, $hint) {
     if (-not (Get-Command $name -ErrorAction SilentlyContinue)) {
         Write-Host "ERROR: '$name' was not found in PATH." -ForegroundColor Red
-        Write-Host "        $hint" -ForegroundColor Yellow
+        Write-Host " $hint" -ForegroundColor Yellow
         exit 1
     }
 }
 Assert-Command "cmake" "Install CMake from https://cmake.org/download/ and add it to PATH."
-Assert-Command "go"    "Install Go from https://go.dev/dl/ and add it to PATH."
-Assert-Command "git"   "Install Git from https://git-scm.com/ (required by vcpkg)."
+Assert-Command "go" "Install Go from https://go.dev/dl/ and add it to PATH."
+Assert-Command "git" "Install Git from https://git-scm.com/ (required by vcpkg)."
 
 function Resolve-VcpkgToolchain([string]$root, [string]$vsInstallPath) {
     $candidates = @()
@@ -30,10 +30,6 @@ function Resolve-VcpkgToolchain([string]$root, [string]$vsInstallPath) {
     }
     throw "vcpkg toolchain was not found. Set VCPKG_ROOT or clone vcpkg into $root\vcpkg."
 }
-
-# --- VS Environment Setup ---
-# MSVC (cl.exe) requires the VC Developer environment to resolve STL headers.
-# We use vswhere to find the latest VS installation and Enter-VsDevShell to activate it.
 $vsWhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
 if (-not (Test-Path $vsWhere)) {
     $vsWhere = Join-Path $env:ProgramFiles "Microsoft Visual Studio\Installer\vswhere.exe"
@@ -55,7 +51,6 @@ if (Get-Command "cl.exe" -ErrorAction SilentlyContinue) {
     Enter-VsDevShell -VsInstallPath $vsPath -SkipAutomaticLocation -Arch x64 | Out-Null
     Write-Host "Visual Studio environment active: $vsPath"
 }
-# ---
 
 $toolchainPath = Resolve-VcpkgToolchain $Root $vsPath
 
@@ -198,13 +193,42 @@ if (Test-Path $InstallScript) {
     throw "install.ps1 not found in repo root. Cannot include in release package."
 }
 
+$installManifestFilename = "install_manifest.json"
+$manifestSchemaVersion = 1
+$assets = @()
+Get-ChildItem -Path $Dist -Recurse -File | ForEach-Object {
+    $relPath = $_.FullName.Substring($Dist.Length).TrimStart('\', '/').Replace('\', '/')
+    if ($relPath -eq $installManifestFilename) { return }
+    $relDir = ($relPath | Split-Path -Parent).Replace('\', '/')
+    if ([string]::IsNullOrEmpty($relDir)) { $relDir = "." }
+    $assetType = if ($_.Extension -eq ".exe") { "binary" }
+                 elseif ($_.Extension -eq ".dll") { "dll" }
+                 elseif ($_.Name -match '\.so(\.\d+)*$' -or $_.Extension -eq ".dylib") { "lib" }
+                 elseif ([string]::IsNullOrEmpty($_.Extension)) { "binary" }
+                 else { "asset" }
+    $assets += [ordered]@{
+        src = $relPath
+        dest = $relDir
+        type = $assetType
+    }
+}
+$installManifest = [ordered]@{
+    version = $manifestSchemaVersion
+    generated_by = "build.ps1"
+    assets = $assets
+}
+$installManifest | ConvertTo-Json -Depth 5 |
+    Set-Content -Path (Join-Path $Dist $installManifestFilename) -Encoding UTF8
+Write-Host "Generated $installManifestFilename ($($assets.Count) assets)"
+
 $required = @(
     "zeri.exe",
     "zeri-engine.exe",
     "vcruntime140.dll",
     "msvcp140.dll",
     "runtime\runtime_manifest.json",
-    "help\help_catalog.json"
+    "help\help_catalog.json",
+    "install_manifest.json"
 )
 foreach ($f in $required) {
     if (-not (Test-Path (Join-Path $Dist $f))) {
@@ -216,3 +240,22 @@ Write-Host "All required files verified in dist/."
 Write-Host ""
 Write-Host "Build complete."
 Get-ChildItem $Dist -Recurse | ForEach-Object { Write-Host $_.FullName }
+
+<#
+
+Added install_manifest.json generation after all dist/ assets are assembled. The manifest
+enumerates every file in dist/ with its src path (relative to dist/ root, forward-slash),
+dest directory (relative to install root, "." = root), and type (binary/dll/lib/asset).
+
+Install scripts read this file instead of hardcoding filenames, eliminating the class of
+bug where new build assets silently break installation.
+
+- $manifestSchemaVersion: integer version constant for schema forward-compat checks.
+
+- $installManifestFilename: filename constant referenced in generation and verification.
+
+- Added "install_manifest.json" to the required-files verification block so a manifest
+  generation failure surfaces as a hard build error immediately.
+- Type heuristic: .exe=binary, .dll=dll, .so/.so.N/.dylib=lib, no-ext=binary, else=asset.
+#>
+

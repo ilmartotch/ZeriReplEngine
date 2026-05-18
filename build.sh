@@ -10,7 +10,7 @@ YUUMI_UI_DIR="$SCRIPT_DIR/ui"
 check_cmd() {
     if ! command -v "$1" >/dev/null 2>&1; then
         echo "ERROR: '$1' not found in PATH."
-        echo "       $2"
+        echo " $2"
         exit 1
     fi
 }
@@ -134,6 +134,38 @@ else
     exit 1
 fi
 
+INSTALL_MANIFEST_FILENAME="install_manifest.json"
+MANIFEST_SCHEMA_VERSION=1
+
+{
+    printf '{\n  "version": %d,\n  "generated_by": "build.sh",\n  "assets": [' "$MANIFEST_SCHEMA_VERSION"
+    first=true
+    while IFS= read -r -d '' fpath; do
+        rel="${fpath#$DIST/}"
+        [ "$rel" = "$INSTALL_MANIFEST_FILENAME" ] && continue
+        rel_dir="$(dirname "$rel")"
+        [ "$rel_dir" = "." ] && dest="." || dest="$rel_dir"
+        fname="$(basename "$rel")"
+        case "$fname" in
+            *.so.*) atype="lib" ;;
+            *.so) atype="lib" ;;
+            *.dylib) atype="lib" ;;
+            *.exe) atype="binary" ;;
+            *.dll) atype="dll" ;;
+            *)
+                if [ "${fname%.*}" = "$fname" ]; then
+                    atype="binary"
+                else
+                    atype="asset"
+                fi ;;
+        esac
+        [ "$first" = true ] && { printf '\n'; first=false; } || printf ',\n'
+        printf '    {"src": "%s", "dest": "%s", "type": "%s"}' "$rel" "$dest" "$atype"
+    done < <(find "$DIST" -type f -print0 | sort -z)
+    printf '\n  ]\n}\n'
+} > "$DIST/$INSTALL_MANIFEST_FILENAME"
+echo "Generated $INSTALL_MANIFEST_FILENAME"
+
 echo ""
 echo "Build completed."
 if [ ! -f "$DIST/help/help_catalog.json" ]; then
@@ -144,4 +176,22 @@ if [ ! -f "$DIST/runtime/runtime_manifest.json" ]; then
     echo "ERROR: dist/runtime/runtime_manifest.json is missing."
     exit 1
 fi
+if [ ! -f "$DIST/$INSTALL_MANIFEST_FILENAME" ]; then
+    echo "ERROR: dist/$INSTALL_MANIFEST_FILENAME is missing."
+    exit 1
+fi
 find "$DIST" -type f | sort
+
+
+# Added install_manifest.json generation after all dist/ assets are assembled. The manifest
+# enumerates every file with its src path (dist/-relative, forward-slash), dest directory
+# (install-root-relative, "."=root), and type (binary/dll/lib/asset). Pure bash implementation
+# chosen to avoid adding a python3 dependency at build time; build.sh currently only requires
+# cmake, go, git, cc.
+
+# - INSTALL_MANIFEST_FILENAME: filename constant used in generation and verification.
+# - MANIFEST_SCHEMA_VERSION: integer version constant for forward-compat checks in install scripts.
+# - Type heuristic: *.so.*=lib, *.so=lib, *.dylib=lib, *.exe=binary, *.dll=dll,
+#   no-extension=binary (zeri, zeri-engine), everything else=asset.
+# - Added install_manifest.json presence check to the verification block.
+
