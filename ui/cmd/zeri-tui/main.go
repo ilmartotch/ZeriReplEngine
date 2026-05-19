@@ -2,10 +2,14 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
+	"time"
 	"yuumi/internal/bridge"
 
 	tea "charm.land/bubbletea/v2"
@@ -43,7 +47,7 @@ func main() {
 		enginePath = filepath.Join(execDir, engineName)
 	}
 
-	pipeName := "zeri-core"
+	pipeName := resolvePipeName()
 
 	realBridge := bridge.NewRealYuumiClient(nil)
 	m := newAppModel(realBridge, enginePath, pipeName)
@@ -67,6 +71,29 @@ func main() {
 	os.Exit(0)
 }
 
+func resolvePipeName() string {
+	fromEnv := strings.TrimSpace(os.Getenv("ZERI_PIPE_NAME"))
+	if fromEnv != "" {
+		return fromEnv
+	}
+	sessionToken, err := generateSessionToken(8)
+	if err != nil {
+		return fmt.Sprintf("zeri-core-%d-%d", os.Getpid(), time.Now().UnixNano())
+	}
+	return fmt.Sprintf("zeri-core-%d-%s", os.Getpid(), sessionToken)
+}
+
+func generateSessionToken(byteCount int) (string, error) {
+	if byteCount <= 0 {
+		return "", fmt.Errorf("byteCount must be positive")
+	}
+	buffer := make([]byte, byteCount)
+	if _, err := rand.Read(buffer); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buffer), nil
+}
+
 /*
  * What:
  *   - Rewritten for Bubble Tea v2 with the new bridge architecture.
@@ -76,6 +103,8 @@ func main() {
  *   - Alt-screen mode via tea.WithAltScreen().
  *   - Prints "Goodbye from Zeri." after p.Run() returns.
  *   - Error messages in English (was Italian).
+ *   - IPC endpoint is now per-process (unique pipe/socket name) so multiple
+ *     zeri instances can run concurrently without bridge collisions.
  *
  * Why:
  *   - Aligns with v3 spec: bridge interface decouples TUI from IPC.
@@ -86,6 +115,8 @@ func main() {
  *   - model.go receives a bridge.YuumiClient interface.
  *   - bridge/yuumi_client.go handles raw message dispatch.
  *   - preflight.go unchanged — still validates environment.
+ *   - Each session uses its own transport endpoint unless ZERI_PIPE_NAME
+ *     is explicitly provided.
  *
  * Future maintenance notes:
  *   - To support --no-engine flag for UI-only development, skip

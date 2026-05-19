@@ -20,6 +20,7 @@ type Runner struct {
 	OnCrash func(error)
 	SessionTempDir string
 	EngineLogPath string
+	PreserveSessionTempDir bool
 	client *Client
 	cmd *exec.Cmd
 	logFile *os.File
@@ -102,7 +103,7 @@ func (r *Runner) Stop() {
 			r.logFile = nil
 		}
 
-		if strings.TrimSpace(r.SessionTempDir) != "" {
+		if !r.PreserveSessionTempDir && strings.TrimSpace(r.SessionTempDir) != "" {
 			_ = os.RemoveAll(r.SessionTempDir)
 		}
 	})
@@ -159,4 +160,8 @@ func (r *Runner) trapSignals() {
  inherits a valid working directory regardless of the CWD from which
  the user launched zeri. This prevents CWD-relative path failures in
  the C++ engine when running from a different volume or directory.
+
+ PreserveSessionTempDir: when true, Stop() does not remove SessionTempDir.
+ Startup failure paths can keep logs/ for post-mortem diagnostics instead
+ of deleting evidence before the UI renders the troubleshooting path.
 */

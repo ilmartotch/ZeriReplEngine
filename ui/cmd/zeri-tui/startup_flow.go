@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 	"yuumi/internal/bridge"
@@ -73,15 +74,19 @@ func runStartupFlowAsync(ctx context.Context, p *tea.Program, bridgeClient *brid
 		p.Send(startupPhaseMsg{Title: "Connecting bridge..."})
 		client, err := yuumi.Connect(pipeName)
 		if err != nil {
-			runner.Stop()
 			appendStartupLog(logPath, "ENGINE_CONNECT", []string{err.Error()})
-			if runner.EngineLogPath != "" {
-				if engineLogBytes, readErr := os.ReadFile(runner.EngineLogPath); readErr == nil && len(engineLogBytes) > 0 {
-					engineLines := strings.Split(strings.TrimRight(string(engineLogBytes), "\r\n"), "\n")
-					appendStartupLog(logPath, "ENGINE_STDERR", engineLines)
-				}
+			appendStartupLog(logPath, "EXECUTION_CONTEXT", collectExecutionContextDiagnostics(enginePath, pipeName, sessionTempDir))
+			engineLogLines := readEngineLogLines(runner.EngineLogPath)
+			if len(engineLogLines) > 0 {
+				appendStartupLog(logPath, "ENGINE_STDERR", engineLogLines)
 			}
-			p.Send(startupFailedMsg{Errors: []string{"Bridge connection failed. Engine may be blocked by security policy."}, LogPath: logPath})
+			runner.PreserveSessionTempDir = true
+			runner.Stop()
+			userErrors := buildBridgeFailureErrors(err, engineLogLines, enginePath, logPath)
+			if runner.EngineLogPath != "" {
+				userErrors = append(userErrors, "Engine stderr log: "+runner.EngineLogPath)
+			}
+			p.Send(startupFailedMsg{Errors: userErrors, LogPath: logPath})
 			return
 		}
 
@@ -175,6 +180,76 @@ func appendStartupLog(path string, section string, lines []string) {
 	_, _ = fmt.Fprintln(file)
 }
 
+func readEngineLogLines(engineLogPath string) []string {
+	if strings.TrimSpace(engineLogPath) == "" {
+		return nil
+	}
+	engineLogBytes, err := os.ReadFile(engineLogPath)
+	if err != nil || len(engineLogBytes) == 0 {
+		return nil
+	}
+	lines := strings.Split(strings.TrimRight(string(engineLogBytes), "\r\n"), "\n")
+	filtered := make([]string, 0, len(lines))
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		filtered = append(filtered, trimmed)
+	}
+	return filtered
+}
+
+func buildBridgeFailureErrors(connectErr error, engineLogLines []string, enginePath string, logPath string) []string {
+	errors := []string{
+		"Bridge connection failed: " + strings.TrimSpace(connectErr.Error()),
+	}
+	if len(engineLogLines) > 0 {
+		errors = append(errors, "Engine error: "+engineLogLines[len(engineLogLines)-1])
+	} else {
+		errors = append(errors, "Engine error: no stderr output captured.")
+	}
+	errors = append(errors, "Troubleshooting:")
+	errors = append(errors, "- If running from ZIP, unblock files and run setup script (setup.ps1 or setup.sh).")
+	errors = append(errors, "- If running from another volume, verify execute/read permissions on that volume and folder.")
+	if runtime.GOOS == "windows" {
+		errors = append(errors, "- Check SmartScreen/Defender or WDAC/AppLocker policies for this executable path.")
+		errors = append(errors, "- PowerShell check for Mark-of-the-Web: Get-Item -Path '"+enginePath+"' -Stream Zone.Identifier")
+	}
+	if strings.TrimSpace(logPath) != "" {
+		errors = append(errors, "- Inspect startup log and ENGINE_STDERR sections for root cause.")
+	}
+	return errors
+}
+
+func collectExecutionContextDiagnostics(enginePath string, pipeName string, sessionTempDir string) []string {
+	cwd, cwdErr := os.Getwd()
+	lines := []string{
+		"engine_path=" + strings.TrimSpace(enginePath),
+		"engine_dir=" + filepath.Dir(enginePath),
+		"engine_volume=" + filepath.VolumeName(enginePath),
+		"ipc_endpoint=" + strings.TrimSpace(pipeName),
+		"temp_dir=" + os.TempDir(),
+		"temp_volume=" + filepath.VolumeName(os.TempDir()),
+		"session_temp_dir=" + strings.TrimSpace(sessionTempDir),
+	}
+	if cwdErr != nil {
+		lines = append(lines, "cwd=<unavailable>: "+cwdErr.Error())
+	} else {
+		lines = append(lines, "cwd="+cwd)
+		lines = append(lines, "cwd_volume="+filepath.VolumeName(cwd))
+	}
+	if runtime.GOOS == "windows" {
+		zoneStreamPath := enginePath + ":Zone.Identifier"
+		if _, err := os.Stat(zoneStreamPath); err == nil {
+			lines = append(lines, "motw_zone_identifier=present")
+		} else {
+			lines = append(lines, "motw_zone_identifier=not-detected")
+		}
+	}
+	return lines
+}
+
 func preflightErrorsToLines(errs []*PreflightError) []string {
 	lines := make([]string, 0)
 	for _, err := range errs {
@@ -195,9 +270,14 @@ Runs asynchronous startup initialization after the TUI is already visible.
 The flow emits live phase messages and final readiness/failure messages so the UI
 can render progress and clear diagnostics while keeping startup responsive.
 
-When yuumi.Connect fails, the engine stderr log (runner.EngineLogPath → logs/zeri-engine.log)
-is read and appended to the startup log under the ENGINE_STDERR section before the
-startupFailedMsg is emitted. This surfaces DLL-load crashes and C++ startup errors that
-previously made the startup log silent about the true engine-side failure cause.
-The read only runs on the failure path; the happy path is unaffected.
+When yuumi.Connect fails, diagnostics are now persisted before cleanup:
+- ENGINE_CONNECT with the concrete connect error.
+- EXECUTION_CONTEXT with engine path, cwd, volume info, temp paths, and Windows MOTW signal.
+- ENGINE_STDERR with captured engine stderr lines.
+
+The UI failure message now includes the concrete bridge error and latest engine stderr line
+instead of a generic "security policy" statement.
+
+On startup failure we set runner.PreserveSessionTempDir=true before Stop(), so logs are not
+deleted and the user can inspect the exact startup evidence from the reported path.
 */
