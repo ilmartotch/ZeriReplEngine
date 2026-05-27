@@ -1967,13 +1967,7 @@ func (m *AppModel) flushEngineBatch(forceError bool) {
 	}
 
 	if hasError {
-		msg := ui.ChatMessage{
-			Role:      ui.RoleError,
-			Title:     title,
-			Content:   builder.String(),
-			Timestamp: time.Now().Format("15:04"),
-		}
-		m.messages = append(m.messages, msg)
+		m.addErrorMessageWithTitle(builder.String(), title)
 	} else {
 		msg := ui.ChatMessage{
 			Role:      ui.RoleZeri,
@@ -1987,15 +1981,21 @@ func (m *AppModel) flushEngineBatch(forceError bool) {
 	m.engineBatchChunks = nil
 	m.engineBatchTitle = ""
 	m.engineBatchUpdatedAt = time.Time{}
-	m.refreshViewport()
+	if !hasError {
+		m.refreshViewport()
+	}
 }
 
 func (m *AppModel) addErrorMessage(content string) {
-	normalised := ui.NormaliseContent(content)
+	m.addErrorMessageWithTitle(content, m.currentMessageContextTitle())
+}
+
+func (m *AppModel) addErrorMessageWithTitle(content string, title string) {
+	enriched := enrichReactiveErrorMessage(content, m.activeContext)
 	msg := ui.ChatMessage{
-		Role:      ui.RoleError,
-		Title:     m.currentMessageContextTitle(),
-		Content:   normalised,
+		Role: ui.RoleError,
+		Title: title,
+		Content: ui.NormaliseContent(enriched),
 		Timestamp: time.Now().Format("15:04"),
 	}
 	m.messages = append(m.messages, msg)
@@ -2039,6 +2039,70 @@ func sanitizeScriptExecutionContent(content string) string {
 	result := strings.Join(filtered, "\n")
 	result = strings.Trim(result, "\n")
 	return result
+}
+
+func enrichReactiveErrorMessage(content string, activeContext string) string {
+	base := strings.TrimSpace(content)
+	if base == "" {
+		return content
+	}
+
+	lower := strings.ToLower(base)
+	hints := make([]string, 0, 2)
+
+	if strings.Contains(lower, "[invalidvariabletype]") || strings.Contains(lower, "non-numeric variable") {
+		hints = append(hints,
+			"How to fix: in $math assign numeric variables directly (example: x = 5), then retry the expression (example: x + 6).",
+		)
+	}
+
+	if strings.Contains(lower, "[script_not_found]") || strings.Contains(lower, "script not found") {
+		hints = append(hints,
+			"How to fix: run /list in the current language context, then use /edit \"name\" or /run \"name\" without file extension.",
+		)
+	}
+
+	if strings.Contains(lower, "missing script name") {
+		hints = append(hints,
+			"How to fix: provide a quoted name (example: /new \"my-script\" or /edit \"my-script\").",
+		)
+	}
+
+	if strings.Contains(lower, "context switch not allowed") {
+		hints = append(hints,
+			"How to fix: use /context to list reachable targets from your current context, then switch with $<context>.",
+		)
+	}
+
+	if strings.Contains(lower, "unknown copy option") {
+		hints = append(hints,
+			"How to fix: use /copy last to copy the latest output or /copy all to copy the full transcript.",
+		)
+	}
+
+	if strings.Contains(lower, "usage: /set") {
+		hints = append(hints,
+			"How to fix: include key and value in one command (example: /set myVar 42).",
+		)
+	}
+
+	if strings.Contains(lower, "usage: /get") {
+		hints = append(hints,
+			"How to fix: provide a key name (example: /get myVar).",
+		)
+	}
+
+	if len(hints) == 0 {
+		contextLeaf := strings.TrimSpace(strings.ToLower(strings.TrimPrefix(activeContext, "zeri::")))
+		if contextLeaf == "" {
+			contextLeaf = "global"
+		}
+		hints = append(hints,
+			"How to fix: run /help in $"+contextLeaf+" and retry with the exact command syntax shown there.",
+		)
+	}
+
+	return base + "\n" + strings.Join(hints, "\n")
 }
 
 func (m AppModel) scriptExecutionLabel() string {
@@ -2085,13 +2149,13 @@ func (m *AppModel) handlePendingBridgeError(content string) {
 			m.openScriptEditor(req.Language, req.ScriptName, "", ScriptEditorIntentNew)
 			return
 		}
-		m.addZeriMessage("Error: "+content, m.currentMessageContextTitle())
+		m.addErrorMessage(content)
 	case PendingBridgeRequestEditLoad:
-		m.addZeriMessage("Error: "+content, m.currentMessageContextTitle())
+		m.addErrorMessage(content)
 	case PendingBridgeRequestShowPreview:
-		m.addZeriMessage("Error: "+content, m.currentMessageContextTitle())
+		m.addErrorMessage(content)
 	default:
-		m.addZeriMessage("Error: "+content, m.currentMessageContextTitle())
+		m.addErrorMessage(content)
 	}
 }
 
@@ -2451,6 +2515,22 @@ func (m AppModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	scope := ui.ValidateSlashCommandForContext(m.activeContext, cmd)
+	if !scope.Allowed {
+		current := scope.CurrentGroup
+		if strings.TrimSpace(current) == "" {
+			current = "global"
+		}
+		allowed := ui.CommandScopeDescription(scope.AllowedGroups)
+		m.addUserMessage(cmd)
+		m.addErrorMessage(
+			"[COMMAND_SCOPE] Command " + scope.Command + " is not available in $" + current + ".\n" +
+				"Allowed contexts: " + allowed + "\n" +
+				"How to fix: run /context, switch with $<context>, then retry " + scope.Command + ".",
+		)
+		return m, nil
+	}
+
 	switch {
 	case cmd == "/exit":
 		return m, tea.Sequence(
@@ -2785,19 +2865,28 @@ func (m AppModel) handleHistoryDown() (tea.Model, tea.Cmd) {
  *     script load for editing, and temporary preview fetch.
  *   - Added explicit save-and-run confirmation prompt after Alt+Enter in
  *     editor mode before dispatching engine commands.
- *   - [fix #10] Added "alt+shift+enter" to the run-trigger key case in
+ *   - Added "alt+shift+enter" to the run-trigger key case in
  *     updateScriptEditor, alongside the existing alt+enter/shift+enter variants,
  *     so the shortcut works consistently across terminals that remap the key.
- *   - [fix #11] Added explicit "tab" case in updateScriptEditor that routes
+ *   - Added explicit "tab" case in updateScriptEditor that routes
  *     the key through applyScriptEditorPaste("\t"), which the textarea sanitizer
  *     converts to 4 spaces at the current cursor position. Tab in the editor
  *     was previously a no-op because bubbletea v2 sets KeyPressMsg.Text to ""
  *     for special keys, causing the textarea default handler to insert nothing.
- *   - [fix #6] Shortcut policy aligned for terminal usage:
+ *   - Shortcut policy aligned for terminal usage:
  *     - REPL mode: Ctrl+C now always performs immediate exit (tea.Quit).
  *     - REPL copy moved to Ctrl+Shift+C (Ctrl+Insert still supported).
  *     - Paste shortcut normalized to Ctrl+Shift+V (plus Shift+Insert/Cmd+V/Meta+V).
  *     - Script editor keeps Ctrl+C copy behavior and also accepts Ctrl+Shift+C.
+ *   - Added reactive error enrichment:
+ *     error messages now append context-aware "How to fix" guidance with concrete
+ *     command examples for common failures (invalid math variable type, script not
+ *     found, missing script name, invalid context switch, copy usage and set/get usage).
+ *   - Pending bridge request failures now flow through addErrorMessage,
+ *     so they are rendered consistently as errors and receive the same guidance.
+ *   - Added strict command hierarchy enforcement at slash-command entry:
+ *     out-of-scope commands are blocked before bridge dispatch, with explicit
+ *     allowed-context guidance and retry steps.
  *   - `/show` now appends a static numbered code block to the chat stream
  *     (RoleCodeView message) instead of a floating overlay panel.
  *   - `/delete` intercept: shows inline confirmation menu (Yes/Cancel) before

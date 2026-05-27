@@ -58,6 +58,13 @@
     "setup": [
       { "command": "/start", "synopsis": "Run the configuration wizard" }
     ],
+    "customcommand": [
+      { "command": "/define", "synopsis": "Define a custom command body" },
+      { "command": "/list", "synopsis": "List registered custom commands" },
+      { "command": "/run", "synopsis": "Run a custom command by name" },
+      { "command": "/show", "synopsis": "Show the custom command body" },
+      { "command": "/delete", "synopsis": "Delete a custom command" }
+    ],
     "script": [
       { "command": "/new", "synopsis": "Create a script" },
       { "command": "/edit", "synopsis": "Edit an existing script" },
