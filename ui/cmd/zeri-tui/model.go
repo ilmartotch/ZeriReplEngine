@@ -600,7 +600,7 @@ func (m AppModel) updateScriptEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.mode = ModeREPL
 			m.addSystemMessage("Script editor closed.")
 			return m, nil
-		case "alt+enter", "alt+return", "shift+enter", "shift+return":
+		case "alt+enter", "alt+return", "shift+enter", "shift+return", "alt+shift+enter":
 			m.pendingScriptCode = m.scriptEditor.Value()
 			m.pendingScriptName = m.scriptEditor.Filename()
 			m.pendingScriptLanguage = m.scriptEditor.Language()
@@ -609,6 +609,8 @@ func (m AppModel) updateScriptEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.mode = ModeREPL
 			m.recalculateLayout()
 			return m, nil
+		case "tab":
+			return m, m.applyScriptEditorPaste("\t")
 		}
 
 		if normalizedKey == "ctrl+c" {
@@ -2734,6 +2736,14 @@ func (m AppModel) handleHistoryDown() (tea.Model, tea.Cmd) {
  *     script load for editing, and temporary preview fetch.
  *   - Added explicit save-and-run confirmation prompt after Alt+Enter in
  *     editor mode before dispatching engine commands.
+ *   - [fix #10] Added "alt+shift+enter" to the run-trigger key case in
+ *     updateScriptEditor, alongside the existing alt+enter/shift+enter variants,
+ *     so the shortcut works consistently across terminals that remap the key.
+ *   - [fix #11] Added explicit "tab" case in updateScriptEditor that routes
+ *     the key through applyScriptEditorPaste("\t"), which the textarea sanitizer
+ *     converts to 4 spaces at the current cursor position. Tab in the editor
+ *     was previously a no-op because bubbletea v2 sets KeyPressMsg.Text to ""
+ *     for special keys, causing the textarea default handler to insert nothing.
  *   - `/show` now appends a static numbered code block to the chat stream
  *     (RoleCodeView message) instead of a floating overlay panel.
  *   - `/delete` intercept: shows inline confirmation menu (Yes/Cancel) before

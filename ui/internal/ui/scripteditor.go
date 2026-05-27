@@ -131,7 +131,7 @@ func (e ScriptEditor) renderStatusBar() string {
 		column = len([]rune(lines[len(lines)-1])) + 1
 	}
 
-	statusText := fmt.Sprintf("Alt+Enter run | ESC cancel | Ln %d, Col %d", line, column)
+	statusText := fmt.Sprintf("Alt+Shift+Enter run | ESC cancel | Ln %d, Col %d", line, column)
 	return lg.NewStyle().
 		Foreground(ColourWhite).
 		Background(ColourDarkViolet).
@@ -156,6 +156,9 @@ func (e ScriptEditor) renderStatusBar() string {
  *   - The top-level TUI model needs a dedicated modal editor state to support
  *     multi-line script authoring and execution without altering REPL flow.
  *   - Isolating editor behavior in a sub-model keeps AppModel modular.
+ *
+ *   - [fix #10] renderStatusBar text updated from "Alt+Enter run" to "Alt+Shift+Enter run"
+ *     to match the actual key binding exposed by the editor.
  *
  * Impact on other components:
  *   - cmd/zeri-tui/model.go can switch to ModeScriptEditor and delegate update

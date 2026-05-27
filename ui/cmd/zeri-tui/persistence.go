@@ -142,14 +142,26 @@ func sanitizeStorageName(name string) (string, error) {
 	return trimmed, nil
 }
 
+func stripScriptExtension(name, language string) string {
+	suffix := "." + languageExtension(language)
+	if strings.HasSuffix(strings.ToLower(name), strings.ToLower(suffix)) {
+		return name[:len(name)-len(suffix)]
+	}
+	return name
+}
+
 func saveScript(name string, language string, content string) error {
 	safeName, err := sanitizeStorageName(name)
 	if err != nil {
 		return err
 	}
+	safeName = stripScriptExtension(safeName, language)
 	dir, err := ZeriScriptsDir(language)
 	if err != nil {
 		return err
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("cannot create script directory: %w", err)
 	}
 	ext := languageExtension(language)
 	path := filepath.Join(dir, safeName+"."+ext)
@@ -161,6 +173,7 @@ func readScript(name string, language string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	safeName = stripScriptExtension(safeName, language)
 	dir, err := ZeriScriptsDir(language)
 	if err != nil {
 		return "", err
@@ -179,6 +192,7 @@ func deleteScript(name string, language string) error {
 	if err != nil {
 		return err
 	}
+	safeName = stripScriptExtension(safeName, language)
 	dir, err := ZeriScriptsDir(language)
 	if err != nil {
 		return err
@@ -363,4 +377,11 @@ func formatBytes(size int) string {
  *   - Added named session snapshot save/load with JSON schema and overwrite guard.
  *   - Added directory-backed session/script name listing utilities for autocomplete.
  *   - Added script save confirmation format utilities for history rendering.
+ *   - [fix #4] saveScript now calls os.MkdirAll on the language script directory before
+ *     writing, so scripts/js, scripts/py, etc. are created on demand without requiring a
+ *     prior explicit first-run setup step.
+ *   - [fix #5] Added stripScriptExtension helper; saveScript, readScript, and deleteScript
+ *     now strip the language extension from the name before appending it, preventing the
+ *     double-extension bug (prova.js -> prova.js.js) when the user includes the extension
+ *     in the script name argument.
  */
