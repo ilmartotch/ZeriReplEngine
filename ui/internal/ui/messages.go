@@ -154,6 +154,8 @@ func RenderScriptExecutionMessage(msg ChatMessage, maxWidth int) string {
 		output = "(no output)"
 	}
 
+	stdoutOutput, stderrOutput := splitScriptExecutionStreams(output)
+
 	header := lg.NewStyle().
 		Foreground(ColourWhite).
 		Background(ColourElectricBlue).
@@ -161,9 +163,32 @@ func RenderScriptExecutionMessage(msg ChatMessage, maxWidth int) string {
 		Padding(0, 1).
 		Render(label)
 
-	body := lg.NewStyle().
-		Foreground(ColourWhite).
-		Render(wordwrap(output, contentWidth))
+	bodySections := make([]string, 0, 3)
+	if strings.TrimSpace(stdoutOutput) != "" {
+		bodySections = append(bodySections, lg.NewStyle().
+			Foreground(ColourIndustrialGrey).
+			Bold(true).
+			Render("stdout"))
+		bodySections = append(bodySections, lg.NewStyle().
+			Foreground(ColourWhite).
+			Render(wrapPreserveWhitespace(stdoutOutput, contentWidth)))
+	}
+	if strings.TrimSpace(stderrOutput) != "" {
+		bodySections = append(bodySections, lg.NewStyle().
+			Foreground(ColourElectricBlue).
+			Bold(true).
+			Render("stderr"))
+		bodySections = append(bodySections, lg.NewStyle().
+			Foreground(ColourElectricBlue).
+			Render(wrapPreserveWhitespace(stderrOutput, contentWidth)))
+	}
+	if len(bodySections) == 0 {
+		bodySections = append(bodySections, lg.NewStyle().
+			Foreground(ColourIndustrialGrey).
+			Render("(no output)"))
+	}
+
+	body := lg.JoinVertical(lg.Left, bodySections...)
 
 	ts := lg.NewStyle().Foreground(ColourIndustrialGrey).Render(msg.Timestamp)
 
@@ -174,6 +199,53 @@ func RenderScriptExecutionMessage(msg ChatMessage, maxWidth int) string {
 		Render(lg.JoinVertical(lg.Left, header+" "+ts, body))
 
 	return panel
+}
+
+func splitScriptExecutionStreams(output string) (string, string) {
+	lines := strings.Split(strings.ReplaceAll(output, "\r\n", "\n"), "\n")
+	stdoutLines := make([]string, 0, len(lines))
+	stderrLines := make([]string, 0, len(lines))
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "[stderr]") {
+			value := strings.TrimSpace(strings.TrimPrefix(trimmed, "[stderr]"))
+			stderrLines = append(stderrLines, value)
+			continue
+		}
+		stdoutLines = append(stdoutLines, line)
+	}
+
+	return strings.Join(stdoutLines, "\n"), strings.Join(stderrLines, "\n")
+}
+
+func wrapPreserveWhitespace(content string, width int) string {
+	if width <= 0 {
+		return content
+	}
+
+	lines := strings.Split(content, "\n")
+	wrapped := make([]string, 0, len(lines))
+
+	for _, line := range lines {
+		runes := []rune(line)
+		if len(runes) <= width {
+			wrapped = append(wrapped, line)
+			continue
+		}
+
+		start := 0
+		for start < len(runes) {
+			end := start + width
+			if end > len(runes) {
+				end = len(runes)
+			}
+			wrapped = append(wrapped, string(runes[start:end]))
+			start = end
+		}
+	}
+
+	return strings.Join(wrapped, "\n")
 }
 
 func RenderScriptSavedMessage(msg ChatMessage, maxWidth int) string {
@@ -234,6 +306,10 @@ func RenderAllMessages(messages []ChatMessage, maxWidth int) string {
  *     when temporary code preview panels are closed in REPL mode.
  *   - RenderAllMessages now handles RoleScriptExecution separately from
  *     normal RoleZeri output to keep script runs visually distinct.
+ *   - [fix #7] RenderScriptExecutionMessage now splits execution output into
+ *     stdout and stderr sections and renders stderr with error styling.
+ *   - [fix #7] Added wrapPreserveWhitespace helper for script execution output
+ *     so multiline output formatting is preserved without collapsing spaces.
  *   - RenderAllMessages now handles RoleCodeView to display code-view
  *     lifecycle markers in dedicated styled blocks.
  *

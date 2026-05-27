@@ -613,7 +613,7 @@ func (m AppModel) updateScriptEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.applyScriptEditorPaste("\t")
 		}
 
-		if normalizedKey == "ctrl+c" {
+		if isEditorCopyShortcut(normalizedKey) {
 			current := strings.TrimSpace(m.scriptEditor.Value())
 			if current == "" {
 				m.addSystemMessage("Copy skipped: editor content is empty.")
@@ -632,7 +632,7 @@ func (m AppModel) updateScriptEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if isPasteShortcut(normalizedKey) {
 			pasted, err := readClipboardContent()
 			if err != nil {
-				m.addSystemMessage("Paste failed: " + err.Error() + ". Try Shift+Insert or your terminal paste action.")
+				m.addSystemMessage("Paste failed: " + err.Error() + ". Try Ctrl+Shift+V, Shift+Insert, or your terminal paste action.")
 				return m, nil
 			}
 			return m, m.applyScriptEditorPaste(pasted)
@@ -1031,7 +1031,25 @@ func normalisedKeyPress(msg tea.KeyPressMsg) string {
 
 func isPasteShortcut(normalizedKey string) bool {
 	switch normalizedKey {
-	case "ctrl+v", "ctrl+shift+v", "shift+insert", "meta+v", "cmd+v":
+	case "ctrl+shift+v", "shift+insert", "meta+v", "cmd+v":
+		return true
+	default:
+		return false
+	}
+}
+
+func isInputCopyShortcut(normalizedKey string) bool {
+	switch normalizedKey {
+	case "ctrl+shift+c", "ctrl+insert":
+		return true
+	default:
+		return false
+	}
+}
+
+func isEditorCopyShortcut(normalizedKey string) bool {
+	switch normalizedKey {
+	case "ctrl+c", "ctrl+shift+c", "ctrl+insert":
 		return true
 	default:
 		return false
@@ -1310,7 +1328,11 @@ func (m AppModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	if normalizedKey == "ctrl+c" || normalizedKey == "ctrl+insert" {
+	if normalizedKey == "ctrl+c" {
+		return m, tea.Quit
+	}
+
+	if isInputCopyShortcut(normalizedKey) {
 		current := strings.TrimSpace(m.input.Value())
 		if current == "" {
 			m.addSystemMessage("Copy skipped: input is empty.")
@@ -1329,7 +1351,7 @@ func (m AppModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if isPasteShortcut(normalizedKey) {
 		pasted, err := readClipboardContent()
 		if err != nil {
-			m.addSystemMessage("Paste failed: " + err.Error() + ". Try Shift+Insert or your terminal paste action.")
+			m.addSystemMessage("Paste failed: " + err.Error() + ". Try Ctrl+Shift+V, Shift+Insert, or your terminal paste action.")
 			return m, nil
 		}
 		return m, m.applyInputPaste(pasted)
@@ -1981,15 +2003,42 @@ func (m *AppModel) addErrorMessage(content string) {
 }
 
 func (m *AppModel) addScriptExecutionMessage(label string, content string) {
+	cleaned := sanitizeScriptExecutionContent(content)
 	msg := ui.ChatMessage{
 		Role:      ui.RoleScriptExecution,
 		Label:     strings.TrimSpace(label),
 		Title:     m.currentMessageContextTitle(),
-		Content:   ui.NormaliseContent(content),
+		Content:   ui.NormaliseContent(cleaned),
 		Timestamp: time.Now().Format("15:04"),
 	}
 	m.messages = append(m.messages, msg)
 	m.refreshViewport()
+}
+
+func sanitizeScriptExecutionContent(content string) string {
+	normalized := strings.ReplaceAll(content, "\r\n", "\n")
+	normalized = strings.ReplaceAll(normalized, "\r", "\n")
+	lines := strings.Split(normalized, "\n")
+	filtered := make([]string, 0, len(lines))
+
+	for _, raw := range lines {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			filtered = append(filtered, raw)
+			continue
+		}
+		if strings.EqualFold(trimmed, "(ok)") {
+			continue
+		}
+		if strings.EqualFold(trimmed, "-- Editor attivo. /run per eseguire, /save per salvare, /cancel per uscire.") {
+			continue
+		}
+		filtered = append(filtered, raw)
+	}
+
+	result := strings.Join(filtered, "\n")
+	result = strings.Trim(result, "\n")
+	return result
 }
 
 func (m AppModel) scriptExecutionLabel() string {
@@ -2744,6 +2793,11 @@ func (m AppModel) handleHistoryDown() (tea.Model, tea.Cmd) {
  *     converts to 4 spaces at the current cursor position. Tab in the editor
  *     was previously a no-op because bubbletea v2 sets KeyPressMsg.Text to ""
  *     for special keys, causing the textarea default handler to insert nothing.
+ *   - [fix #6] Shortcut policy aligned for terminal usage:
+ *     - REPL mode: Ctrl+C now always performs immediate exit (tea.Quit).
+ *     - REPL copy moved to Ctrl+Shift+C (Ctrl+Insert still supported).
+ *     - Paste shortcut normalized to Ctrl+Shift+V (plus Shift+Insert/Cmd+V/Meta+V).
+ *     - Script editor keeps Ctrl+C copy behavior and also accepts Ctrl+Shift+C.
  *   - `/show` now appends a static numbered code block to the chat stream
  *     (RoleCodeView message) instead of a floating overlay panel.
  *   - `/delete` intercept: shows inline confirmation menu (Yes/Cancel) before

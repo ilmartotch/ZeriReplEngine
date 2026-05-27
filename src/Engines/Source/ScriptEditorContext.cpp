@@ -125,7 +125,7 @@ namespace Zeri::Engines {
     }
 
     void ScriptEditorContext::OnEnter(Zeri::Ui::ITerminal& terminal) {
-        terminal.WriteInfo("-- Editor attivo. /run per eseguire, /save per salvare, /cancel per uscire.");
+        (void)terminal;
     }
 
     void ScriptEditorContext::OnExit(Zeri::Ui::ITerminal& terminal) {
