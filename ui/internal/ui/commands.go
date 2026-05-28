@@ -30,9 +30,9 @@ type helpCatalogData struct {
 }
 
 type CommandScopeValidation struct {
-	Allowed bool
-	Command string
-	CurrentGroup string
+	Allowed       bool
+	Command       string
+	CurrentGroup  string
 	AllowedGroups []string
 }
 
@@ -78,6 +78,8 @@ func defaultHelpCatalog() helpCatalogData {
 				{Command: "/bug snapshot", Synopsis: "Create a diagnostic snapshot file for issue attachments"},
 				{Command: "/save", Synopsis: "Save session state to disk"},
 				{Command: "/load", Synopsis: "Load a saved session from disk"},
+				{Command: "/set", Synopsis: "Store a typed variable in the current scope (--number|--string|--bool)"},
+				{Command: "/get", Synopsis: "Read a variable from the current scope"},
 			},
 			"sandbox": {
 				{Command: "/open", Synopsis: "Open a file in the configured IDE"},
@@ -274,42 +276,42 @@ func ContextCommandsForContext(activeContext string) []CompletionEntry {
 }
 
 var globalSlashCommands = map[string]struct{}{
-	"/help": {},
-	"/context": {},
-	"/back": {},
-	"/status": {},
-	"/reset": {},
-	"/bug": {},
-	"/clear": {},
-	"/exit": {},
-	"/save": {},
-	"/load": {},
-	"/copy": {},
+	"/help":           {},
+	"/context":        {},
+	"/back":           {},
+	"/status":         {},
+	"/reset":          {},
+	"/bug":            {},
+	"/clear":          {},
+	"/exit":           {},
+	"/save":           {},
+	"/load":           {},
+	"/copy":           {},
 	"/runtime-status": {},
-	"/set": {},
-	"/get": {},
+	"/set":            {},
+	"/get":            {},
 }
 
 var scopedSlashCommands = map[string][]string{
-	"/new": {"script"},
-	"/edit": {"script"},
-	"/show": {"script", "customcommand"},
-	"/run": {"script", "sandbox", "customcommand"},
-	"/list": {"script", "sandbox", "customcommand"},
-	"/delete": {"script", "customcommand"},
-	"/define": {"customcommand"},
-	"/open": {"sandbox"},
+	"/new":     {"script"},
+	"/edit":    {"script"},
+	"/show":    {"script", "customcommand"},
+	"/run":     {"script", "sandbox", "customcommand"},
+	"/list":    {"script", "sandbox", "customcommand"},
+	"/delete":  {"script", "customcommand"},
+	"/define":  {"customcommand"},
+	"/open":    {"sandbox"},
 	"/set-ide": {"sandbox"},
-	"/watch": {"sandbox"},
-	"/build": {"sandbox"},
-	"/eval": {"math"},
-	"/fn": {"math"},
-	"/vars": {"math"},
-	"/fns": {"math"},
+	"/watch":   {"sandbox"},
+	"/build":   {"sandbox"},
+	"/eval":    {"math"},
+	"/fn":      {"math"},
+	"/vars":    {"math"},
+	"/fns":     {"math"},
 	"/promote": {"math"},
-	"/calc": {"math"},
-	"/logic": {"math"},
-	"/start": {"setup"},
+	"/calc":    {"math"},
+	"/logic":   {"math"},
+	"/start":   {"setup"},
 }
 
 func contextGroupFromActiveContext(activeContext string) string {
@@ -341,8 +343,8 @@ func ValidateSlashCommandForContext(activeContext string, input string) CommandS
 	}
 	if _, ok := globalSlashCommands[base]; ok {
 		return CommandScopeValidation{
-			Allowed: true,
-			Command: base,
+			Allowed:      true,
+			Command:      base,
 			CurrentGroup: contextGroupFromActiveContext(activeContext),
 		}
 	}
@@ -350,8 +352,8 @@ func ValidateSlashCommandForContext(activeContext string, input string) CommandS
 	allowedGroups, constrained := scopedSlashCommands[base]
 	if !constrained {
 		return CommandScopeValidation{
-			Allowed: true,
-			Command: base,
+			Allowed:      true,
+			Command:      base,
 			CurrentGroup: contextGroupFromActiveContext(activeContext),
 		}
 	}
@@ -360,8 +362,8 @@ func ValidateSlashCommandForContext(activeContext string, input string) CommandS
 	for _, group := range allowedGroups {
 		if group == currentGroup {
 			return CommandScopeValidation{
-				Allowed: true,
-				Command: base,
+				Allowed:       true,
+				Command:       base,
 				CurrentGroup:  currentGroup,
 				AllowedGroups: allowedGroups,
 			}
@@ -369,9 +371,9 @@ func ValidateSlashCommandForContext(activeContext string, input string) CommandS
 	}
 
 	return CommandScopeValidation{
-		Allowed: false,
-		Command: base,
-		CurrentGroup: currentGroup,
+		Allowed:       false,
+		Command:       base,
+		CurrentGroup:  currentGroup,
 		AllowedGroups: allowedGroups,
 	}
 }

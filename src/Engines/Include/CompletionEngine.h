@@ -41,7 +41,7 @@ namespace Zeri::Engines {
             {"/exit", "Exit the REPL", ReplContext::Global},
             {"/back", "Return to previous context", ReplContext::Global},
             {"/save", "Save session state to disk", ReplContext::Global},
-            {"/set", "<key> <value>", ReplContext::Global},
+            {"/set", "<key> [=] <value> --number|--string|--bool", ReplContext::Global},
             {"/get", "<key>", ReplContext::Global},
             {"/lua", "<script>", ReplContext::Global},
             {"/eval", "<expr>", ReplContext::Math},

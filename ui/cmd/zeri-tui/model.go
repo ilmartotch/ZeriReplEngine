@@ -1993,12 +1993,18 @@ func (m *AppModel) addErrorMessage(content string) {
 func (m *AppModel) addErrorMessageWithTitle(content string, title string) {
 	enriched := enrichReactiveErrorMessage(content, m.activeContext)
 	msg := ui.ChatMessage{
-		Role: ui.RoleError,
-		Title: title,
-		Content: ui.NormaliseContent(enriched),
+		Role:      ui.RoleError,
+		Title:     title,
+		Content:   ui.NormaliseContent(enriched),
 		Timestamp: time.Now().Format("15:04"),
 	}
 	m.messages = append(m.messages, msg)
+	if shouldPrefillTypedSetTemplate(enriched) && strings.TrimSpace(m.input.Value()) == "" {
+		m.input.SetValue("/set myVar = 42 --number")
+		m.input.SetHeight(1)
+		m.updateAutocompleteForInput(m.input.Value())
+		m.recalculateLayout()
+	}
 	m.refreshViewport()
 }
 
@@ -2080,9 +2086,20 @@ func enrichReactiveErrorMessage(content string, activeContext string) string {
 		)
 	}
 
+	if strings.Contains(lower, "[settyperequired]") || strings.Contains(lower, "[settypeconflict]") {
+		hints = append(hints,
+			"How to fix: use exactly one type flag.",
+			"Examples:",
+			"/set x = 5 --number",
+			"/set home = Milan --string",
+			"/set featureEnabled = t --bool",
+			"Template was copied to input: /set myVar = 42 --number",
+		)
+	}
+
 	if strings.Contains(lower, "usage: /set") {
 		hints = append(hints,
-			"How to fix: include key and value in one command (example: /set myVar 42).",
+			"How to fix: use /set <key> [=] <value> with one type flag (--number, --string, --bool).",
 		)
 	}
 
@@ -2103,6 +2120,11 @@ func enrichReactiveErrorMessage(content string, activeContext string) string {
 	}
 
 	return base + "\n" + strings.Join(hints, "\n")
+}
+
+func shouldPrefillTypedSetTemplate(content string) bool {
+	lower := strings.ToLower(content)
+	return strings.Contains(lower, "[settyperequired]") || strings.Contains(lower, "[settypeconflict]")
 }
 
 func (m AppModel) scriptExecutionLabel() string {
