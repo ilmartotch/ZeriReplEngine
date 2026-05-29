@@ -73,7 +73,7 @@ func defaultHelpCatalog() helpCatalogData {
 				{Command: "/context", Synopsis: "List reachable contexts"},
 				{Command: "/back", Synopsis: "Return to previous context"},
 				{Command: "/reset", Synopsis: "Reset the current session"},
-				{Command: "/status", Synopsis: "Show engine diagnostics"},
+				{Command: "/status", Synopsis: "Show engine diagnostics and persistence paths"},
 				{Command: "/bug report", Synopsis: "Show bug-report instructions"},
 				{Command: "/bug snapshot", Synopsis: "Create a diagnostic snapshot file for issue attachments"},
 				{Command: "/save", Synopsis: "Save session state to disk"},

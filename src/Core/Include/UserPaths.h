@@ -1,10 +1,17 @@
 #pragma once
 
 #include <filesystem>
+#include <optional>
 
 namespace Zeri::Core {
 
+    std::optional<std::filesystem::path> TryResolveUserDataDir();
+    std::optional<std::filesystem::path> TryResolveScriptsDir();
+    std::optional<std::filesystem::path> TryResolveSessionsDir();
+
     std::filesystem::path ResolveUserDataDir();
+    std::filesystem::path ResolveScriptsDir();
+    std::filesystem::path ResolveSessionsDir();
     std::filesystem::path ResolveSessionPath();
     std::filesystem::path ResolveSessionBackupPath();
 

@@ -1,31 +1,61 @@
 param(
     [switch]$Force,
     [switch]$System,
-    [switch]$Uninstall
+    [switch]$Uninstall,
+    [string]$BinPath,
+    [string]$DataPath
 )
 
 <#
 USAGE
   Direct invocation (recommended):
-    .\install.ps1 [-Force] [-System] [-Uninstall]
+    .\install.ps1 [-Force] [-Uninstall] -BinPath "<dir>" -DataPath "<dir>"
 
   One-liner install:
     irm https://github.com/ilmartotch/ZeriReplEngine/releases/latest/download/install.ps1 | iex
 
   One-liner uninstall (parameters cannot be passed via iex; use scriptblock syntax):
-    & ([scriptblock]::Create((irm https://github.com/ilmartotch/ZeriReplEngine/releases/latest/download/install.ps1))) -Uninstall
+    & ([scriptblock]::Create((irm https://github.com/ilmartotch/ZeriReplEngine/releases/latest/download/install.ps1))) -Uninstall -BinPath "<dir>"
 #>
 
 $ErrorActionPreference = "Stop"
 $Repo = "ilmartotch/ZeriReplEngine"
-$BinDir = if ($System) { "C:\Program Files\Zeri" } else { "$env:LOCALAPPDATA\Zeri" }
-$UserDataDir = "$env:APPDATA\Zeri"
-$ManifestFile = "$BinDir\zeri-manifest.json"
+$PathTarget = "User"
 
 function Test-IsAdministrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Test-IsInteractiveSession {
+    try {
+        return -not [Console]::IsInputRedirected -and -not [Console]::IsOutputRedirected
+    } catch {
+        return $Host.Name -notlike "*ServerRemoteHost*"
+    }
+}
+
+function Resolve-RequiredPath {
+    param(
+        [string]$CurrentValue,
+        [string]$PromptMessage,
+        [string]$ParameterName
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($CurrentValue)) {
+        return [System.IO.Path]::GetFullPath($CurrentValue)
+    }
+
+    if (Test-IsInteractiveSession) {
+        $entered = Read-Host $PromptMessage
+        if ([string]::IsNullOrWhiteSpace($entered)) {
+            throw "Missing required path for -$ParameterName."
+        }
+        return [System.IO.Path]::GetFullPath($entered)
+    }
+
+    throw "Non-interactive execution requires -$ParameterName."
 }
 
 function Add-PathEntry {
@@ -65,9 +95,12 @@ function Remove-PathEntry {
     [Environment]::SetEnvironmentVariable("PATH", ($parts -join ';'), $Target)
 }
 
-if ($System -and -not (Test-IsAdministrator)) {
-    Write-Error "System installation requires administrator privileges. Run this script as Administrator."
+if ($System) {
+    Write-Warning "-System is deprecated and ignored. PATH is always updated at user scope."
 }
+
+$BinDir = Resolve-RequiredPath -CurrentValue $BinPath -PromptMessage "Enter binary installation path (directory for zeri.exe):" -ParameterName "BinPath"
+$ManifestFile = Join-Path $BinDir "zeri-manifest.json"
 
 if ($Uninstall) {
     if (-not (Test-Path $ManifestFile)) {
@@ -75,6 +108,14 @@ if ($Uninstall) {
     }
 
     $manifest = Get-Content $ManifestFile -Raw | ConvertFrom-Json
+    if (-not [string]::IsNullOrWhiteSpace($DataPath)) {
+        $UserDataDir = [System.IO.Path]::GetFullPath($DataPath)
+    } elseif ($manifest.PSObject.Properties.Name -contains "user_data_dir" -and -not [string]::IsNullOrWhiteSpace($manifest.user_data_dir)) {
+        $UserDataDir = [System.IO.Path]::GetFullPath([string]$manifest.user_data_dir)
+    } else {
+        $UserDataDir = Resolve-RequiredPath -CurrentValue "" -PromptMessage "Enter user data path to remove on uninstall:" -ParameterName "DataPath"
+    }
+
     foreach ($fileName in $manifest.files_installed) {
         $targetFile = Join-Path $BinDir ($fileName.Replace('/', '\'))
         if (Test-Path $targetFile) {
@@ -112,11 +153,12 @@ if ($Uninstall) {
         }
     }
 
-    $pathTarget = if ($System) { "Machine" } else { "User" }
-    Remove-PathEntry -PathToRemove $BinDir -Target $pathTarget
+    Remove-PathEntry -PathToRemove $BinDir -Target $PathTarget
     Write-Host "Zeri has been completely uninstalled."
     return
 }
+
+$UserDataDir = Resolve-RequiredPath -CurrentValue $DataPath -PromptMessage "Enter user data path (sessions/scripts storage):" -ParameterName "DataPath"
 
 Write-Host "Installing Zeri..."
 $release = Invoke-RestMethod "https://api.github.com/repos/$Repo/releases/latest"
@@ -202,15 +244,16 @@ try {
     New-Item -ItemType Directory -Path (Join-Path $UserDataDir "sessions") -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $UserDataDir "scripts") -Force | Out-Null
 
-    $pathTarget = if ($System) { "Machine" } else { "User" }
-    $pathModified = Add-PathEntry -PathToAdd $BinDir -Target $pathTarget
+    $pathModified = Add-PathEntry -PathToAdd $BinDir -Target $PathTarget
 
     $manifest = [ordered]@{
         version = $latestVersion
         installed_at = (Get-Date).ToString("o")
         bin_dir = $BinDir
         user_data_dir = $UserDataDir
-        system_install = [bool]$System
+        system_install = $false
+        path_target = $PathTarget
+        requested_system_install = [bool]$System
         path_modified = [bool]$pathModified
         files_installed = $installedFiles
         dirs_created = $createdDirs
@@ -252,4 +295,3 @@ Issues 1+2 (irm | iex compatibility):
   scriptblock syntax required to pass -Uninstall when piping from the web.
 - Fixed `-Force` hint: was "--force" (bash style), now "-Force" (correct PowerShell style).
 #>
-

@@ -26,7 +26,7 @@ namespace {
 #endif
     }
 
-    std::filesystem::path ResolveBaseUserDataDir() {
+    std::optional<std::filesystem::path> TryResolveBaseUserDataDir() {
 #if defined(_WIN32)
         if (const auto appData = ReadEnvVar("APPDATA"); !appData.empty()) {
             return std::filesystem::path(appData) / "Zeri";
@@ -47,27 +47,62 @@ namespace {
         }
 #endif
 
-        throw std::runtime_error("Cannot resolve user data directory: no valid env var found");
+        return std::nullopt;
     }
 
 }
 
 namespace Zeri::Core {
 
+    std::optional<std::filesystem::path> TryResolveUserDataDir() {
+        return TryResolveBaseUserDataDir();
+    }
+
+    std::optional<std::filesystem::path> TryResolveScriptsDir() {
+        if (const auto userDataDir = TryResolveBaseUserDataDir(); userDataDir.has_value()) {
+            return *userDataDir / "scripts";
+        }
+        return std::nullopt;
+    }
+
+    std::optional<std::filesystem::path> TryResolveSessionsDir() {
+        if (const auto userDataDir = TryResolveBaseUserDataDir(); userDataDir.has_value()) {
+            return *userDataDir / "sessions";
+        }
+        return std::nullopt;
+    }
+
     std::filesystem::path ResolveUserDataDir() {
-        const auto userDataDir = ResolveBaseUserDataDir();
+        const auto maybeUserDataDir = TryResolveBaseUserDataDir();
+        if (!maybeUserDataDir.has_value()) {
+            throw std::runtime_error("Cannot resolve user data directory: no valid env var found");
+        }
+
+        const auto userDataDir = *maybeUserDataDir;
         std::filesystem::create_directories(userDataDir);
         return userDataDir;
     }
 
+    std::filesystem::path ResolveScriptsDir() {
+        const auto scriptsDir = ResolveUserDataDir() / "scripts";
+        std::filesystem::create_directories(scriptsDir);
+        return scriptsDir;
+    }
+
+    std::filesystem::path ResolveSessionsDir() {
+        const auto sessionsDir = ResolveUserDataDir() / "sessions";
+        std::filesystem::create_directories(sessionsDir);
+        return sessionsDir;
+    }
+
     std::filesystem::path ResolveSessionPath() {
-        const auto sessionPath = ResolveUserDataDir() / "sessions" / "state.json";
+        const auto sessionPath = ResolveSessionsDir() / "state.json";
         std::filesystem::create_directories(sessionPath.parent_path());
         return sessionPath;
     }
 
     std::filesystem::path ResolveSessionBackupPath() {
-        const auto backupPath = ResolveUserDataDir() / "sessions" / "state.json.bak";
+        const auto backupPath = ResolveSessionsDir() / "state.json.bak";
         std::filesystem::create_directories(backupPath.parent_path());
         return backupPath;
     }

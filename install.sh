@@ -5,6 +5,8 @@ REPO="ilmartotch/ZeriReplEngine"
 FORCE=false
 SYSTEM_INSTALL=false
 UNINSTALL=false
+BIN_PATH=""
+DATA_PATH=""
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -17,6 +19,22 @@ while [ "$#" -gt 0 ]; do
         --uninstall)
             UNINSTALL=true
             ;;
+        --bin-path)
+            shift
+            if [ "$#" -eq 0 ] || [[ "$1" == --* ]]; then
+                echo "Error: --bin-path requires a directory value."
+                exit 1
+            fi
+            BIN_PATH="$1"
+            ;;
+        --data-path)
+            shift
+            if [ "$#" -eq 0 ] || [[ "$1" == --* ]]; then
+                echo "Error: --data-path requires a directory value."
+                exit 1
+            fi
+            DATA_PATH="$1"
+            ;;
         *)
             echo "Error: unknown argument '$1'."
             exit 1
@@ -28,30 +46,40 @@ done
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH="$(uname -m)"
 
-if [ "$SYSTEM_INSTALL" = true ] && [ "${EUID}" -ne 0 ]; then
-    echo "Error: --system requires root. Run with sudo."
-    exit 1
-fi
-
 if [ "$SYSTEM_INSTALL" = true ]; then
-    BIN_DIR="/usr/local/bin"
-    SHARE_DIR="/usr/local/share/zeri"
-else
-    BIN_DIR="$HOME/.local/bin"
-    SHARE_DIR="$HOME/.local/share/zeri"
+    echo "Warning: --system is deprecated and ignored. PATH is always updated at user scope." >&2
 fi
 
-if [ "$OS" = "darwin" ]; then
-    USER_DATA_DIR="$HOME/Library/Application Support/zeri"
-elif [ "$OS" = "linux" ]; then
-    USER_DATA_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/zeri"
-else
+if [ "$OS" != "darwin" ] && [ "$OS" != "linux" ]; then
     echo "Error: unsupported operating system '$OS'."
     exit 1
 fi
 
-RUNTIME_DIR="$BIN_DIR/runtime"
-MANIFEST_FILE="$SHARE_DIR/zeri-manifest.json"
+is_interactive() {
+    [ -t 0 ] && [ -t 1 ]
+}
+
+resolve_required_path() {
+    local current_value="$1"
+    local prompt_message="$2"
+    local flag_name="$3"
+    if [ -n "$current_value" ]; then
+        printf '%s\n' "$current_value"
+        return 0
+    fi
+    if is_interactive; then
+        printf '%s ' "$prompt_message" >&2
+        read -r entered
+        if [ -z "$entered" ]; then
+            echo "Error: missing required path for $flag_name." >&2
+            exit 1
+        fi
+        printf '%s\n' "$entered"
+        return 0
+    fi
+    echo "Error: non-interactive execution requires $flag_name." >&2
+    exit 1
+}
 
 manifest_version() {
     if command -v python3 >/dev/null 2>&1; then
@@ -85,6 +113,27 @@ PY
     fi
 }
 
+manifest_value() {
+    key="$1"
+    file="$2"
+    if command -v python3 >/dev/null 2>&1; then
+        python3 - "$key" "$file" <<'PY'
+import json
+import sys
+
+key = sys.argv[1]
+path = sys.argv[2]
+with open(path, 'r', encoding='utf-8') as f:
+    data = json.load(f)
+value = data.get(key, "")
+if isinstance(value, str):
+    print(value)
+PY
+    else
+        grep -E "\"$key\"" "$file" | sed -E "s/.*\"$key\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*/\1/" | head -n1
+    fi
+}
+
 release_tag() {
     if command -v python3 >/dev/null 2>&1; then
         python3 -c "import json,sys; print(json.load(sys.stdin).get('tag_name',''))"
@@ -113,10 +162,22 @@ PY
     fi
 }
 
+BIN_DIR="$(resolve_required_path "$BIN_PATH" "Enter binary installation path (directory for zeri):" "--bin-path")"
+MANIFEST_FILE="$BIN_DIR/zeri-manifest.json"
+
 if [ "$UNINSTALL" = true ]; then
     if [ ! -f "$MANIFEST_FILE" ]; then
-        echo "No Zeri installation found at $SHARE_DIR."
+        echo "No Zeri installation found at $BIN_DIR."
         exit 1
+    fi
+
+    if [ -n "$DATA_PATH" ]; then
+        USER_DATA_DIR="$DATA_PATH"
+    else
+        USER_DATA_DIR="$(manifest_value "user_data_dir" "$MANIFEST_FILE")"
+        if [ -z "$USER_DATA_DIR" ]; then
+            USER_DATA_DIR="$(resolve_required_path "" "Enter user data path to remove on uninstall:" "--data-path")"
+        fi
     fi
 
     while IFS= read -r file_name; do
@@ -150,10 +211,6 @@ if [ "$UNINSTALL" = true ]; then
 
     rm -f "$MANIFEST_FILE"
 
-    if [ -d "$SHARE_DIR" ] && [ -z "$(ls -A "$SHARE_DIR")" ]; then
-        rmdir "$SHARE_DIR"
-    fi
-
     confirm_delete="$(printf 'This will permanently delete all user data in %s. Are you sure? [y/N] ' "$USER_DATA_DIR"; read -r v; printf '%s' "$v")"
     if [ "$confirm_delete" = "y" ]; then
         rm -rf "$USER_DATA_DIR"
@@ -162,6 +219,8 @@ if [ "$UNINSTALL" = true ]; then
     echo "Zeri has been completely uninstalled."
     exit 0
 fi
+
+USER_DATA_DIR="$(resolve_required_path "$DATA_PATH" "Enter user data path (sessions/scripts storage):" "--data-path")"
 
 case "$OS-$ARCH" in
     linux-x86_64)
@@ -227,8 +286,6 @@ else
 fi
 
 mkdir -p "$BIN_DIR"
-mkdir -p "$SHARE_DIR"
-mkdir -p "$RUNTIME_DIR"
 
 INSTALL_MANIFEST_FILENAME="install_manifest.json"
 MANIFEST_SCHEMA_VERSION=1
@@ -308,7 +365,7 @@ fi
 
 INSTALLED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 if command -v python3 >/dev/null 2>&1; then
-    python3 - "$MANIFEST_FILE" "$LATEST_VERSION" "$INSTALLED_AT" "$BIN_DIR" "$SHARE_DIR" "$USER_DATA_DIR" "$SYSTEM_INSTALL" "$PATH_MODIFIED" "$TRACK_TEMP" "${MODIFIED_RC_FILES[@]}" <<'PY'
+    python3 - "$MANIFEST_FILE" "$LATEST_VERSION" "$INSTALLED_AT" "$BIN_DIR" "$USER_DATA_DIR" "$PATH_MODIFIED" "$TRACK_TEMP" "${MODIFIED_RC_FILES[@]}" <<'PY'
 import json
 import sys
 
@@ -316,12 +373,10 @@ manifest_file = sys.argv[1]
 version = sys.argv[2]
 installed_at = sys.argv[3]
 bin_dir = sys.argv[4]
-share_dir = sys.argv[5]
-user_data_dir = sys.argv[6]
-system_install = sys.argv[7].lower() == 'true'
-path_modified = sys.argv[8].lower() == 'true'
-track_file = sys.argv[9]
-rc_files = sys.argv[10:]
+user_data_dir = sys.argv[5]
+path_modified = sys.argv[6].lower() == 'true'
+track_file = sys.argv[7]
+rc_files = sys.argv[8:]
 
 with open(track_file) as f:
     tracking = json.load(f)
@@ -330,9 +385,9 @@ data = {
     "version": version,
     "installed_at": installed_at,
     "bin_dir": bin_dir,
-    "share_dir": share_dir,
     "user_data_dir": user_data_dir,
-    "system_install": system_install,
+    "system_install": False,
+    "path_target": "user",
     "path_modified": path_modified,
     "shell_rc_files": rc_files,
     "files_installed": tracking["files"],

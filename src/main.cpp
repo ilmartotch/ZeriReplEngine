@@ -194,6 +194,42 @@ namespace {
         }
     }
 
+    struct PersistencePathsSnapshot {
+        std::filesystem::path userDataDir;
+        std::filesystem::path scriptsDir;
+        std::filesystem::path sessionsDir;
+        std::filesystem::path stateFilePath;
+    };
+
+    [[nodiscard]] std::optional<PersistencePathsSnapshot> TryCollectPersistencePaths() {
+        const auto userDataDir = Zeri::Core::TryResolveUserDataDir();
+        const auto scriptsDir = Zeri::Core::TryResolveScriptsDir();
+        const auto sessionsDir = Zeri::Core::TryResolveSessionsDir();
+
+        if (!userDataDir.has_value() || !scriptsDir.has_value() || !sessionsDir.has_value()) {
+            return std::nullopt;
+        }
+
+        PersistencePathsSnapshot snapshot;
+        snapshot.userDataDir = *userDataDir;
+        snapshot.scriptsDir = *scriptsDir;
+        snapshot.sessionsDir = *sessionsDir;
+        snapshot.stateFilePath = snapshot.sessionsDir / "state.json";
+        return snapshot;
+    }
+
+    [[nodiscard]] std::string BuildPersistencePathsBlock(
+        const PersistencePathsSnapshot& paths,
+        std::string_view indent
+    ) {
+        std::string output;
+        output += std::string(indent) + "Data root: " + paths.userDataDir.string() + "\n";
+        output += std::string(indent) + "Scripts: " + (paths.scriptsDir / "<language>").string() + "\n";
+        output += std::string(indent) + "Sessions: " + paths.sessionsDir.string() + "\n";
+        output += std::string(indent) + "Session state: " + paths.stateFilePath.string();
+        return output;
+    }
+
     [[nodiscard]] std::unique_ptr<Zeri::Engines::IContext> BuildContext(const std::string& name) {
         const std::string normalized = ToLower(name);
         if (normalized == "code") return std::make_unique<Zeri::Engines::Defaults::ScriptHubContext>();
@@ -376,7 +412,13 @@ namespace {
             result += "  Context:    " + ctxName + "\n";
             result += "  Local vars: " + std::to_string(localVars.size()) + "\n";
             result += "  Local fns:  " + std::to_string(localFuncs.size()) + "\n";
-            result += "  Fn rev:     " + std::to_string(runtimeState.GetFunctionRegistryRevision());
+            result += "  Fn rev:     " + std::to_string(runtimeState.GetFunctionRegistryRevision()) + "\n";
+            result += "  Persistence paths:\n";
+            if (const auto persistencePaths = TryCollectPersistencePaths(); persistencePaths.has_value()) {
+                result += BuildPersistencePathsBlock(*persistencePaths, "    ");
+            } else {
+                result += "    Unavailable: unable to resolve user data directory from environment.";
+            }
             terminal.WriteLine(result);
             return true;
         }
@@ -747,6 +789,13 @@ int RunMain(int argc, char* argv[]) {
     }
 
     runtimeState.GetCurrentContext()->OnEnter(terminal);
+    if (const auto persistencePaths = TryCollectPersistencePaths(); persistencePaths.has_value()) {
+        std::string welcomeMessage = "Persistence paths\n";
+        welcomeMessage += BuildPersistencePathsBlock(*persistencePaths, "  ");
+        terminal.WriteInfo(welcomeMessage);
+    } else {
+        terminal.WriteInfo("Persistence paths unavailable: unable to resolve user data directory from environment.");
+    }
 
     while (!runtimeState.IsExitRequested()) {
         auto* currentCtx = runtimeState.GetCurrentContext();
