@@ -2036,7 +2036,7 @@ func sanitizeScriptExecutionContent(content string) string {
 		if strings.EqualFold(trimmed, "(ok)") {
 			continue
 		}
-		if strings.EqualFold(trimmed, "-- Editor attivo. /run per eseguire, /save per salvare, /cancel per uscire.") {
+		if strings.EqualFold(trimmed, "-- Editor active. /run to execute, /save to save, /cancel to exit.") {
 			continue
 		}
 		filtered = append(filtered, raw)

@@ -31,7 +31,7 @@ namespace Zeri::Engines::Defaults {
 
 /*
 CustomCommandContext.h
-Definisce il contesto isolato `zeri::custom>` per la gestione dei comandi utente
-personalizzati. I comandi restano confinati a questo context (vincolo v1) con
-persistenza su RuntimeState PersistedScope sotto namespace `custom::commands::*`.
+Defines the isolated `zeri::custom>` context for user-defined commands.
+Commands remain confined to this context (v1 constraint) with
+persistence in RuntimeState PersistedScope under `custom::commands::*`.
 */

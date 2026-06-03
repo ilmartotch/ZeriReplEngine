@@ -22,36 +22,6 @@ namespace {
         return result;
     }
 
-    [[nodiscard]] std::optional<size_t> FindUnquotedPipePosition(std::string_view input) {
-        bool inQuotes = false;
-        bool escape = false;
-
-        for (size_t i = 0; i < input.size(); ++i) {
-            const char c = input[i];
-
-            if (escape) {
-                escape = false;
-                continue;
-            }
-
-            if (c == '\\') {
-                escape = true;
-                continue;
-            }
-
-            if (c == '"') {
-                inQuotes = !inQuotes;
-                continue;
-            }
-
-            if (c == '|' && !inQuotes) {
-                return i;
-            }
-        }
-
-        return std::nullopt;
-    }
-
     [[nodiscard]] std::optional<size_t> FindUnclosedQuotePosition(std::string_view input) {
         bool inQuotes = false;
         bool escape = false;
@@ -138,13 +108,6 @@ namespace Zeri::Engines::Defaults {
             cmd.commandName = "@expr";
             cmd.args.emplace_back(std::string(inputView));
             return cmd;
-        }
-
-        if (const auto pipePos = FindUnquotedPipePosition(inputView); pipePos.has_value()) {
-            return std::unexpected(ParseError{
-                "Pipe operator '|' is not supported in this parser.",
-                *pipePos
-            });
         }
 
         std::array<std::byte, 4096> scratch{};

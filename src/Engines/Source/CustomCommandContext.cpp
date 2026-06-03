@@ -223,8 +223,9 @@ namespace Zeri::Engines::Defaults {
 
 /*
 CustomCommandContext.cpp
-Implementa la gestione comandi utente custom su PersistedScope con namespace
-`custom::commands::*`. /define salva body, /run fa echo via terminal.Write,
-/list mostra i nomi registrati, /show visualizza il body, /delete rimuove dal
-registro logico. Il contesto resta isolato (`$customCommand`) come vincolo v1.
+Implements custom user-command management in PersistedScope under
+`custom::commands::*`. /define saves the body, /run echoes through terminal.Write,
+/list shows registered names, /show displays the body, and /delete removes
+entries from the logical registry. The context remains isolated (`$customCommand`)
+as a v1 constraint.
 */

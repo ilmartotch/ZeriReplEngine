@@ -239,8 +239,8 @@ namespace Zeri::Engines::Defaults {
 
 /*
 JsContext.cpp
-Implementa il contesto REPL JavaScript/TypeScript con comando workflow completo:
-/new, /run, /edit, /list, /delete, /show e passthrough expression all'executor.
-Il linguaggio (`js`/`ts`) è dinamico in base al flag context; le chiavi di storage
-usano ScriptRegistry (`js::scripts::*` o `ts::scripts::*`) e ultimo buffer sessione.
+Implements the JavaScript/TypeScript REPL context with full command workflow:
+/new, /run, /edit, /list, /delete, /show, and expression passthrough to the executor.
+Language (`js`/`ts`) is dynamic based on the context flag; storage keys use
+ScriptRegistry (`js::scripts::*` or `ts::scripts::*`) and the last session buffer.
 */

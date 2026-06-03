@@ -125,7 +125,7 @@ namespace {
         const Zeri::Core::RuntimeState& runtimeState,
         const Zeri::Core::StartupDiagnosticsReport* startupDiagnostics
     ) {
-        const std::string baseUrl = "https://github.com/ilmartotch/ZeriReplEngine/issues/new";
+        const std::string baseUrl = "https://github.com/ilmartotch/ReplZeriEmgine/issues/new";
         const std::string title = "Bug report: describe the failure here";
         const std::string body = BuildIssueReportBody(runtimeState, startupDiagnostics);
         return baseUrl + "?title=" + UrlEncode(title) + "&body=" + UrlEncode(body);
@@ -460,7 +460,7 @@ namespace {
 
         if (cmd.commandName == "bug") {
             if (cmd.args.empty() || (cmd.args.size() == 1 && ToLower(cmd.args[0]) == "report")) {
-                const std::string trackerUrl = "https://github.com/ilmartotch/ZeriReplEngine/issues";
+                const std::string trackerUrl = "https://github.com/ilmartotch/ReplZeriEmgine/issues";
                 const std::string prefilledUrl = BuildPrefilledIssueUrl(runtimeState, startupDiagnostics);
 
                 std::string message = "Bug Report Guide\n";
@@ -576,7 +576,6 @@ namespace {
         Zeri::Engines::Defaults::CachedDispatcher& dispatcher,
         Zeri::Core::RuntimeState& runtimeState,
         Zeri::Ui::ITerminal& terminal,
-        std::optional<std::string>& pipedValue,
         Zeri::Ui::OutputSink* sink = nullptr,
         const Zeri::Core::StartupDiagnosticsReport* startupDiagnostics = nullptr,
         const std::vector<Zeri::Core::BugSnapshotCommandRecord>* commandHistory = nullptr
@@ -596,10 +595,32 @@ namespace {
             return true;
         }
 
-        cmd.pipeInput = pipedValue;
+        const auto hasPipeOperator = [&cmd]() -> bool {
+            if (cmd.rawInput.find('|') != std::string::npos) {
+                return true;
+            }
+            if (cmd.commandName.find('|') != std::string::npos) {
+                return true;
+            }
+            for (const auto& arg : cmd.args) {
+                if (arg.find('|') != std::string::npos) {
+                    return true;
+                }
+            }
+            return false;
+        }();
+
+        if (hasPipeOperator) {
+            terminal.WriteError("Unknown command. Use /help to see available commands.");
+            return false;
+        }
 
         switch (cmd.type) {
         case Zeri::Engines::InputType::ContextSwitch:
+            if (!cmd.args.empty() || !cmd.flags.empty()) {
+                terminal.WriteError("Unknown command. Use /help to see available commands.");
+                return false;
+            }
             return SwitchContext(cmd.commandName, runtimeState, terminal, sink);
 
         case Zeri::Engines::InputType::SystemOp:
@@ -624,7 +645,6 @@ namespace {
             HandleOutcome(outcome, terminal);
 
             if (!outcome.has_value()) return false;
-            pipedValue = outcome.value().text;
             return true;
         }
 
@@ -634,40 +654,6 @@ namespace {
         }
     }
 
-    [[nodiscard]] bool TryExecuteInlineSandbox(
-        std::string_view input,
-        Zeri::Engines::Defaults::CachedDispatcher& dispatcher,
-        Zeri::Core::RuntimeState& runtimeState,
-        Zeri::Ui::ITerminal& terminal
-    ) {
-        const std::string_view trimmed = Trim(input);
-        if (!ToLower(trimmed).starts_with("$sandbox")) {
-            return false;
-        }
-
-        auto dispatchResult = dispatcher.Dispatch(std::string(trimmed));
-        if (!dispatchResult.has_value()) {
-            return false;
-        }
-
-        const auto& cmd = dispatchResult->command;
-        if (cmd.type != Zeri::Engines::InputType::ContextSwitch ||
-            cmd.commandName != "sandbox" ||
-            !cmd.pipeInput.has_value()) {
-            return false;
-        }
-
-        Zeri::Engines::Defaults::SandboxContext sandbox;
-        Zeri::Engines::Command sandboxCommand;
-        sandboxCommand.type = Zeri::Engines::InputType::Expression;
-        sandboxCommand.rawInput = *cmd.pipeInput;
-        sandboxCommand.commandName = "@expr";
-        sandboxCommand.args.push_back(*cmd.pipeInput);
-
-        auto outcome = sandbox.HandleCommand(sandboxCommand, runtimeState, terminal);
-        HandleOutcome(outcome, terminal);
-        return true;
-    }
 }
 
 namespace {
@@ -827,13 +813,7 @@ int RunMain(int argc, char* argv[]) {
             continue;
         }
 
-        if (TryExecuteInlineSandbox(input, dispatcher, runtimeState, terminal)) {
-            AppendCommandHistory(commandHistory, input, true, "INLINE_SANDBOX");
-            continue;
-        }
-
-        std::optional<std::string> pipedValue;
-        bool ok = ExecuteStage(input, dispatcher, runtimeState, terminal, pipedValue, sinkOwner.get(), &startupDiagnostics, &commandHistory);
+        bool ok = ExecuteStage(input, dispatcher, runtimeState, terminal, sinkOwner.get(), &startupDiagnostics, &commandHistory);
         AppendCommandHistory(commandHistory, input, ok, ok ? "OK" : "FAILED");
 
         if (!ok) {

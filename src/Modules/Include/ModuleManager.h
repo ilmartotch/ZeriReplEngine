@@ -53,7 +53,7 @@ join-on-restart/shutdown semantics, ensuring safe cleanup without
 concurrent launch races. Scanning is decoupled from the main thread for
 fast startup times.
 
-Dipendenze: ModuleManifest, filesystem, nlohmann_json (in .cpp).
+Dependencies: ModuleManifest, filesystem, nlohmann_json (in .cpp).
 
 Configurazione root moduli:
   - kModulesRoot rimane il default compile-time condiviso.

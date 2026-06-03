@@ -34,5 +34,5 @@ Responsabilità:
 Allows switching between console I/O, bridge (headless), or GUI
 without changing the core engine logic.
 
-Dipendenze: nessuna (pure interface).
+Dependencies: none (pure interface).
 */

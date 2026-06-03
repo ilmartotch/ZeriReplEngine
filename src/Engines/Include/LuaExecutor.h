@@ -40,5 +40,5 @@ Responsabilità:
   - Execute(): Runs Lua code via ProcessBridge with `-e` flag.
   - Streams stdout/stderr to ITerminal in real time.
 
-Dipendenze: IExecutor, ProcessBridge, SystemGuard (ScriptRuntime).
+Dependencies: IExecutor, ProcessBridge, SystemGuard (ScriptRuntime).
 */

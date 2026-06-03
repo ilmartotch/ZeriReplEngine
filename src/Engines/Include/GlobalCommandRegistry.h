@@ -29,5 +29,5 @@ Responsabilità:
   - Defines kGlobalCommands as a constexpr list used across engine layers.
   - Exposes IsGlobalCommand(std::string_view) for unified command classification.
 
-Dipendenze: standard library only.
+Dependencies: standard library only.
 */

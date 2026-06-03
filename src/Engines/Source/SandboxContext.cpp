@@ -736,14 +736,14 @@ namespace Zeri::Engines::Defaults {
 /*
 SandboxContext.cpp — Module development and code execution environment.
 
-Comandi disponibili:
+Available commands:
   - /list: Fetches the manifest list from ModuleManager.
   - /build: Invokes cmake via ProcessBridge to compile a module.
-  - /run: Esegue modulo o target esterno (file/eseguibile) in modalità bloccante.
+  - /run: Executes a module or external target (file/executable) in blocking mode.
   - /open: Opens a file/path in the configured IDE.
   - /set-ide: Sets the preferred IDE command.
-  - /watch: Riporta lo stato runtime del processo sandbox.
+  - /watch: Reports sandbox process runtime status.
   - /help: Formatted list of all sandbox commands.
 
-Dipendenze: ProcessBridge, ModuleManager, RuntimeState.
+Dependencies: ProcessBridge, ModuleManager, RuntimeState.
 */

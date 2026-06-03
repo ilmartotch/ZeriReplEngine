@@ -31,11 +31,4 @@ Fields:
   type: Module type classifier: "native", "lua", "system", "unknown".
   path: Absolute path to the module directory.
 IsValid(): Requires non-empty name and path.
-
-Dipendenze: nessuna (POD struct).
-
-QA Changes:
-  - Rimossi commenti inline sui campi, documentazione spostata qui.
-  - Rinominato tipo "cpp" in "native" per chiarezza (il tipo indica moduli
-    compilati, non un linguaggio di scripting REPL).
 */

@@ -423,10 +423,7 @@ namespace Zeri::Engines::Defaults {
             "Variable scopes:\n"
             "  Default: local (lost on context exit)\n"
             "  /promote x session     — Persist for REPL session lifetime\n"
-            "  /promote x persisted   — Persist to disk across sessions\n"
-            "\n"
-            "Pipeline:\n"
-            "  $math | x = 5 | sin(x) + 1";
+            "  /promote x persisted   — Persist to disk across sessions";
     }
 
     ExecutionOutcome MathContext::HandleCalc(const Command& cmd) {
@@ -446,7 +443,6 @@ namespace Zeri::Engines::Defaults {
                 "Invalid arguments for /calc.",
                 "/calc",
                 { "Usage: /calc <a> <+|-|*|/> <b>",
-                  "Or provide expression via pipeline.",
                   "Tip: type expressions directly instead (e.g. 2+3)." }
             });
         }

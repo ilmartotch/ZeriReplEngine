@@ -59,5 +59,5 @@ Dispatch():
   via IParser, classifies via IDispatcher, stores result. FIFO eviction
   keeps cache bounded by m_maxEntries.
 
-Dipendenze: IParser, IDispatcher.
+Dependencies: IParser, IDispatcher.
 */

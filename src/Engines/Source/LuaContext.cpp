@@ -236,9 +236,9 @@ namespace Zeri::Engines::Defaults {
 
 /*
 LuaContext.cpp
-Implementa il contesto REPL Lua language-specific con executor condiviso e comandi:
-/new, /run, /edit, /list, /delete, /show, oltre al passthrough di espressioni raw.
-Le operazioni CRUD usano ScriptRegistry su chiavi `lua::scripts::*`; /run senza nome
-legge l'ultimo buffer dalla sessione RuntimeState (`lua::editor::last_buffer`).
-/edit pre-carica ScriptEditorContext con contenuto dello script salvato.
+Implements the language-specific Lua REPL context with shared executor and commands:
+/new, /run, /edit, /list, /delete, /show, plus passthrough of raw expressions.
+CRUD operations use ScriptRegistry keys `lua::scripts::*`; /run without a name
+reads the last buffer from RuntimeState session state (`lua::editor::last_buffer`).
+/edit preloads ScriptEditorContext with saved script content.
 */

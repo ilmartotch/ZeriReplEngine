@@ -35,7 +35,7 @@ namespace Zeri::Engines::Defaults {
 
 /*
 JsContext.h
-Contesto REPL JS/TS configurabile via flag `typescript`, con prompt dinamico
-`zeri::js>` o `zeri::ts>`. Mantiene executor condiviso e fornisce comando
-workflow editor/CRUD in parità funzionale con LuaContext/PythonContext.
+Configurable JS/TS REPL context via the `typescript` flag, with dynamic prompt
+`zeri::js>` or `zeri::ts>`. Maintains a shared executor and provides an
+editor/CRUD command workflow aligned with LuaContext and PythonContext.
 */

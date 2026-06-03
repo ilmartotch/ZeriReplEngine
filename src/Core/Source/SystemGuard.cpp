@@ -279,9 +279,5 @@ PrintGuide():
   Reports missing build tools via WriteError and missing optional runtimes
   via WriteInfo with installation hints.
 
-Dipendenze: ITerminal (forward-declared).
-
-QA Changes:
-  - Rimossi runtime cpp (cling) e rust (evcxr): non previsti in questa versione.
-  - Rimossi RuntimeHint per cpp e rust.
+Dependencies: ITerminal (forward-declared).
 */

@@ -34,7 +34,7 @@ namespace Zeri::Engines::Defaults {
 
 /*
 RubyExecutor.h
-Executor Ruby runtime-based che usa ProcessBridge per esecuzione one-shot inline
-via `ruby -e`, usando il runtime risolto da SystemGuard (`GetRuntime("ruby")`).
-La gestione output/error segue i callback separati stdout/stderr verso ITerminal.
+Runtime-based Ruby executor that uses ProcessBridge for one-shot inline
+execution via `ruby -e`, using the runtime resolved by SystemGuard (`GetRuntime("ruby")`).
+Output/error handling follows separate stdout/stderr callbacks to ITerminal.
 */

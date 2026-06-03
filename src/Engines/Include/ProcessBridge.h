@@ -53,7 +53,7 @@ namespace Zeri::Engines::Defaults {
 }
 
 /*
-ProcessBridge.h espone solo un'interfaccia C++ portabile, senza includere API native.
-I dettagli OS-specifici sono nascosti in un'implementazione privata (PIMPL) definita nel .cpp.
-In questo modo i consumer dell'header non dipendono da windows.h né da tipi POSIX.
+ProcessBridge.h exposes only a portable C++ interface, without native API headers.
+OS-specific details are hidden in a private implementation (PIMPL) defined in the .cpp.
+This keeps header consumers independent from windows.h and POSIX-specific types.
 */

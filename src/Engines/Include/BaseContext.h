@@ -44,5 +44,5 @@ Responsabilità:
   - Offers protected local variable storage (m_localVariables) with
     SetLocalVariable, GetLocalVariable, HasLocalVariable helpers.
 
-Dipendenze: IContext, GlobalCommandRegistry.
+Dependencies: IContext, GlobalCommandRegistry.
 */

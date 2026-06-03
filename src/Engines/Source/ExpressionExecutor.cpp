@@ -214,13 +214,13 @@ namespace Zeri::Engines::Defaults {
         Zeri::Core::RuntimeState& state,
         Zeri::Ui::ITerminal&
     ) {
-        if (cmd.commandName == "@context_eval") {
+        if (cmd.type == InputType::Expression) {
             if (cmd.args.empty()) {
                 return std::unexpected(ExecutionError{
                     "MissingExpression",
-                    "Nessuna espressione da valutare",
+                    "No expression to evaluate.",
                     cmd.rawInput,
-                    { "Passa l'espressione da valutare come primo argomento" }
+                    { "Pass the expression to evaluate as the first argument." }
                 });
             }
             return EvaluateState(cmd.args[0], state);
@@ -228,9 +228,9 @@ namespace Zeri::Engines::Defaults {
 
         return std::unexpected(ExecutionError{
             "UnsupportedCommand",
-            "Comando non gestito da ExpressionExecutor",
+            "Command not handled by ExpressionExecutor.",
             cmd.commandName,
-            { "Verifica il dispatcher o il tipo di executor da usare" }
+            { "Check the dispatcher or the executor type." }
         });
     }
 
@@ -241,9 +241,9 @@ namespace Zeri::Engines::Defaults {
     ExecutionOutcome ExpressionExecutor::EvaluateFunction(const FunctionCall& fc) const {
         return std::unexpected(ExecutionError{
             "FunctionNotImplemented",
-            "Funzione non implementata: " + fc.name,
+            "Function not implemented: " + fc.name,
             fc.name,
-            { "Registra la funzione in m_functions oppure implementa un parser" }
+            { "Register the function in m_functions or implement a parser." }
         });
     }
 
@@ -255,9 +255,9 @@ namespace Zeri::Engines::Defaults {
         if (trimmed.empty()) {
             return std::unexpected(ExecutionError{
                 "EmptyExpression",
-                "Espressione vuota",
+                "Empty expression.",
                 expression,
-                { "Inserisci un'espressione matematica valida" }
+                { "Enter a valid mathematical expression." }
             });
         }
 
@@ -409,5 +409,5 @@ Note:
   exprtk emits unreachable-code warnings that would be promoted to errors
   by /WX. See: https://learn.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-4-c4702
 
-Dipendenze: ExpressionExecutor.h, exprtk, RuntimeState.
+Dependencies: ExpressionExecutor.h, exprtk, RuntimeState.
 */

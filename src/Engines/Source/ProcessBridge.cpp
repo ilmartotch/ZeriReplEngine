@@ -685,9 +685,9 @@ namespace Zeri::Engines::Defaults {
 }
 
 /*
-ProcessBridge usa una PIMPL per isolare completamente i dettagli di piattaforma dall'header pubblico.
-Il file header non include più windows.h né tipi POSIX, quindi i consumer restano portabili.
-Nel source vengono usati i wrapper RAII condivisi di ZeriLink (ScopedHandle/ScopedFd) per gestire risorse native.
-La logica Run/SendInput/Terminate mantiene il comportamento esistente ma centralizza lo stato OS in Impl.
-La gestione I/O asincrona ora separa stdout e stderr con pipe e thread dedicati, inoltrando i flussi su callback distinti.
+ProcessBridge uses a PIMPL to fully isolate platform details from the public header.
+The header no longer includes windows.h or POSIX types, so consumers remain portable.
+The source uses shared ZeriLink RAII wrappers (ScopedHandle/ScopedFd) to manage native resources.
+Run/SendInput/Terminate preserve existing behavior while centralizing OS state in Impl.
+Asynchronous I/O separates stdout and stderr with dedicated pipes and threads, forwarding each stream to distinct callbacks.
 */

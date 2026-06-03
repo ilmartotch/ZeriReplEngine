@@ -20,43 +20,27 @@ $ zeri
 
 ### Windows
 
-Open PowerShell and run:
+Install with Scoop:
 
 ```powershell
-irm https://github.com/ilmartotch/ZeriReplEngine/releases/latest/download/install.ps1 | iex
+scoop bucket add zeri https://github.com/ilmartotch/scoop-zeri && scoop install zeri
 ```
 
 Open a new terminal and type `zeri` to start.
 
 ### macOS / Linux
 
-Open a terminal and run:
+Install with Homebrew:
 
 ```bash
-curl -fsSL https://github.com/ilmartotch/ZeriReplEngine/releases/latest/download/install.sh | bash
+brew install ilmartotch/zeri/zeri
 ```
 
 Open a new terminal and type `zeri` to start.
 
 ---
 
-> **First time?** Open a **new** terminal window after installation —
-> the current session does not pick up PATH changes automatically.
-
-### Options
-
-| Flag | Description |
-|------|-------------|
-| `-Force` / `--force` | Reinstall even if already up to date |
-| `-System` / `--system` | Install system-wide (requires admin / sudo) |
-| `-Uninstall` / `--uninstall` | Remove Zeri and all user data |
-
-### Manual installation
-
-Download the latest archive from the
-[Releases page](https://github.com/ilmartotch/ZeriReplEngine/releases/latest),
-extract it, and run the included `install.ps1` (Windows) or `install.sh`
-(macOS / Linux) from inside the extracted folder.
+> **First time?** Open a **new** terminal window after installation — the current session may not pick up PATH changes automatically.
 
 ## Quick Start
 
@@ -145,8 +129,8 @@ Zeri is a two-process system:
                    │  JSON over binary framing
 ┌──────────────────▼──────────────────────────┐
 │  ZeriEngine  (C++)                          │
-│  REPL core · Context manager · Lua engine  │
-│  Headless — no UI, no stdin, no stdout     │
+│  REPL core · Context manager · Lua engine   │
+│  Headless — no UI, no stdin, no stdout      │
 └─────────────────────────────────────────────┘
 ```
 
@@ -156,9 +140,9 @@ The TUI frontend is provided by **Yuumi**, an internal Go package (`ui/`) that h
 
 | Platform | Status |
 |----------|--------|
-| Windows 10 1709+ | ✅ Supported |
-| macOS 13+ | ✅ Supported |
-| Linux (glibc) | ✅ Supported |
+| Windows x64 | Supported |
+| Linux x64 | Supported |
+| macOS arm64 | Supported |
 
 ## Dependencies
 
@@ -189,7 +173,7 @@ For deterministic CI, keep baseline + dependency constraints aligned when updati
 CI matrix for each push/PR:
 - `windows-latest` (x64)
 - `ubuntu-latest` (x64)
-- `macos-latest` (arm64 and optionally x64)
+- `macos-latest` (arm64)
 
 Pipeline stages:
 - Configure (`cmake --fresh ... -DVCPKG_TARGET_TRIPLET=...`)

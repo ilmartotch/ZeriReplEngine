@@ -31,7 +31,7 @@ namespace Zeri::Engines::Defaults {
 
 /*
 LuaContext.h
-Contesto REPL Lua dedicato con prompt `zeri::lua>` e comandi CRUD/editoriali.
-Il contesto mantiene un `LuaExecutor` condiviso costruito da runtime rilevato
-(SystemGuard) e lo riusa per esecuzioni dirette, script salvati e ScriptEditorContext.
+Dedicated Lua REPL context with `zeri::lua>` prompt and CRUD/editor commands.
+The context keeps a shared `LuaExecutor` built from detected runtime data
+(SystemGuard) and reuses it for direct execution, saved scripts, and ScriptEditorContext.
 */

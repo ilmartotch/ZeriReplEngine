@@ -22,7 +22,7 @@ namespace Zeri::Engines::Defaults {
 
 /*
 ScriptHubContext.h
-Contesto hub `zeri::code>` che non esegue codice direttamente: effettua solo
-il dispatch verso i context linguaggio (`lua`, `python`, `js`, `ts`, `ruby`)
-e fornisce help con stato runtime derivato da SystemGuard.
+Hub context `zeri::code>` that does not execute code directly: it only
+dispatches to language contexts (`lua`, `python`, `js`, `ts`, `ruby`)
+and provides help with runtime status derived from SystemGuard.
 */

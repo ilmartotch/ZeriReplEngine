@@ -57,5 +57,5 @@ Responsabilità:
   - ScriptRuntime: Holds language, binary path, availability and JIT status.
   - SystemHealth: Aggregates all probe results; IsReady() checks cmake + compiler.
 
-Dipendenze: ITerminal (forward-declared).
+Dependencies: ITerminal (forward-declared).
 */

@@ -48,8 +48,7 @@ namespace Zeri::Engines::Defaults {
                 "ExpressionInGlobal",
                 "Free-form expressions are not supported in global context.",
                 cmd.args.empty() ? "" : cmd.args[0],
-                { "Switch to math context: $math",
-                  "Or evaluate inline:     $math | <expression>" }
+                { "Switch to math context: $math" }
             });
         }
 

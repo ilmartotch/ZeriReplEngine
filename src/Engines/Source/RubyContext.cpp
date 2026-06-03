@@ -236,8 +236,8 @@ namespace Zeri::Engines::Defaults {
 
 /*
 RubyContext.cpp
-Implementa il contesto REPL Ruby con comandi /new, /run, /edit, /list, /delete,
-/show e passthrough delle expression all'esecutore Ruby condiviso.
-Usa ScriptRegistry su chiavi `ruby::scripts::*` e memorizza l'ultimo buffer in
-sessione (`ruby::editor::last_buffer`) per supportare /run senza nome.
+Implements the Ruby REPL context with /new, /run, /edit, /list, /delete,
+/show, and expression passthrough to the shared Ruby executor.
+Uses ScriptRegistry keys `ruby::scripts::*` and stores the last buffer in
+session state (`ruby::editor::last_buffer`) to support /run without a name.
 */

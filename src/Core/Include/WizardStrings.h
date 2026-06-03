@@ -34,5 +34,5 @@ Sections:
   Errors: UnclosedQuote, InvalidSyntax, UnknownCmd, ContextSwitch.
   Setup Wizard: SetupTitle, SetupEditor, SetupComplete.
 
-Dipendenze: nessuna (header-only, constexpr).
+Dependencies: none (header-only, constexpr).
 */

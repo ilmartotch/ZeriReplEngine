@@ -99,6 +99,5 @@ GetCompletions():
 GetHint():
   Returns the first matching suffix for inline hint display.
 
-Dipendenze: CompletionEngine.h (kCommands, kContexts arrays).
+Dependencies: CompletionEngine.h (kCommands, kContexts arrays).
 */
-

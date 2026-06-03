@@ -67,8 +67,8 @@ namespace Zeri::Engines {
 
         if (input == "/run") {
             if (m_executor == nullptr) {
-                terminal.WriteError("Executor non disponibile per ScriptEditorContext.");
-                return std::unexpected(ExecutionError{ "EDITOR_EXECUTOR_MISSING", "Executor non disponibile." });
+                terminal.WriteError("Executor unavailable for ScriptEditorContext.");
+                return std::unexpected(ExecutionError{ "EDITOR_EXECUTOR_MISSING", "Executor unavailable." });
             }
 
             Command syntheticCommand;
@@ -82,12 +82,12 @@ namespace Zeri::Engines {
 
         if (input == "/save") {
             if (!m_scriptName.has_value() || m_scriptName->empty()) {
-                terminal.WriteError("/save richiede uno scriptName associato al context.");
+                terminal.WriteError("/save requires a scriptName associated with the context.");
                 return std::unexpected(ExecutionError{
                     "EDITOR_SAVE_NAME_MISSING",
-                    "Impossibile salvare: nome script assente.",
+                    "Unable to save: missing script name.",
                     cmd.rawInput,
-                    { "Apri l'editor con nome script e ripeti /save." }
+                    { "Open the editor with a script name and run /save again." }
                 });
             }
 
@@ -95,13 +95,13 @@ namespace Zeri::Engines {
             SaveScript(state, m_language, *m_scriptName, joinedBuffer);
             state.SetSessionVariable(BuildLastBufferKey(m_language), joinedBuffer);
             state.PopContext();
-            return "Script salvato: " + *m_scriptName;
+            return "Script saved: " + *m_scriptName;
         }
 
         if (input == "/cancel") {
             m_buffer.clear();
             state.PopContext();
-            return "Editor annullato.";
+            return "Editor canceled.";
         }
 
         m_buffer.push_back(cmd.rawInput);
@@ -137,11 +137,11 @@ namespace Zeri::Engines {
 
 /*
 ScriptEditorContext.cpp
-Implementa un editor modale genericamente riusabile che accumula linee raw senza
-parse sintattico contestuale, con comandi interni /run, /save, /cancel.
-/run crea un Command sintetico con rawInput joinato su newline e delega a IExecutor;
-/save persiste il buffer via ScriptRegistry usando chiave "{lang}::scripts::{name}";
-/cancel scarta lo stato locale. In tutti i percorsi terminali viene effettuato PopContext.
-HandleRawLine permette al chiamante di inviare input grezzo via interfaccia IContext
-senza dipendere da controlli RTTI nel loop principale.
+Implements a reusable modal editor that accumulates raw lines without
+context-specific parsing, with built-in /run, /save, and /cancel commands.
+/run creates a synthetic Command with newline-joined rawInput and delegates to IExecutor.
+/save persists the buffer through ScriptRegistry with key "{lang}::scripts::{name}".
+/cancel discards local state. All terminal paths perform PopContext.
+HandleRawLine allows the caller to send raw input via the IContext interface
+without depending on RTTI checks in the main loop.
 */

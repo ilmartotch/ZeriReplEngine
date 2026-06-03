@@ -236,8 +236,8 @@ namespace Zeri::Engines::Defaults {
 
 /*
 PythonContext.cpp
-Implementa il contesto REPL Python con comandi /new, /run, /edit, /list, /delete,
-/show e passthrough delle expression all'esecutore Python condiviso.
-Usa ScriptRegistry su chiavi `python::scripts::*` e memorizza l'ultimo buffer in
-sessione (`python::editor::last_buffer`) per supportare /run senza nome.
+Implements the Python REPL context with /new, /run, /edit, /list, /delete,
+/show, and expression passthrough to the shared Python executor.
+Uses ScriptRegistry keys `python::scripts::*` and stores the last buffer in
+session state (`python::editor::last_buffer`) to support /run without a name.
 */

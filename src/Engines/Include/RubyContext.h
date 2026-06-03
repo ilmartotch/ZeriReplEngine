@@ -31,7 +31,7 @@ namespace Zeri::Engines::Defaults {
 
 /*
 RubyContext.h
-Contesto REPL Ruby dedicato con prompt `zeri::ruby>` e workflow editor/CRUD
-allineato ai context script esistenti (Lua/Python/JS), con executor condiviso
-costruito dal runtime rilevato via SystemGuard.
+Dedicated Ruby REPL context with `zeri::ruby>` prompt and editor/CRUD workflow
+aligned with existing script contexts (Lua/Python/JS), with a shared executor
+built from runtime detection via SystemGuard.
 */

@@ -104,11 +104,6 @@ namespace {
                 return JoinTail(cmd.args, valueStart);
             }
         }
-
-        if (cmd.pipeInput.has_value()) {
-            return *cmd.pipeInput;
-        }
-
         return std::nullopt;
     }
 
@@ -242,7 +237,6 @@ namespace Zeri::Engines::Defaults {
             output += "$<context> Switch context using reachable targets from /context\n";
             output += "!<shell_command> Execute a system shell command\n";
             output += "<expr> Evaluate an expression (context-dependent)\n";
-            output += "<stage1> | <stage2> Pipeline output across stages\n";
             output += "# comment Inline comment (ignored by parser)\n";
             output += "\n";
             output += "Global Commands:\n";
@@ -304,8 +298,7 @@ namespace Zeri::Engines::Defaults {
                     "Missing value for set",
                     cmd.rawInput,
                     {
-                        "Usage: /set <key> [=] <value> --number|--string|--bool",
-                        "Or provide value via pipeline."
+                        "Usage: /set <key> [=] <value> --number|--string|--bool"
                     }
                 });
             }

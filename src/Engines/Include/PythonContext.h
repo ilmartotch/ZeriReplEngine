@@ -31,7 +31,7 @@ namespace Zeri::Engines::Defaults {
 
 /*
 PythonContext.h
-Contesto REPL Python dedicato con prompt `zeri::python>` e comandi CRUD/editoriali.
-Mantiene un `PythonExecutor` condiviso costruito dal runtime rilevato via SystemGuard
-ed espone interfaccia coerente al pattern già usato per il contesto Lua.
+Dedicated Python REPL context with `zeri::python>` prompt and CRUD/editor commands.
+Keeps a shared `PythonExecutor` built from runtime detection via SystemGuard
+and exposes an interface aligned with the Lua context pattern.
 */

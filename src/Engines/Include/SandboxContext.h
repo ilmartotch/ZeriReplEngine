@@ -53,14 +53,10 @@ namespace Zeri::Engines::Defaults {
 /*
 SandboxContext.h — Module development and code execution environment.
 
-Responsabilità:
-  - Gestione moduli (list, build, run) tramite ModuleManager + ProcessBridge.
-  - Integrazione IDE (open, set-ide).
+Responsibilities:
+  - Module management (list, build, run) through ModuleManager + ProcessBridge.
+  - IDE integration (open, set-ide).
   - Placeholder monitoring (watch).
 
-Dipendenze: BaseContext, ProcessBridge, ModuleManager.
-
-QA Changes:
-  - Ripulito commento: rimosso riferimento a ScriptRunner (eliminato dal progetto).
-  - Prompt statico `zeri::sandbox>`.
+Dependencies: BaseContext, ProcessBridge, ModuleManager.
 */

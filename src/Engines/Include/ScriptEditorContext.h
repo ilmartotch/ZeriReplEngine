@@ -49,9 +49,9 @@ namespace Zeri::Engines {
 
 /*
 ScriptEditorContext.h
-Definisce un contesto editor modale language-agnostic che accumula input grezzo
-in memoria e delega l'esecuzione finale a un IExecutor fornito dal chiamante.
-Espone i comandi interni /run, /save e /cancel, mantenendo il contesto generico
-riutilizzabile per runtime differenti senza dipendenze dal parser specifico.
-Espone WantsRawInput/HandleRawLine per evitare downcast nel loop REPL.
+Defines a language-agnostic modal editor context that accumulates raw input
+in memory and delegates final execution to a caller-provided IExecutor.
+Exposes built-in /run, /save, and /cancel commands, keeping the context generic
+and reusable across different runtimes without parser-specific dependencies.
+Exposes WantsRawInput/HandleRawLine to avoid downcasting in the REPL loop.
 */

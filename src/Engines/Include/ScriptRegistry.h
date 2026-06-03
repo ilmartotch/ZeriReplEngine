@@ -160,9 +160,9 @@ namespace Zeri::Engines {
 
 /*
 ScriptRegistry.h
-Header-only helper per CRUD di script salvati usando RuntimeState::Persisted scope.
-Le chiavi script seguono il formato richiesto "{lang}::scripts::{name}".
-Dato che RuntimeState non espone erase/iterazione diretta del persisted scope, viene mantenuto
-un registro per linguaggio ("{lang}::scripts::__registry__") e un marker di cancellazione,
-cosi' DeleteScript/LoadScript/ListScripts restano coerenti e non dipendono da filesystem.
+Header-only helper for CRUD operations on saved scripts using RuntimeState::Persisted scope.
+Script keys follow the required format "{lang}::scripts::{name}".
+Because RuntimeState does not expose direct persisted-scope erase/iteration, the implementation
+maintains a per-language registry ("{lang}::scripts::__registry__") and a deletion marker,
+so DeleteScript/LoadScript/ListScripts remain consistent and filesystem-independent.
 */
