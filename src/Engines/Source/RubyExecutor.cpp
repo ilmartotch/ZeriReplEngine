@@ -1,4 +1,6 @@
 #include "../Include/RubyExecutor.h"
+#include "../Include/ExecutorUtils.h"
+#include "../../Core/Include/StringUtils.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -7,9 +9,10 @@
 
 namespace {
     inline constexpr const char* kRubyPathEnvVar = "ZERI_RUBY_PATH";
-    inline constexpr const char* kRubyBootstrapPath = "runtime/bootstrap_ruby.rb";
+    inline constexpr const char* kRubyEngineDir = "runtime";
+    inline constexpr const char* kRubyBootstrapScript = "bootstrap_ruby.rb";
 
-    [[nodiscard]] std::string ResolveExecutable(const std::string& runtimeBinary, const char* envVarName) {
+    [[nodiscard]] std::string ResolveExecutableOverride(const char* envVarName) {
 #ifdef _WIN32
         char* envValueRaw = nullptr;
         size_t envValueLength = 0;
@@ -28,29 +31,7 @@ namespace {
             return std::string(envValue);
         }
 #endif
-
-        if (!runtimeBinary.empty()) {
-            return runtimeBinary;
-        }
-
-        return "ruby";
-    }
-
-    [[nodiscard]] std::filesystem::path ResolveBootstrapPath(const char* relativeBootstrapPath) {
-        std::error_code ec;
-
-        const std::filesystem::path directPath(relativeBootstrapPath);
-        if (std::filesystem::exists(directPath, ec)) {
-            return directPath;
-        }
-
-        const std::filesystem::path nestedPath = std::filesystem::path("..") / relativeBootstrapPath;
-        ec.clear();
-        if (std::filesystem::exists(nestedPath, ec)) {
-            return nestedPath;
-        }
-
-        return directPath;
+        return {};
     }
 
     [[nodiscard]] Zeri::Engines::ExecutionOutcome ExecuteViaSidecar(
@@ -126,16 +107,6 @@ namespace {
         return result;
     }
 
-    [[nodiscard]] std::string JoinArgs(const std::vector<std::string>& args) {
-        std::ostringstream stream;
-        for (size_t i = 0; i < args.size(); ++i) {
-            if (i > 0) {
-                stream << ' ';
-            }
-            stream << args[i];
-        }
-        return stream.str();
-    }
 }
 
 namespace Zeri::Engines::Defaults {
@@ -158,7 +129,7 @@ namespace Zeri::Engines::Defaults {
         std::string script = cmd.rawInput;
         if (script.empty()) {
             if (!cmd.args.empty()) {
-                script = JoinArgs(cmd.args);
+                script = Zeri::Core::Utils::JoinArgs(cmd.args);
             } else if (cmd.pipeInput.has_value()) {
                 script = *cmd.pipeInput;
             }
@@ -173,8 +144,12 @@ namespace Zeri::Engines::Defaults {
             });
         }
 
-        const std::string executable = ResolveExecutable(m_binary, kRubyPathEnvVar);
-        const std::filesystem::path bootstrapPath = ResolveBootstrapPath(kRubyBootstrapPath);
+        const std::string executable = Zeri::Engines::Utils::ResolveExecutable({
+            ResolveExecutableOverride(kRubyPathEnvVar),
+            m_binary,
+            "ruby"
+        });
+        const std::filesystem::path bootstrapPath = Zeri::Engines::Utils::ResolveBootstrapPath(kRubyEngineDir, kRubyBootstrapScript);
         const bool bootstrapExists = std::filesystem::exists(bootstrapPath);
 
         if (!bootstrapExists) {

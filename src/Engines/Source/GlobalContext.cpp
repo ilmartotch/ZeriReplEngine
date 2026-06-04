@@ -1,21 +1,9 @@
 #include "../Include/GlobalContext.h"
 #include "../../Core/Include/RuntimeState.h"
+#include "../../Core/Include/StringUtils.h"
 #include "../../Core/Include/SystemGuard.h"
 
-#include <sstream>
-
 namespace {
-    [[nodiscard]] std::string JoinArgs(const std::vector<std::string>& args) {
-        std::ostringstream stream;
-        for (size_t i = 0; i < args.size(); ++i) {
-            if (i > 0) {
-                stream << ' ';
-            }
-            stream << args[i];
-        }
-        return stream.str();
-    }
-
     [[nodiscard]] Zeri::Core::ScriptRuntime ResolveLuaRuntime() {
         const auto health = Zeri::Core::SystemGuard::CheckEnvironment();
         if (const auto* runtime = health.GetRuntime("lua"); runtime != nullptr) {
@@ -59,7 +47,7 @@ namespace Zeri::Engines::Defaults {
 
             Command luaCommand = cmd;
             if (!luaCommand.args.empty()) {
-                luaCommand.rawInput = JoinArgs(luaCommand.args);
+                luaCommand.rawInput = Zeri::Core::Utils::JoinArgs(luaCommand.args);
             } else if (luaCommand.pipeInput.has_value()) {
                 luaCommand.rawInput = *luaCommand.pipeInput;
             }

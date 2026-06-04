@@ -1,60 +1,11 @@
 #include "../Include/PythonContext.h"
 
+#include "../Include/ContextUtils.h"
 #include "../Include/PythonExecutor.h"
 #include "../Include/ScriptEditorContext.h"
 #include "../Include/ScriptRegistry.h"
 #include "../../Core/Include/SystemGuard.h"
-
-#include <any>
-#include <sstream>
-#include <string_view>
-#include <vector>
-
-namespace {
-
-    [[nodiscard]] std::string BuildLastBufferKey(std::string_view language) {
-        std::string key;
-        key.reserve(language.size() + 21);
-        key.append(language);
-        key.append("::editor::last_buffer");
-        return key;
-    }
-
-    [[nodiscard]] std::optional<std::string> AnyToString(const std::any& value) {
-        if (!value.has_value()) {
-            return std::nullopt;
-        }
-        if (value.type() == typeid(std::string)) {
-            return std::any_cast<std::string>(value);
-        }
-        return std::nullopt;
-    }
-
-    [[nodiscard]] std::vector<std::string> SplitLines(const std::string& text) {
-        std::vector<std::string> lines;
-        std::istringstream stream(text);
-        std::string line;
-        while (std::getline(stream, line)) {
-            lines.push_back(std::move(line));
-        }
-        if (lines.empty()) {
-            lines.push_back({});
-        }
-        return lines;
-    }
-
-    [[nodiscard]] std::string JoinArgs(const std::vector<std::string>& args) {
-        std::string result;
-        for (size_t i = 0; i < args.size(); ++i) {
-            if (i > 0) {
-                result.push_back(' ');
-            }
-            result.append(args[i]);
-        }
-        return result;
-    }
-
-}
+#include "../../Core/Include/StringUtils.h"
 
 namespace Zeri::Engines::Defaults {
 
@@ -78,11 +29,11 @@ namespace Zeri::Engines::Defaults {
         Zeri::Core::RuntimeState& state,
         Zeri::Ui::ITerminal& terminal
     ) {
-        const std::string lastBufferKey = BuildLastBufferKey("python");
+        const std::string lastBufferKey = Zeri::Engines::Utils::BuildLastBufferKey("python");
 
         if (cmd.type == InputType::Expression) {
             Command execCmd;
-            execCmd.rawInput = cmd.rawInput.empty() ? JoinArgs(cmd.args) : cmd.rawInput;
+            execCmd.rawInput = cmd.rawInput.empty() ? Zeri::Core::Utils::JoinArgs(cmd.args) : cmd.rawInput;
             state.SetSessionVariable(lastBufferKey, execCmd.rawInput);
             return m_executor->Execute(execCmd, state, terminal);
         }
@@ -128,8 +79,8 @@ namespace Zeri::Engines::Defaults {
                 code = *script;
             } else {
                 const auto lastBufferAny = state.GetSessionVariable(lastBufferKey);
-                const auto lastBuffer = AnyToString(lastBufferAny);
-                if (!lastBuffer.has_value() || lastBuffer->empty()) {
+                const std::string lastBuffer = Zeri::Engines::Utils::AnyToString(lastBufferAny);
+                if (lastBuffer.empty()) {
                     return std::unexpected(ExecutionError{
                         "PYTHON_LAST_BUFFER_MISSING",
                         "No last Python buffer available.",
@@ -137,7 +88,7 @@ namespace Zeri::Engines::Defaults {
                         { "Use /new and /run first, or execute /run <name>." }
                     });
                 }
-                code = *lastBuffer;
+                code = lastBuffer;
             }
 
             state.SetSessionVariable(lastBufferKey, code);
@@ -165,7 +116,7 @@ namespace Zeri::Engines::Defaults {
                 m_executor,
                 "python",
                 cmd.args[0],
-                SplitLines(*script)
+                Zeri::Engines::Utils::SplitLines(*script)
             );
             state.PushContext(std::move(editor));
 

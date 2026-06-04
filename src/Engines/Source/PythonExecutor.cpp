@@ -1,4 +1,6 @@
 #include "../Include/PythonExecutor.h"
+#include "../Include/ExecutorUtils.h"
+#include "../../Core/Include/StringUtils.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -7,9 +9,10 @@
 
 namespace {
     inline constexpr const char* kPythonPathEnvVar = "ZERI_PYTHON_PATH";
-    inline constexpr const char* kPythonBootstrapPath = "runtime/bootstrap_python.py";
+    inline constexpr const char* kPythonEngineDir = "runtime";
+    inline constexpr const char* kPythonBootstrapScript = "bootstrap_python.py";
 
-    [[nodiscard]] std::string ResolveExecutable(const std::string& runtimeBinary, const char* envVarName) {
+    [[nodiscard]] std::string ResolveExecutableOverride(const char* envVarName) {
 #ifdef _WIN32
         char* envValueRaw = nullptr;
         size_t envValueLength = 0;
@@ -28,29 +31,7 @@ namespace {
             return std::string(envValue);
         }
 #endif
-
-        if (!runtimeBinary.empty()) {
-            return runtimeBinary;
-        }
-
-        return "python";
-    }
-
-    [[nodiscard]] std::filesystem::path ResolveBootstrapPath(const char* relativeBootstrapPath) {
-        std::error_code ec;
-
-        const std::filesystem::path directPath(relativeBootstrapPath);
-        if (std::filesystem::exists(directPath, ec)) {
-            return directPath;
-        }
-
-        const std::filesystem::path nestedPath = std::filesystem::path("..") / relativeBootstrapPath;
-        ec.clear();
-        if (std::filesystem::exists(nestedPath, ec)) {
-            return nestedPath;
-        }
-
-        return directPath;
+        return {};
     }
 
     [[nodiscard]] Zeri::Engines::ExecutionOutcome ExecuteOneShot(
@@ -109,16 +90,6 @@ namespace {
         return Zeri::Engines::ExecutionMessage{};
     }
 
-    [[nodiscard]] std::string JoinArgs(const std::vector<std::string>& args) {
-        std::ostringstream stream;
-        for (size_t i = 0; i < args.size(); ++i) {
-            if (i > 0) {
-                stream << ' ';
-            }
-            stream << args[i];
-        }
-        return stream.str();
-    }
 }
 
 namespace Zeri::Engines::Defaults {
@@ -141,7 +112,7 @@ namespace Zeri::Engines::Defaults {
         std::string script = cmd.rawInput;
         if (script.empty()) {
             if (!cmd.args.empty()) {
-                script = JoinArgs(cmd.args);
+                script = Zeri::Core::Utils::JoinArgs(cmd.args);
             } else if (cmd.pipeInput.has_value()) {
                 script = *cmd.pipeInput;
             }
@@ -156,8 +127,12 @@ namespace Zeri::Engines::Defaults {
             });
         }
 
-        const std::string executable = ResolveExecutable(m_binary, kPythonPathEnvVar);
-        const std::filesystem::path bootstrapPath = ResolveBootstrapPath(kPythonBootstrapPath);
+        const std::string executable = Zeri::Engines::Utils::ResolveExecutable({
+            ResolveExecutableOverride(kPythonPathEnvVar),
+            m_binary,
+            "python"
+        });
+        const std::filesystem::path bootstrapPath = Zeri::Engines::Utils::ResolveBootstrapPath(kPythonEngineDir, kPythonBootstrapScript);
 
         if (m_sidecarBridge.IsAlive()) {
             return ExecuteViaSidecar(m_sidecarBridge, script, terminal, cmd.rawInput);

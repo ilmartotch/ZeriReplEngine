@@ -1,6 +1,7 @@
 #include "../Include/BuiltinExecutor.h"
 #include "../Include/Interface/IContext.h"
 #include "../../Core/Include/HelpCatalog.h"
+#include "../../Core/Include/StringUtils.h"
 
 #include <any>
 #include <cctype>
@@ -20,40 +21,6 @@ namespace {
         Boolean
     };
 
-    [[nodiscard]] std::string Trim(std::string_view text) {
-        size_t start = 0;
-        while (start < text.size() && std::isspace(static_cast<unsigned char>(text[start])) != 0) {
-            ++start;
-        }
-
-        size_t end = text.size();
-        while (end > start && std::isspace(static_cast<unsigned char>(text[end - 1])) != 0) {
-            --end;
-        }
-
-        return std::string(text.substr(start, end - start));
-    }
-
-    [[nodiscard]] std::string ToLower(std::string_view text) {
-        std::string out;
-        out.reserve(text.size());
-        for (char ch : text) {
-            out.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
-        }
-        return out;
-    }
-
-    [[nodiscard]] std::string JoinTail(const std::vector<std::string>& args, size_t from) {
-        std::string result;
-        for (size_t i = from; i < args.size(); ++i) {
-            if (!result.empty()) {
-                result.push_back(' ');
-            }
-            result.append(args[i]);
-        }
-        return result;
-    }
-
     [[nodiscard]] std::string FormatDouble(double value) {
         std::ostringstream stream;
         stream << std::setprecision(15) << value;
@@ -70,7 +37,7 @@ namespace {
     }
 
     [[nodiscard]] std::optional<double> ParseNumber(std::string_view text) {
-        const std::string trimmed = Trim(text);
+        const std::string trimmed = Zeri::Core::Utils::Trim(text);
         if (trimmed.empty()) {
             return std::nullopt;
         }
@@ -84,7 +51,7 @@ namespace {
     }
 
     [[nodiscard]] std::optional<bool> ParseBoolean(std::string_view text) {
-        const std::string normalized = ToLower(Trim(text));
+        const std::string normalized = Zeri::Core::Utils::ToLower(Zeri::Core::Utils::Trim(text));
         if (normalized == "true" || normalized == "t") {
             return true;
         }
@@ -101,7 +68,7 @@ namespace {
                 valueStart = 2;
             }
             if (valueStart < cmd.args.size()) {
-                return JoinTail(cmd.args, valueStart);
+                return Zeri::Core::Utils::JoinTail(cmd.args, valueStart);
             }
         }
         return std::nullopt;
@@ -310,7 +277,7 @@ namespace Zeri::Engines::Defaults {
             }
 
             const auto key = cmd.args[0];
-            const std::string trimmedValue = Trim(*value);
+            const std::string trimmedValue = Zeri::Core::Utils::Trim(*value);
             switch (setType) {
             case SetValueType::Number: {
                 const auto parsed = ParseNumber(trimmedValue);

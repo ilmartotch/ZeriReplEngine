@@ -25,6 +25,8 @@ namespace Zeri::Modules {
 
 namespace Zeri::Core {
 
+    using AnyValue = std::any;
+
     class RuntimeState {
     public:
         enum class VariableScope {

@@ -1,4 +1,5 @@
 #include "../Include/VariableScope.h"
+#include "../Include/StringUtils.h"
 #include <algorithm>
 #include <charconv>
 #include <cctype>
@@ -9,14 +10,6 @@
 #include <shared_mutex>
 
 namespace {
-
-	std::string ToLower(std::string_view value) {
-		std::string lowered(value);
-		std::transform(lowered.begin(), lowered.end(), lowered.begin(),
-			[](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-		return lowered;
-	}
-
 	Zeri::Core::ValueType DeduceType(const std::any& value) {
 		const auto& t = value.type();
 		if (t == typeid(std::string)) return Zeri::Core::ValueType::String;
@@ -42,7 +35,7 @@ namespace {
 			return std::string(raw);
 
 		case Zeri::Core::ValueType::Boolean: {
-			auto lowered = ToLower(raw);
+			auto lowered = Zeri::Core::Utils::ToLower(raw);
 			if (lowered == "true" || lowered == "1") return true;
 			if (lowered == "false" || lowered == "0") return false;
 			return std::nullopt;

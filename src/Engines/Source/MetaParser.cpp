@@ -1,4 +1,5 @@
 #include "../Include/MetaParser.h"
+#include "../../Core/Include/StringUtils.h"
 #include <sstream>
 #include <array>
 #include <memory_resource>
@@ -6,22 +7,6 @@
 #include <cctype>
 
 namespace {
-    [[nodiscard]] std::string_view Trim(std::string_view value) {
-        auto isSpace = [](unsigned char c) { return std::isspace(c) != 0; };
-        while (!value.empty() && isSpace(static_cast<unsigned char>(value.front()))) value.remove_prefix(1);
-        while (!value.empty() && isSpace(static_cast<unsigned char>(value.back()))) value.remove_suffix(1);
-        return value;
-    }
-
-    [[nodiscard]] std::string ToLower(std::string_view value) {
-        std::string result;
-        result.reserve(value.size());
-        for (char c : value) {
-            result.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-        }
-        return result;
-    }
-
     [[nodiscard]] std::optional<size_t> FindUnclosedQuotePosition(std::string_view input) {
         bool inQuotes = false;
         bool escape = false;
@@ -72,15 +57,16 @@ namespace {
 namespace Zeri::Engines::Defaults {
 
     std::expected<Command, ParseError> MetaParser::Parse(const std::string& input) {
-        std::string_view inputView{ input };
-        inputView = Trim(inputView);
+        std::string inputBuffer = Zeri::Core::Utils::Trim(input);
+        std::string_view inputView{ inputBuffer };
 
         if (inputView.empty()) {
             return Command{ .type = InputType::Empty };
         }
 
         inputView = StripComment(inputView);
-        inputView = Trim(inputView);
+        inputBuffer = Zeri::Core::Utils::Trim(inputView);
+        inputView = inputBuffer;
 
         if (inputView.empty()) {
             return Command{ .type = InputType::Empty };
@@ -120,7 +106,7 @@ namespace Zeri::Engines::Defaults {
             return std::unexpected(ParseError{ "Missing command or context name after prefix.",1 });
         }
 
-        cmd.commandName = ToLower(std::string_view(tokens[0].data(), tokens[0].size()));
+        cmd.commandName = Zeri::Core::Utils::ToLower(std::string_view(tokens[0].data(), tokens[0].size()));
 
         std::string lastFlag;
         for (size_t i = 1; i < tokens.size(); ++i) {

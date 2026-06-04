@@ -1,4 +1,6 @@
 #include "../Include/JsExecutor.h"
+#include "../Include/ExecutorUtils.h"
+#include "../../Core/Include/StringUtils.h"
 
 #include <chrono>
 #include <cstdlib>
@@ -9,9 +11,10 @@
 
 namespace {
     inline constexpr const char* kBunPathEnvVar = "ZERI_BUN_PATH";
-    inline constexpr const char* kJsBootstrapPath = "runtime/bootstrap_bun.js";
+    inline constexpr const char* kJsEngineDir = "runtime";
+    inline constexpr const char* kJsBootstrapScript = "bootstrap_bun.js";
 
-    [[nodiscard]] std::string ResolveExecutable(const std::string& runtimeBinary, const char* envVarName) {
+    [[nodiscard]] std::string ResolveExecutableOverride(const char* envVarName) {
 #ifdef _WIN32
         char* envValueRaw = nullptr;
         size_t envValueLength = 0;
@@ -30,29 +33,7 @@ namespace {
             return std::string(envValue);
         }
 #endif
-
-        if (!runtimeBinary.empty()) {
-            return runtimeBinary;
-        }
-
-        return "bun";
-    }
-
-    [[nodiscard]] std::filesystem::path ResolveBootstrapPath(const char* relativeBootstrapPath) {
-        std::error_code ec;
-
-        const std::filesystem::path directPath(relativeBootstrapPath);
-        if (std::filesystem::exists(directPath, ec)) {
-            return directPath;
-        }
-
-        const std::filesystem::path nestedPath = std::filesystem::path("..") / relativeBootstrapPath;
-        ec.clear();
-        if (std::filesystem::exists(nestedPath, ec)) {
-            return nestedPath;
-        }
-
-        return directPath;
+        return {};
     }
 
     [[nodiscard]] Zeri::Engines::ExecutionOutcome ExecuteViaSidecar(
@@ -93,18 +74,6 @@ namespace {
         return Zeri::Engines::ExecutionMessage{};
     }
 
-
-    [[nodiscard]] std::string JoinArgs(const std::vector<std::string>& args) {
-        std::ostringstream stream;
-        for (size_t i = 0; i < args.size(); ++i) {
-            if (i > 0) {
-                stream << ' ';
-            }
-            stream << args[i];
-        }
-        return stream.str();
-    }
-
     [[nodiscard]] std::filesystem::path BuildTempScriptPath(bool typescript) {
         const auto now = std::chrono::steady_clock::now().time_since_epoch().count();
         const auto ext = typescript ? ".ts" : ".js";
@@ -135,7 +104,7 @@ namespace Zeri::Engines::Defaults {
         std::string script = cmd.rawInput;
         if (script.empty()) {
             if (!cmd.args.empty()) {
-                script = JoinArgs(cmd.args);
+                script = Zeri::Core::Utils::JoinArgs(cmd.args);
             } else if (cmd.pipeInput.has_value()) {
                 script = *cmd.pipeInput;
             }
@@ -172,8 +141,12 @@ namespace Zeri::Engines::Defaults {
             }
         }
 
-        const std::string executable = ResolveExecutable(m_binary, kBunPathEnvVar);
-        const std::filesystem::path bootstrapPath = ResolveBootstrapPath(kJsBootstrapPath);
+        const std::string executable = Zeri::Engines::Utils::ResolveExecutable({
+            ResolveExecutableOverride(kBunPathEnvVar),
+            m_binary,
+            "bun"
+        });
+        const std::filesystem::path bootstrapPath = Zeri::Engines::Utils::ResolveBootstrapPath(kJsEngineDir, kJsBootstrapScript);
 
         ExecutionOutcome result;
 

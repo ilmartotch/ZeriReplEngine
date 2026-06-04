@@ -1,5 +1,6 @@
 #include "../Include/SandboxContext.h"
 #include "../../Core/Include/RuntimeState.h"
+#include "../../Core/Include/StringUtils.h"
 #include "../../Core/Include/SystemGuard.h"
 #include <nlohmann/json.hpp>
 #include <any>
@@ -34,15 +35,6 @@ namespace {
         Ruby
     };
 
-    [[nodiscard]] std::string ToLower(std::string_view value) {
-        std::string result;
-        result.reserve(value.size());
-        for (char c : value) {
-            result.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-        }
-        return result;
-    }
-
     [[nodiscard]] std::string_view TrimRight(std::string_view value) {
         while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back())) != 0) {
             value.remove_suffix(1);
@@ -61,7 +53,7 @@ namespace {
             return true;
         }
 
-        const std::string lowered = ToLower(trimmed);
+        const std::string lowered = Zeri::Core::Utils::ToLower(trimmed);
         return lowered.contains("input") || lowered.contains("enter") || lowered.contains("choice");
     }
 
@@ -69,32 +61,22 @@ namespace {
         return value.contains('/') || value.contains('\\') || value.contains('.') || value.contains(':');
     }
 
-    [[nodiscard]] std::string_view Trim(std::string_view value) {
-        while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front())) != 0) {
-            value.remove_prefix(1);
-        }
-        while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back())) != 0) {
-            value.remove_suffix(1);
-        }
-        return value;
-    }
-
     [[nodiscard]] std::string NormalizePathInput(std::string_view value) {
-        value = Trim(value);
-        if (value.size() >= 2) {
-            const char first = value.front();
-            const char last = value.back();
+        std::string normalized = Zeri::Core::Utils::Trim(value);
+        if (normalized.size() >= 2) {
+            const char first = normalized.front();
+            const char last = normalized.back();
             if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
-                value.remove_prefix(1);
-                value.remove_suffix(1);
+                normalized.erase(0, 1);
+                normalized.pop_back();
             }
         }
 
-        return std::string(Trim(value));
+        return Zeri::Core::Utils::Trim(normalized);
     }
 
     [[nodiscard]] SandboxLanguage DetectLanguage(std::string_view filePath) {
-        const std::string extension = ToLower(fs::path(filePath).extension().string());
+        const std::string extension = Zeri::Core::Utils::ToLower(fs::path(filePath).extension().string());
         if (extension == ".py") return SandboxLanguage::Python;
         if (extension == ".lua") return SandboxLanguage::Lua;
         if (extension == ".js") return SandboxLanguage::JavaScript;
@@ -560,7 +542,7 @@ namespace Zeri::Engines::Defaults {
         std::vector<std::string> processArgs;
 
         if (targetExists && fs::is_regular_file(targetPath)) {
-            const std::string extension = ToLower(targetPath.extension().string());
+            const std::string extension = Zeri::Core::Utils::ToLower(targetPath.extension().string());
 
             auto health = Zeri::Core::SystemGuard::CheckEnvironment();
             auto resolveRuntime = [&](const std::string& language) -> const Zeri::Core::ScriptRuntime* {
