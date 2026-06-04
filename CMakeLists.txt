@@ -282,6 +282,117 @@ if(BUILD_TESTING)
     set_tests_properties(helpcatalog-random-cwd-no-crash PROPERTIES
         WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
     )
+
+    add_executable(zeri_unit_meta_parser
+        test/unit/test_meta_parser.cpp
+        src/Engines/Source/MetaParser.cpp
+    )
+    target_include_directories(zeri_unit_meta_parser PRIVATE
+        src
+        src/Core/Include
+        src/Engines/Include
+        src/Engines/Include/Interface
+    )
+    if(MSVC)
+        target_compile_options(zeri_unit_meta_parser PRIVATE /W4 /WX /permissive- /bigobj /wd4702)
+    else()
+        target_compile_options(zeri_unit_meta_parser PRIVATE -Wall -Wextra -Werror -pedantic -Wno-ignored-attributes
+                -Wno-missing-field-initializers
+            )
+    endif()
+    add_test(
+        NAME MetaParser-suite
+        COMMAND zeri_unit_meta_parser
+    )
+    set_tests_properties(MetaParser-suite PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+    )
+
+    add_executable(zeri_unit_variable_scope
+        test/unit/test_variable_scope.cpp
+        src/Core/Source/VariableScope.cpp
+    )
+    target_include_directories(zeri_unit_variable_scope PRIVATE
+        src
+        src/Core/Include
+    )
+    if(MSVC)
+        target_compile_options(zeri_unit_variable_scope PRIVATE /W4 /WX /permissive- /bigobj /wd4702)
+    else()
+        target_compile_options(zeri_unit_variable_scope PRIVATE -Wall -Wextra -Werror -pedantic -Wno-ignored-attributes
+                -Wno-missing-field-initializers
+            )
+    endif()
+    add_test(
+        NAME VariableScope-suite
+        COMMAND zeri_unit_variable_scope
+    )
+    set_tests_properties(VariableScope-suite PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+    )
+
+    add_executable(zeri_unit_context_manager
+        test/unit/test_context_manager.cpp
+        src/Core/Source/ContextManager.cpp
+    )
+    target_include_directories(zeri_unit_context_manager PRIVATE
+        src
+        src/Core/Include
+        src/Engines/Include
+        src/Engines/Include/Interface
+        src/Ui/Include
+    )
+    if(MSVC)
+        target_compile_options(zeri_unit_context_manager PRIVATE /W4 /WX /permissive- /bigobj /wd4702)
+    else()
+        target_compile_options(zeri_unit_context_manager PRIVATE -Wall -Wextra -Werror -pedantic -Wno-ignored-attributes
+                -Wno-missing-field-initializers
+            )
+    endif()
+    add_test(
+        NAME ContextManager-suite
+        COMMAND zeri_unit_context_manager
+    )
+    set_tests_properties(ContextManager-suite PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+    )
+
+    add_executable(zeri_unit_script_registry
+        test/unit/test_script_registry.cpp
+        src/Core/Source/RuntimeState.cpp
+        src/Core/Source/ContextManager.cpp
+        src/Core/Source/UserPaths.cpp
+        src/Core/Source/AppPaths.cpp
+        src/Modules/Source/ModuleManager.cpp
+    )
+    target_include_directories(zeri_unit_script_registry PRIVATE
+        src
+        src/Core/Include
+        src/Engines/Include
+        src/Engines/Include/Interface
+        src/Modules/Include
+        src/Ui/Include
+        "${CMAKE_CURRENT_BINARY_DIR}/generated"
+    )
+    target_link_libraries(zeri_unit_script_registry PRIVATE
+        Threads::Threads
+        nlohmann_json::nlohmann_json
+    )
+    if(MSVC)
+        target_compile_options(zeri_unit_script_registry PRIVATE /W4 /WX /permissive- /bigobj /wd4702)
+    else()
+        target_compile_options(zeri_unit_script_registry PRIVATE -Wall -Wextra -Werror -pedantic -Wno-ignored-attributes
+                -Wno-missing-field-initializers
+            )
+    endif()
+    add_test(
+        NAME ScriptRegistry-suite
+        COMMAND zeri_unit_script_registry
+    )
+    set_tests_properties(ScriptRegistry-suite PROPERTIES
+        ENVIRONMENT "APPDATA=${CMAKE_BINARY_DIR}/test-isolation/script-registry;USERPROFILE=${CMAKE_BINARY_DIR}/test-isolation/script-registry;XDG_CONFIG_HOME=${CMAKE_BINARY_DIR}/test-isolation/script-registry;HOME=${CMAKE_BINARY_DIR}/test-isolation/script-registry"
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+    )
 endif()
 
 message(STATUS "Project Zeri v${PROJECT_VERSION} configured successfully.")

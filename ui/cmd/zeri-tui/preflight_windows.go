@@ -22,7 +22,7 @@ func checkVSRedist() *PreflightError {
 			return &PreflightError{
                 Code: "VC_REDIST_MISSING",
 				Check: "Visual C++ Redistributable",
-                Message: dll + " was not found on the system.",
+				Message: dll + " was not found on the system.",
 				Hint: "Install Microsoft Visual C++ Redistributable: https://aka.ms/vs/17/release/vc_redist.x64.exe",
 			}
 		}

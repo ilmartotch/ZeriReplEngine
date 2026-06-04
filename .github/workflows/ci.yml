@@ -312,7 +312,13 @@ jobs:
           sudo apt-get install -y clang lld cmake ninja-build curl zip unzip tar pkg-config build-essential
           ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
 
-      - name: Configure and build smoke target with sanitizers
+      - name: Setup Go
+        uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32
+        with:
+          go-version: '1.25.0'
+          cache-dependency-path: ui/go.sum
+
+      - name: Configure and build sanitizer test targets
         shell: bash
         run: |
           set -euo pipefail
@@ -334,9 +340,20 @@ jobs:
             -DCMAKE_EXE_LINKER_FLAGS="$LINK_FLAGS"
 
           cmake --build build-sanitize --target zeri_help_catalog_smoke
+          cmake --build build-sanitize --target zeri_unit_variable_scope
+          cmake --build build-sanitize --target ZeriEngine
 
       - name: Run sanitizer smoke tests
         shell: bash
         run: |
           set -euo pipefail
           ctest --test-dir build-sanitize --output-on-failure -R "helpcatalog-"
+          ctest --test-dir build-sanitize --output-on-failure -R "VariableScope-"
+
+      - name: Run TSAN engine startup integration
+        if: matrix.sanitizer == 'tsan'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ZERI_ENGINE_PATH="$GITHUB_WORKSPACE/build-sanitize/zeri-engine"
+          go test ./ui/test/integration -run TestStartup -count=1

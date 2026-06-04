@@ -1,8 +1,6 @@
 package main
 
 /*
- * CHANGES & RATIONALE
- * -------------------
  * [messages.go]
  *
  * What changed:
@@ -18,7 +16,4 @@ package main
  *
  * Impact on other components:
  *   - model.go imports bridge.DataMsg, bridge.ErrorMsg, etc. directly.
- *
- * Future maintenance notes:
- *   - Add TUI-specific messages here (e.g. theme change, modal open).
  */

@@ -108,7 +108,7 @@ func (m AppModel) renderRuntimeCenterModal() string {
 
 	lines := []string{
 		titleStyle.Render("Runtime Center"),
-       hintStyle.Render("ESC close"),
+		hintStyle.Render("ESC close"),
 		summaryStyle.Render(m.runtimeCenter.Summary),
 		metaStyle.Render("Generated at: " + m.runtimeCenter.GeneratedAt),
 	}

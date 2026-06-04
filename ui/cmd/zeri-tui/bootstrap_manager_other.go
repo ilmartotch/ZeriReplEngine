@@ -4,7 +4,6 @@ package main
 
 import "runtime"
 
-
 func installersForCurrentPlatform(runtime RuntimeDefinition) []RuntimeInstaller {
 	platformKey := "linux"
 	if isDarwin() {
@@ -37,12 +36,12 @@ func commandForInstaller(installer RuntimeInstaller) (InstallCommand, bool) {
 	case "apk":
 		return InstallCommand{Executable: "apk", Args: []string{"add", "--no-cache", installer.Package}}, true
 	default:
-      return InstallCommand{}, false
+		return InstallCommand{}, false
 	}
 }
 
 func isDarwin() bool {
-  return runtime.GOOS == "darwin"
+	return runtime.GOOS == "darwin"
 }
 
 /*

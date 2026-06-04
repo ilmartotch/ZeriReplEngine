@@ -6,11 +6,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-  "regexp"
+	"regexp"
 	"sort"
-   "strconv"
+	"strconv"
 	"strings"
 	"time"
+	bootstrap "yuumi/internal/bootstrap"
 )
 
 type BootstrapState struct {
@@ -70,7 +71,7 @@ const bootstrapModeInstall = "install"
 const bootstrapModeValidate = "validate"
 
 func RunBootstrapManager() []*PreflightError {
-   manifest, err := loadRuntimeManifest()
+	manifest, err := loadRuntimeManifest()
 	if err != nil {
 		return []*PreflightError{{
 			Code: "BOOTSTRAP_MANIFEST_INVALID",
@@ -81,13 +82,13 @@ func RunBootstrapManager() []*PreflightError {
 	}
 
 	results := validateRequiredRuntimes(manifest)
-    if countBlockingRequired(results) == 0 {
+	if countBlockingRequired(results) == 0 {
 		persistBootstrapState(manifest, results)
 		return nil
 	}
 
-   var errs []*PreflightError
-    if shouldAttemptInstall() {
+	var errs []*PreflightError
+	if shouldAttemptInstall() {
 		for _, result := range results {
 			if !isBlockingRequired(result) {
 				continue
@@ -131,7 +132,7 @@ func RunBootstrapManager() []*PreflightError {
 		})
 	}
 
-   if len(errs) == 0 {
+	if len(errs) == 0 {
 		errs = append(errs, &PreflightError{
 			Code: "BOOTSTRAP_UNKNOWN_FAILURE",
 			Check: "Bootstrap Manager",
@@ -166,9 +167,8 @@ func loadRuntimeManifest() (RuntimeManifest, error) {
 	return manifest, nil
 }
 
-
 func resolveRuntimeManifestPath() (string, bool) {
-    explicitPath := strings.TrimSpace(os.Getenv(runtimeManifestPathEnv))
+	explicitPath := strings.TrimSpace(os.Getenv(runtimeManifestPathEnv))
 	if explicitPath != "" {
 		candidate := explicitPath
 		if !filepath.IsAbs(candidate) {
@@ -229,7 +229,7 @@ func validateManifest(manifest RuntimeManifest) error {
 		if strings.TrimSpace(runtime.InstallHint) == "" {
 			return fmt.Errorf("runtime %s has empty installHint", runtime.Name)
 		}
-       if runtime.Required && len(runtime.Installers) == 0 {
+		if runtime.Required && len(runtime.Installers) == 0 {
 			return fmt.Errorf("runtime %s has no installers mapping", runtime.Name)
 		}
 	}
@@ -253,7 +253,7 @@ func isBlockingRequired(result RuntimeValidationResult) bool {
 
 func shouldAttemptInstall() bool {
 	mode := strings.TrimSpace(strings.ToLower(os.Getenv(bootstrapModeEnv)))
- if mode == "" {
+	if mode == "" {
 		return true
 	}
 	if mode == bootstrapModeValidate {
@@ -289,16 +289,11 @@ func validateRequiredRuntimes(manifest RuntimeManifest) []RuntimeValidationResul
 
 		results = append(results, RuntimeValidationResult{Runtime: runtime, Status: RuntimeStatusOK, Binary: resolved})
 	}
-  return results
+	return results
 }
 
 func resolveBinary(candidates []string) (string, bool) {
-	for _, candidate := range candidates {
-     if path, err := exec.LookPath(candidate); err == nil {
-			return path, true
-		}
-	}
-    return "", false
+	return bootstrap.ResolveBinary(candidates)
 }
 
 func isAnyCommandAvailable(candidates []string) bool {
@@ -313,7 +308,7 @@ func installRuntime(runtime RuntimeDefinition) error {
 	}
 
 	var lastErr error
-  for _, installer := range installers {
+	for _, installer := range installers {
 		command, supported := commandForInstaller(installer)
 		if !supported {
 			lastErr = fmt.Errorf("unsupported installer manager %s", installer.Manager)
@@ -330,16 +325,16 @@ func installRuntime(runtime RuntimeDefinition) error {
 			continue
 		}
 
-      if isAnyCommandAvailable(runtime.Candidates) {
+		if isAnyCommandAvailable(runtime.Candidates) {
 			return nil
 		}
 	}
 
 	if lastErr != nil {
-      return lastErr
+		return lastErr
 	}
 
-   return fmt.Errorf("no supported installer manager was available")
+	return fmt.Errorf("no supported installer manager was available")
 }
 
 func runInstallCommand(command InstallCommand) error {
@@ -423,7 +418,7 @@ func persistBootstrapState(manifest RuntimeManifest, results []RuntimeValidation
 		}
 	}
 	sort.Strings(available)
- totalRequired := 0
+	totalRequired := 0
 	for _, runtime := range manifest.Runtimes {
 		if runtime.Required {
 			totalRequired++

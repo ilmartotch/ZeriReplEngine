@@ -10,7 +10,7 @@ type AutocompleteModel struct {
 	Visible       bool
 	Filtered      []CompletionEntry
 	SelectedIndex int
-	ActiveContext  string
+	ActiveContext string
 }
 
 func (a *AutocompleteModel) Filter(partial string) {
@@ -18,7 +18,7 @@ func (a *AutocompleteModel) Filter(partial string) {
 	a.Filtered = a.Filtered[:0]
 
 	if strings.HasPrefix(partial, "/") {
-      pool := SlashCommandsForContext(a.ActiveContext)
+		pool := SlashCommandsForContext(a.ActiveContext)
 
 		if partial == "/" {
 			a.Filtered = make([]CompletionEntry, len(pool))
@@ -31,12 +31,12 @@ func (a *AutocompleteModel) Filter(partial string) {
 			}
 		}
 	} else if strings.HasPrefix(partial, "$") {
-     contextCommands := ContextCommandsForContext(a.ActiveContext)
+		contextCommands := ContextCommandsForContext(a.ActiveContext)
 		if partial == "$" {
-          a.Filtered = make([]CompletionEntry, len(contextCommands))
+			a.Filtered = make([]CompletionEntry, len(contextCommands))
 			copy(a.Filtered, contextCommands)
 		} else {
-           for _, cmd := range contextCommands {
+			for _, cmd := range contextCommands {
 				if strings.HasPrefix(strings.ToLower(cmd.Command), lower) {
 					a.Filtered = append(a.Filtered, cmd)
 				}

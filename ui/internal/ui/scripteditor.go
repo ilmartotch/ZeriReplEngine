@@ -10,11 +10,11 @@ import (
 )
 
 const (
-	headerHeight          = 1
-	statusBarHeight       = 1
-	minEditorBodyHeight   = 3
-	headerHorizontalPad   = 1
-	statusHorizontalPad   = 1
+	headerHeight = 1
+	statusBarHeight = 1
+	minEditorBodyHeight = 3
+	headerHorizontalPad = 1
+	statusHorizontalPad = 1
 	defaultScriptFileName = "untitled"
 )
 
@@ -23,8 +23,8 @@ type ScriptEditor struct {
 	textarea textarea.Model
 	language string
 	filename string
-	width    int
-	height   int
+	width int
+	height int
 }
 
 func NewScriptEditorWithContent(language string, width, height int, filename string, content string) ScriptEditor {
@@ -43,8 +43,8 @@ func NewScriptEditor(language string, width, height int) ScriptEditor {
 	e := ScriptEditor{
 		textarea: ta,
 		language: language,
-		width:    width,
-		height:   height,
+		width: width,
+		height: height,
 	}
 	e.applySize()
 	return e

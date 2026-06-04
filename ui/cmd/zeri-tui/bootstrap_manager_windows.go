@@ -2,7 +2,6 @@
 
 package main
 
-
 func installersForCurrentPlatform(runtime RuntimeDefinition) []RuntimeInstaller {
 	if installers, ok := runtime.Installers["windows"]; ok {
 		return installers
@@ -10,7 +9,7 @@ func installersForCurrentPlatform(runtime RuntimeDefinition) []RuntimeInstaller 
 	if installers, ok := runtime.Installers["all"]; ok {
 		return installers
 	}
-   return nil
+	return nil
 }
 
 func commandForInstaller(installer RuntimeInstaller) (InstallCommand, bool) {
