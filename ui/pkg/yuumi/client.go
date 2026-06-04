@@ -1,7 +1,8 @@
 package yuumi
 
 import (
-   "encoding/binary"
+	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -14,27 +15,40 @@ import (
 type MessageHandler func(data map[string]interface{}, ch Channel)
 
 type ConnectOptions struct {
-	MaxRetries int
-	BaseDelay time.Duration
-	MaxDelay time.Duration
+	MaxRetries  int
+	BaseDelay   time.Duration
+	MaxDelay    time.Duration
 	DialTimeout time.Duration
 }
 
 func DefaultConnectOptions() ConnectOptions {
 	return ConnectOptions{
-		MaxRetries: 12,
-		BaseDelay: 100 * time.Millisecond,
-		MaxDelay: 4 * time.Second,
+		MaxRetries:  12,
+		BaseDelay:   100 * time.Millisecond,
+		MaxDelay:    4 * time.Second,
 		DialTimeout: 2 * time.Second,
 	}
 }
 
 type Client struct {
-	conn net.Conn
-	mu sync.Mutex
-	handler MessageHandler
+	conn         net.Conn
+	mu           sync.Mutex
+	handler      MessageHandler
 	onDisconnect func(error)
-	running bool
+	running      bool
+}
+
+type AppProtocolVersionMismatchError struct {
+	EngineVersion   int
+	ExpectedVersion int
+}
+
+func (e *AppProtocolVersionMismatchError) Error() string {
+	return fmt.Sprintf(
+		"[ZERI][IPC-001] Protocol version mismatch: engine reports v%d, TUI expects v%d. Update both binaries to the same version.",
+		e.EngineVersion,
+		e.ExpectedVersion,
+	)
 }
 
 func Connect(endpoint string, opts ...ConnectOptions) (*Client, error) {
@@ -69,6 +83,16 @@ func Connect(endpoint string, opts ...ConnectOptions) (*Client, error) {
 
 		if err := c.performHandshake(); err != nil {
 			conn.Close()
+			lastErr = err
+			continue
+		}
+
+		if err := c.readAppHandshake(); err != nil {
+			conn.Close()
+			var versionErr *AppProtocolVersionMismatchError
+			if errors.As(err, &versionErr) {
+				return nil, err
+			}
 			lastErr = err
 			continue
 		}
@@ -124,7 +148,7 @@ func (c *Client) readLoop() {
 		data, ch, err := c.receive()
 		if err != nil {
 			if err != io.EOF {
-                fmt.Fprintf(os.Stderr, "[YUUMI_ERR][%d] Connection lost: %v\n", ErrReadTimeout, err)
+				fmt.Fprintf(os.Stderr, "[YUUMI_ERR][%d] Connection lost: %v\n", ErrReadTimeout, err)
 			}
 			exitErr = err
 			break
@@ -170,8 +194,46 @@ func (c *Client) performHandshake() error {
 	return nil
 }
 
+func (c *Client) readAppHandshake() error {
+	c.conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	data, _, err := c.receive()
+	c.conn.SetReadDeadline(time.Time{})
+	if err != nil {
+		return NewError(ErrProtocolViolation, "App handshake: frame not received")
+	}
+
+	msgType, _ := data["type"].(string)
+	if msgType != "handshake" {
+		return NewError(ErrProtocolViolation, "App handshake: expected handshake frame as first message")
+	}
+
+	rawVersion, ok := data["protocol_version"]
+	if !ok {
+		return NewError(ErrProtocolViolation, "App handshake: missing protocol_version")
+	}
+
+	engineVersion := 0
+	switch value := rawVersion.(type) {
+	case float64:
+		engineVersion = int(value)
+	case int:
+		engineVersion = value
+	default:
+		return NewError(ErrProtocolViolation, "App handshake: invalid protocol_version type")
+	}
+
+	if engineVersion != AppProtocolVersion {
+		return &AppProtocolVersionMismatchError{
+			EngineVersion:   engineVersion,
+			ExpectedVersion: AppProtocolVersion,
+		}
+	}
+
+	return nil
+}
+
 func (c *Client) Send(data interface{}, ch Channel) error {
-   frame, err := encodeFrame(data, ch)
+	frame, err := encodeFrame(data, ch)
 	if err != nil {
 		return NewError(ErrInternal, "Serialization failure")
 	}
@@ -179,14 +241,14 @@ func (c *Client) Send(data interface{}, ch Channel) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-   if _, err := c.conn.Write(frame); err != nil {
+	if _, err := c.conn.Write(frame); err != nil {
 		return NewError(ErrWriteFailed, "Write failure")
 	}
 	return nil
 }
 
 func (c *Client) receive() (map[string]interface{}, Channel, error) {
-   return decodeFrame(c.conn)
+	return decodeFrame(c.conn)
 }
 
 /*

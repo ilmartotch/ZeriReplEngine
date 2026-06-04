@@ -31,6 +31,7 @@ namespace Zeri::Ui {
 
         void EnqueueCommand(const std::string& payload);
         void EnqueueInputResponse(const std::string& payload);
+        void EmitBatchEnd(const std::string& reason);
         void RequestShutdown();
 
         [[nodiscard]] OutputSink& GetSink() { return m_sink; }

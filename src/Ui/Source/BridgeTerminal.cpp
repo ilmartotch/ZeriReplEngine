@@ -1,4 +1,5 @@
 #include "Ui/Include/BridgeTerminal.h"
+#include "Ui/Include/BridgeProtocol.h"
 
 #include <algorithm>
 #include <cctype>
@@ -13,6 +14,13 @@ namespace Zeri::Ui {
 
     void BridgeTerminal::SendOutput(const std::string& type, const std::string& payload) {
         m_sink.Send(type, payload);
+    }
+
+    void BridgeTerminal::EmitBatchEnd(const std::string& reason) {
+        nlohmann::json message;
+        message["type"] = kBridgeTypeStreamBatchEnd;
+        message["reason"] = reason;
+        m_sink.Send(message);
     }
 
     void BridgeTerminal::Write(const std::string& text) {
@@ -39,6 +47,7 @@ namespace Zeri::Ui {
         int depth = m_readDepth.fetch_add(1, std::memory_order_acq_rel);
 
         if (depth > 0) {
+            EmitBatchEnd(kBatchEndBeforeInputRequest);
             nlohmann::json reqMsg;
             reqMsg["type"] = "req_input";
             reqMsg["prompt"] = prompt;
@@ -58,6 +67,7 @@ namespace Zeri::Ui {
             return response;
         }
 
+        EmitBatchEnd(kBatchEndRuntimeIdle);
         std::unique_lock lock(m_mutex);
         m_cv.wait(lock, [this] {
             return !m_commandQueue.empty() || m_shutdown.load(std::memory_order_acquire);

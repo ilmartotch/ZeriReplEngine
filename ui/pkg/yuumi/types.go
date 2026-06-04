@@ -3,27 +3,28 @@ package yuumi
 import "fmt"
 
 const ProtocolVersion = 2
+const AppProtocolVersion = 1
 
 type StatusCode uint32
 
 const (
 	StatusHandshakeStart StatusCode = 100
-	StatusConnecting StatusCode = 101
+	StatusConnecting     StatusCode = 101
 
-	StatusOK StatusCode = 200
+	StatusOK              StatusCode = 200
 	StatusMessageReceived StatusCode = 201
-	StatusHeartbeat StatusCode = 202
+	StatusHeartbeat       StatusCode = 202
 
-	ErrMagicMismatch StatusCode = 400
-	ErrVersionMismatch StatusCode = 401
-	ErrPidMismatch StatusCode = 402
+	ErrMagicMismatch     StatusCode = 400
+	ErrVersionMismatch   StatusCode = 401
+	ErrPidMismatch       StatusCode = 402
 	ErrProtocolViolation StatusCode = 403
 
-	ErrPipeFailed StatusCode = 500
-	ErrReadTimeout StatusCode = 501
-	ErrWriteFailed StatusCode = 502
+	ErrPipeFailed     StatusCode = 500
+	ErrReadTimeout    StatusCode = 501
+	ErrWriteFailed    StatusCode = 502
 	ErrConnectionLost StatusCode = 503
-	ErrInternal StatusCode = 599
+	ErrInternal       StatusCode = 599
 )
 
 type Channel byte
@@ -31,12 +32,12 @@ type Channel byte
 const (
 	ChannelControl Channel = 0
 	ChannelCommand Channel = 1
-	ChannelLog Channel = 2
-	ChannelData Channel = 3
+	ChannelLog     Channel = 2
+	ChannelData    Channel = 3
 )
 
 type Error struct {
-	Code StatusCode
+	Code    StatusCode
 	Message string
 }
 

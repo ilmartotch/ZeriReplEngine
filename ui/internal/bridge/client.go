@@ -20,6 +20,7 @@ type ContextChangedMsg struct {
 	ContextName string
 	Active      bool
 }
+type StreamBatchEndMsg struct{ Reason string }
 
 type YuumiClient interface {
 	ConnectCmd() tea.Cmd

@@ -17,6 +17,7 @@
 #include "Engines/Include/SandboxContext.h"
 #include "Engines/Include/SetupContext.h"
 #include "Ui/Include/BridgeTerminal.h"
+#include "Ui/Include/BridgeProtocol.h"
 #include "Ui/Include/OutputSink.h"
 #include "Engines/Include/MetaParser.h"
 #include "Engines/Include/DefaultDispatcher.h"
@@ -276,6 +277,32 @@ namespace {
         }
     }
 
+    void EmitBatchEnd(Zeri::Ui::OutputSink* sink, std::string_view reason) {
+        if (sink == nullptr) {
+            return;
+        }
+        nlohmann::json message;
+        message["type"] = Zeri::Ui::kBridgeTypeStreamBatchEnd;
+        message["reason"] = reason;
+        sink->Send(message);
+    }
+
+    void EmitContextChanged(
+        Zeri::Ui::OutputSink* sink,
+        const std::string& context,
+        const std::string& prompt
+    ) {
+        if (sink == nullptr) {
+            return;
+        }
+        nlohmann::json message;
+        message["type"] = "context_changed";
+        message["context"] = context;
+        message["prompt"] = prompt;
+        sink->Send(message);
+        EmitBatchEnd(sink, Zeri::Ui::kBatchEndContextTransition);
+    }
+
     [[nodiscard]] bool SwitchContext(
         const std::string& ctxName,
         Zeri::Core::RuntimeState& runtimeState,
@@ -295,13 +322,7 @@ namespace {
             auto* activeContext = runtimeState.GetCurrentContext();
             if (activeContext != nullptr) {
                 activeContext->OnEnter(terminal);
-                if (sink) {
-                    nlohmann::json msg;
-                    msg["type"] = "context_changed";
-                    msg["context"] = activeContext->GetName();
-                    msg["prompt"] = activeContext->GetPrompt();
-                    sink->Send(msg);
-                }
+                EmitContextChanged(sink, activeContext->GetName(), activeContext->GetPrompt());
                 return true;
             }
 
@@ -328,13 +349,7 @@ namespace {
         runtimeState.PushContext(std::move(nextContext));
         auto* pushed = runtimeState.GetCurrentContext();
         pushed->OnEnter(terminal);
-        if (sink) {
-            nlohmann::json msg;
-            msg["type"] = "context_changed";
-            msg["context"] = pushed->GetName();
-            msg["prompt"] = pushed->GetPrompt();
-            sink->Send(msg);
-        }
+        EmitContextChanged(sink, pushed->GetName(), pushed->GetPrompt());
         return true;
     }
 
@@ -390,13 +405,7 @@ namespace {
             if (parent) {
                 terminal.WriteSuccess("Returned to " + parent->GetName() + " context.");
                 parent->OnEnter(terminal);
-                if (sink) {
-                    nlohmann::json msg;
-                    msg["type"] = "context_changed";
-                    msg["context"] = parent->GetName();
-                    msg["prompt"] = parent->GetPrompt();
-                    sink->Send(msg);
-                }
+                EmitContextChanged(sink, parent->GetName(), parent->GetPrompt());
             }
             return true;
         }
@@ -431,13 +440,7 @@ namespace {
 
             terminal.WriteSuccess("Session reset. Context: " + ctxName);
 
-            if (sink) {
-                nlohmann::json msg;
-                msg["type"] = "context_changed";
-                msg["context"] = ctxName;
-                msg["prompt"] = ctx ? ctx->GetPrompt() : "zeri";
-                sink->Send(msg);
-            }
+            EmitContextChanged(sink, ctxName, ctx ? ctx->GetPrompt() : "zeri");
             return true;
         }
 
@@ -738,6 +741,11 @@ int RunMain(int argc, char* argv[]) {
         return 1;
     }
 
+    nlohmann::json handshakeMsg;
+    handshakeMsg["type"] = Zeri::Ui::kBridgeTypeHandshake;
+    handshakeMsg["protocol_version"] = Zeri::Ui::ZERI_PROTOCOL_VERSION;
+    sinkOwner->Send(handshakeMsg);
+
     sinkOwner->SetConnected(true);
     sinkOwner->Flush();
 
@@ -798,6 +806,7 @@ int RunMain(int argc, char* argv[]) {
             auto outcome = activeContext->HandleRawLine(input, runtimeState, terminal);
             HandleOutcome(outcome, terminal);
             AppendCommandHistory(commandHistory, input, outcome.has_value(), outcome.has_value() ? "OK" : outcome.error().code);
+            bridgeTerminal->EmitBatchEnd(Zeri::Ui::kBatchEndExecutionComplete);
             continue;
         }
 
@@ -805,22 +814,26 @@ int RunMain(int argc, char* argv[]) {
         if (lowered == "$code") {
             (void)SwitchContext("code", runtimeState, terminal, sinkOwner.get());
             AppendCommandHistory(commandHistory, input, true, "CONTEXT_SWITCH");
+            bridgeTerminal->EmitBatchEnd(Zeri::Ui::kBatchEndExecutionComplete);
             continue;
         }
         if (lowered == "$customcommand") {
             (void)SwitchContext("customcommand", runtimeState, terminal, sinkOwner.get());
             AppendCommandHistory(commandHistory, input, true, "CONTEXT_SWITCH");
+            bridgeTerminal->EmitBatchEnd(Zeri::Ui::kBatchEndExecutionComplete);
             continue;
         }
 
         bool ok = ExecuteStage(input, dispatcher, runtimeState, terminal, sinkOwner.get(), &startupDiagnostics, &commandHistory);
         AppendCommandHistory(commandHistory, input, ok, ok ? "OK" : "FAILED");
+        bridgeTerminal->EmitBatchEnd(Zeri::Ui::kBatchEndExecutionComplete);
 
         if (!ok) {
             continue;
         }
     }
 
+    bridgeTerminal->EmitBatchEnd(Zeri::Ui::kBatchEndEngineShutdown);
     terminal.WriteLine("Goodbye.");
     auto sessionPath = Zeri::Core::ResolveSessionPath();
     auto saveResult = runtimeState.SaveSession(sessionPath);
@@ -860,6 +873,8 @@ Transport model:
   - Core code never sends directly through yuumi::Bridge.
 
 Bridge protocol (high-level):
+  - First output frame:
+      {"type": "handshake", "protocol_version": 1}
   - Input from Go UI:
       {"type": "command", "payload": "<user input>"}
       {"type": "input_response", "payload": "<wizard reply>"}
@@ -868,6 +883,7 @@ Bridge protocol (high-level):
       {"type": "output"|"error"|"info"|"success", "payload": "<text>"}
       {"type": "context_changed", "context": "<name>", "prompt": "<prompt>"}
       {"type": "req_input", "prompt": "<text>"}
+      {"type": "stream_batch_end", "reason": "<execution_complete|before_input_request|context_transition|runtime_idle|engine_shutdown>"}
 
 Behavior notes:
   - Global commands (/context, /back, /status, /reset, /bug report, /exit, /save) are

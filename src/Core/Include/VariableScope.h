@@ -3,6 +3,7 @@
 #include <map>
 #include <any>
 #include <optional>
+#include <shared_mutex>
 
 namespace Zeri::Core {
 
@@ -41,6 +42,7 @@ namespace Zeri::Core {
 		void ClearLocal();
 
 	private:
+		mutable std::shared_mutex m_mutex;
 		std::map<std::string, TypedValue> m_local;
 		std::map<std::string, TypedValue> m_session;
 		std::map<std::string, TypedValue> m_global;

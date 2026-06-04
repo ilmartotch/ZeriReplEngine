@@ -5,6 +5,8 @@
 #include <cstdlib>
 #include <string_view>
 #include <cstdint>
+#include <mutex>
+#include <shared_mutex>
 
 namespace {
 
@@ -87,6 +89,7 @@ namespace Zeri::Core {
 	}
 
 	void VariableScope::SetTyped(const std::string& key, const std::any& value, ValueType type, ScopeLevel level) {
+		std::unique_lock<std::shared_mutex> lock(m_mutex);
 		std::string nKey = NormalizeKey(key);
 		TypedValue entry{ value, type == ValueType::Unknown ? DeduceType(value) : type };
 
@@ -111,6 +114,7 @@ namespace Zeri::Core {
 	}
 
 	std::optional<TypedValue> VariableScope::GetTyped(const std::string& key) const {
+		std::shared_lock<std::shared_mutex> lock(m_mutex);
 		std::string nKey = NormalizeKey(key);
 
 		if (auto it = m_local.find(nKey); it != m_local.end()) return it->second;
@@ -125,6 +129,7 @@ namespace Zeri::Core {
 	}
 
 	ScopeLevel VariableScope::GetLevel(const std::string& key) const {
+		std::shared_lock<std::shared_mutex> lock(m_mutex);
 		std::string nKey = NormalizeKey(key);
 		if (m_local.contains(nKey)) return ScopeLevel::Local;
 		if (m_session.contains(nKey)) return ScopeLevel::Session;
@@ -137,17 +142,27 @@ namespace Zeri::Core {
 	}
 
 	bool VariableScope::PromoteToGlobal(const std::string& key) {
-		auto val = GetTyped(key);
-		if (!val.has_value()) return false;
-
+		std::unique_lock<std::shared_mutex> lock(m_mutex);
 		std::string nKey = NormalizeKey(key);
-		m_global[nKey] = val.value();
-		m_local.erase(nKey);
-		m_session.erase(nKey);
-		return true;
+		if (auto it = m_local.find(nKey); it != m_local.end()) {
+			m_global[nKey] = it->second;
+			m_local.erase(it);
+			return true;
+		}
+		if (auto it = m_session.find(nKey); it != m_session.end()) {
+			m_global[nKey] = it->second;
+			m_session.erase(it);
+			return true;
+		}
+		if (auto it = m_global.find(nKey); it != m_global.end()) {
+			m_global[nKey] = it->second;
+			return true;
+		}
+		return false;
 	}
 
 	void VariableScope::ClearLocal() {
+		std::unique_lock<std::shared_mutex> lock(m_mutex);
 		m_local.clear();
 	}
 

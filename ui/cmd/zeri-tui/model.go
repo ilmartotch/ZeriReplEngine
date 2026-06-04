@@ -202,23 +202,22 @@ type AppModel struct {
 	enginePath                  string
 	pipeName                    string
 
-	bridge               bridge.YuumiClient
-	runner               *yuumi.Runner
-	client               *yuumi.Client
-	engineState          ConnectionState
-	engineRestartCount   int
-	ready                bool
-	bridgeConnected      bool
-	memoryMB             uint64
-	lastStatusTick       time.Time
-	startupInProgress    bool
-	startupFailed        bool
-	startupStage         string
-	startupErrors        []string
-	startupSpinnerIndex  int
-	engineBatchTitle     string
-	engineBatchChunks    []EngineBatchChunk
-	engineBatchUpdatedAt time.Time
+	bridge              bridge.YuumiClient
+	runner              *yuumi.Runner
+	client              *yuumi.Client
+	engineState         ConnectionState
+	engineRestartCount  int
+	ready               bool
+	bridgeConnected     bool
+	memoryMB            uint64
+	lastStatusTick      time.Time
+	startupInProgress   bool
+	startupFailed       bool
+	startupStage        string
+	startupErrors       []string
+	startupSpinnerIndex int
+	engineBatchTitle    string
+	engineBatchChunks   []EngineBatchChunk
 }
 
 func newAppModel(b bridge.YuumiClient, enginePath string, pipeName string) AppModel {
@@ -411,7 +410,6 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.startupInProgress {
 			m.startupSpinnerIndex = (m.startupSpinnerIndex + 1) % 4
 		}
-		m.flushEngineBatchIfSettled()
 		return m, tickStatusCmd()
 
 	case bridge.ConnectedMsg:
@@ -482,6 +480,10 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case bridge.ErrorMsg:
 		m.consumeEngineError(msg.Content)
+		return m, nil
+
+	case bridge.StreamBatchEndMsg:
+		m.flushEngineBatch(false)
 		return m, nil
 
 	case bridge.InputRequestMsg:
@@ -660,7 +662,6 @@ func (m AppModel) updateScriptEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.startupInProgress {
 			m.startupSpinnerIndex = (m.startupSpinnerIndex + 1) % 4
 		}
-		m.flushEngineBatchIfSettled()
 		return m, tickStatusCmd()
 
 	case bridge.ConnectedMsg:
@@ -678,6 +679,10 @@ func (m AppModel) updateScriptEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case bridge.ErrorMsg:
 		m.consumeEngineError(msg.Content)
+		return m, nil
+
+	case bridge.StreamBatchEndMsg:
+		m.flushEngineBatch(false)
 		return m, nil
 
 	case bridge.InputRequestMsg:
@@ -1918,29 +1923,6 @@ func (m *AppModel) bufferEngineChunk(isError bool, content string) {
 		IsError: isError,
 		Content: normalized,
 	})
-	m.engineBatchUpdatedAt = time.Now()
-}
-
-func (m *AppModel) flushEngineBatchIfSettled() {
-	if len(m.engineBatchChunks) == 0 {
-		return
-	}
-	if m.sandboxProcessRunning {
-		return
-	}
-	if strings.TrimSpace(m.pendingInputPrompt) != "" {
-		return
-	}
-	if m.selectionMenuVisible {
-		return
-	}
-	if m.engineBatchUpdatedAt.IsZero() {
-		m.flushEngineBatch(false)
-		return
-	}
-	if time.Since(m.engineBatchUpdatedAt) >= 350*time.Millisecond {
-		m.flushEngineBatch(false)
-	}
 }
 
 func (m *AppModel) flushEngineBatch(forceError bool) {
@@ -1980,7 +1962,6 @@ func (m *AppModel) flushEngineBatch(forceError bool) {
 
 	m.engineBatchChunks = nil
 	m.engineBatchTitle = ""
-	m.engineBatchUpdatedAt = time.Time{}
 	if !hasError {
 		m.refreshViewport()
 	}

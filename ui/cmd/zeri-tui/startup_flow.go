@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -201,6 +202,11 @@ func readEngineLogLines(engineLogPath string) []string {
 }
 
 func buildBridgeFailureErrors(connectErr error, engineLogLines []string, enginePath string, logPath string) []string {
+	var protocolMismatchErr *yuumi.AppProtocolVersionMismatchError
+	if errors.As(connectErr, &protocolMismatchErr) {
+		return []string{protocolMismatchErr.Error()}
+	}
+
 	errors := []string{
 		"Bridge connection failed: " + strings.TrimSpace(connectErr.Error()),
 	}

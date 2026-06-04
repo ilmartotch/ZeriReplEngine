@@ -147,6 +147,9 @@ func (r *RealYuumiClient) RegisterMessageHandler() {
 		case "req_input":
 			prompt, _ := data["prompt"].(string)
 			program.Send(InputRequestMsg{Prompt: prompt})
+		case "stream_batch_end":
+			reason, _ := data["reason"].(string)
+			program.Send(StreamBatchEndMsg{Reason: reason})
 		case "sel_request":
 			title, _ := data["title"].(string)
 			options := make([]string, 0)
