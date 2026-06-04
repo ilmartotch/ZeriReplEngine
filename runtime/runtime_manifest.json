@@ -18,7 +18,8 @@
           { "manager": "brew", "package": "oven-sh/bun/bun" }
         ],
         "linux": []
-      }
+      },
+      "fallback_curl": "curl -fsSL https://bun.sh/install | bash"
     },
     {
       "name": "Python",

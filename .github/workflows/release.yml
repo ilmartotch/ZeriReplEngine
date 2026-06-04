@@ -120,7 +120,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           Push-Location "ui"
-          go build ./cmd/zeri-tui
+          go build -ldflags "-X main.version=${{ github.ref_name }}" ./cmd/zeri-tui
           Pop-Location
 
       - name: Setup MSVC
@@ -174,7 +174,9 @@ jobs:
       - name: Build Windows
         if: runner.os == 'Windows'
         shell: pwsh
-        run: .\build.ps1 -Config Release
+        run: |
+          $env:ZERI_VERSION = "${{ github.ref_name }}"
+          .\build.ps1 -Config Release
 
       - name: Verify Windows dist contents
         if: runner.os == 'Windows'
@@ -209,6 +211,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export ZERI_VERSION="${{ github.ref_name }}"
           chmod +x build.sh
           if [[ "${{ runner.os }}" == "macOS" ]]; then
             export CMAKE_OSX_ARCHITECTURES=arm64
@@ -256,8 +259,79 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  release:
+  install-verify:
+    name: Install verify (${{ matrix.label }})
     needs: [build]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: linux-amd64
+            os: ubuntu-latest
+          - label: macos-arm64
+            os: macos-latest
+          - label: windows-amd64
+            os: windows-latest
+    steps:
+      - name: Download Linux artifact
+        if: runner.os == 'Linux'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: zeri-linux-amd64
+          path: artifact-linux
+
+      - name: Verify Linux archive binary version
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p extracted
+          tar -xzf artifact-linux/zeri-linux-amd64.tar.gz -C extracted
+          chmod +x extracted/zeri
+          version_output="$(./extracted/zeri --version)"
+          if [ -z "${version_output// }" ]; then
+            echo "::error::zeri --version returned empty output on Linux."
+            exit 1
+          fi
+          echo "$version_output"
+
+      - name: Verify Homebrew install version
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew install ilmartotch/zeri/zeri
+          version_output="$(zeri --version)"
+          if [ -z "${version_output// }" ]; then
+            echo "::error::zeri --version returned empty output after Homebrew install."
+            exit 1
+          fi
+          echo "$version_output"
+
+      - name: Verify Scoop install version
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          if (-not (Get-Command scoop -ErrorAction SilentlyContinue)) {
+            Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+            Invoke-RestMethod -Uri "https://get.scoop.sh" | Invoke-Expression
+          }
+          if (scoop bucket list | Select-String -SimpleMatch "zeri") {
+            scoop bucket rm zeri
+          }
+          scoop bucket add zeri https://github.com/ilmartotch/scoop-zeri
+          scoop install zeri
+          $versionOutput = (& zeri --version).Trim()
+          if ([string]::IsNullOrWhiteSpace($versionOutput)) {
+            throw "zeri --version returned empty output after Scoop install."
+          }
+          Write-Host $versionOutput
+
+  release:
+    needs: [build, install-verify]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:

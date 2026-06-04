@@ -86,7 +86,12 @@ fi
 
 echo "Building zeri TUI"
 cd "$YUUMI_UI_DIR"
-go build -o "$DIST/zeri" ./cmd/zeri-tui/
+GO_BUILD_VERSION="${ZERI_VERSION:-$VERSION}"
+GO_BUILD_VERSION="${GO_BUILD_VERSION#v}"
+if [ -z "$GO_BUILD_VERSION" ]; then
+    GO_BUILD_VERSION="unknown"
+fi
+go build -ldflags "-X main.version=$GO_BUILD_VERSION" -o "$DIST/zeri" ./cmd/zeri-tui/
 chmod +x "$DIST/zeri"
 
 echo "Copying sidecar runtime"

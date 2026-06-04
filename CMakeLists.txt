@@ -163,6 +163,7 @@ target_link_libraries(ZeriEngine PRIVATE
     ${LUA_LIBRARIES}
     yuumi::yuumi
 )
+target_compile_definitions(ZeriEngine PRIVATE ZERI_ENGINE_VERSION="${CMAKE_PROJECT_VERSION}")
 
 if(MSVC)
     target_compile_options(ZeriEngine PRIVATE /W4 /WX /permissive- /bigobj /wd4702)

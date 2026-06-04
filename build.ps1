@@ -154,8 +154,16 @@ Write-Host "Wrote dist/version.txt with version: $Version"
 Write-Host "Build TUI Go (zeri.exe)"
 $YuumiUi = Join-Path $Root "ui"
 Push-Location $YuumiUi
+$GoVersion = if ([string]::IsNullOrWhiteSpace($env:ZERI_VERSION)) { $Version } else { $env:ZERI_VERSION }
+$GoVersion = $GoVersion.Trim()
+if ($GoVersion.StartsWith("v")) {
+    $GoVersion = $GoVersion.Substring(1)
+}
+if ([string]::IsNullOrWhiteSpace($GoVersion)) {
+    $GoVersion = "unknown"
+}
 $env:GOOS = "windows"; $env:GOARCH = "amd64"
-go build -o (Join-Path $Dist "zeri.exe") ./cmd/zeri-tui/
+go build -ldflags "-X main.version=$GoVersion" -o (Join-Path $Dist "zeri.exe") ./cmd/zeri-tui/
 if ($LASTEXITCODE -ne 0) { Pop-Location; throw "go build TUI failed." }
 Pop-Location
 

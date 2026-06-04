@@ -15,7 +15,14 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
+var version = "dev"
+
 func main() {
+	if shouldPrintVersion(os.Args[1:]) {
+		fmt.Println(formatVersionOutput())
+		os.Exit(0)
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -69,6 +76,24 @@ func main() {
 
 	fmt.Println("Goodbye from Zeri.")
 	os.Exit(0)
+}
+
+func shouldPrintVersion(args []string) bool {
+	for _, arg := range args {
+		if arg == "--version" || arg == "-v" {
+			return true
+		}
+	}
+	return false
+}
+
+func formatVersionOutput() string {
+	normalizedVersion := strings.TrimSpace(version)
+	if normalizedVersion == "" {
+		normalizedVersion = "dev"
+	}
+	normalizedVersion = strings.TrimPrefix(normalizedVersion, "v")
+	return fmt.Sprintf("zeri version %s (%s/%s)", normalizedVersion, runtime.GOOS, runtime.GOARCH)
 }
 
 func resolvePipeName() string {

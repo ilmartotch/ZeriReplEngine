@@ -38,6 +38,10 @@
 #include <sstream>
 #include <filesystem>
 
+#ifndef ZERI_ENGINE_VERSION
+#define ZERI_ENGINE_VERSION "unknown"
+#endif
+
 namespace Zeri::Platform {
 #ifdef _WIN32
     inline FILE* POpen(const char* cmd, const char* mode) {
@@ -660,6 +664,14 @@ namespace {
 }
 
 namespace {
+    [[nodiscard]] bool IsVersionArg(int argc, char* argv[]) {
+        if (argc < 2) {
+            return false;
+        }
+        const std::string_view arg(argv[1]);
+        return arg == "--version" || arg == "-v";
+    }
+
     [[nodiscard]] std::optional<std::string> ParsePipeArg(int argc, char* argv[]) {
         for (int i = 1; i < argc - 1; ++i) {
             if (std::string_view(argv[i]) == "--yuumi-pipe") {
@@ -695,6 +707,11 @@ namespace {
 }
 
 int RunMain(int argc, char* argv[]) {
+    if (IsVersionArg(argc, argv)) {
+        std::printf("zeri-engine version %s\n", ZERI_ENGINE_VERSION);
+        return 0;
+    }
+
     auto pipeArg = ParsePipeArg(argc, argv);
     if (!pipeArg.has_value()) {
         std::fprintf(stderr, "[ZERI_ENGINE] Missing required --yuumi-pipe <name> argument. Local C++ UI is disabled.\n");

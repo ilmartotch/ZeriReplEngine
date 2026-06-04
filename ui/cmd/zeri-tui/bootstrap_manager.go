@@ -137,7 +137,7 @@ func RunBootstrapManager() []*PreflightError {
 			Code: "BOOTSTRAP_UNKNOWN_FAILURE",
 			Check: "Bootstrap Manager",
 			Message: "Bootstrap did not complete and no runtime diagnostics were produced.",
-			Hint: "Inspect bootstrap manager logs and runtime manifest integrity.",
+			Hint:    "Inspect bootstrap manager logs and runtime manifest integrity.",
 		})
 	}
 
@@ -304,6 +304,24 @@ func isAnyCommandAvailable(candidates []string) bool {
 func installRuntime(runtime RuntimeDefinition) error {
 	installers := installersForCurrentPlatform(runtime)
 	if len(installers) == 0 {
+		fallbackCommand := strings.TrimSpace(runtime.FallbackCurl)
+		if fallbackCommand != "" {
+			if err := runInstallFallbackCommand(fallbackCommand); err != nil {
+				if shouldIgnoreFallbackFailure(runtime) {
+					emitRuntime002Warning()
+					return nil
+				}
+				return err
+			}
+			if isAnyCommandAvailable(runtime.Candidates) {
+				return nil
+			}
+			if shouldIgnoreFallbackFailure(runtime) {
+				emitRuntime002Warning()
+				return nil
+			}
+			return fmt.Errorf("runtime %s is still unavailable after fallback command execution", runtime.Name)
+		}
 		return fmt.Errorf("runtime %s has no installers for current platform", runtime.Name)
 	}
 
@@ -335,6 +353,27 @@ func installRuntime(runtime RuntimeDefinition) error {
 	}
 
 	return fmt.Errorf("no supported installer manager was available")
+}
+
+func runInstallFallbackCommand(command string) error {
+	cmd := exec.Command("sh", "-c", command)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		trimmed := strings.TrimSpace(string(output))
+		if trimmed == "" {
+			return err
+		}
+		return fmt.Errorf("%w: %s", err, trimmed)
+	}
+	return nil
+}
+
+func shouldIgnoreFallbackFailure(runtime RuntimeDefinition) bool {
+	return strings.EqualFold(strings.TrimSpace(runtime.Name), "Bun")
+}
+
+func emitRuntime002Warning() {
+	_, _ = fmt.Fprintln(os.Stderr, "[ZERI][RUNTIME-002] Bun installation failed. Install manually: https://bun.sh")
 }
 
 func runInstallCommand(command InstallCommand) error {
@@ -426,10 +465,10 @@ func persistBootstrapState(manifest RuntimeManifest, results []RuntimeValidation
 	}
 
 	state := BootstrapState{
-		Version: bootstrapStateVersion,
-        Completed: len(available) >= totalRequired,
+		Version:        bootstrapStateVersion,
+		Completed:      len(available) >= totalRequired,
 		CompletedAtUTC: time.Now().UTC().Format(time.RFC3339),
-		Runtimes: available,
+		Runtimes:       available,
 	}
 
 	configDir, err := bootstrapConfigDirectory()

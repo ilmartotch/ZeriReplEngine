@@ -76,6 +76,25 @@ namespace Zeri::Engines::Utils {
     }
 
     [[nodiscard]] inline std::string ResolveExecutable(const std::vector<std::string>& candidates) {
+        std::vector<std::string> orderedCandidates = candidates;
+        for (size_t i = 0; i < orderedCandidates.size(); ++i) {
+            if (orderedCandidates[i] != "python") {
+                continue;
+            }
+
+            bool hasPython3Before = false;
+            for (size_t j = 0; j < i; ++j) {
+                if (orderedCandidates[j] == "python3") {
+                    hasPython3Before = true;
+                    break;
+                }
+            }
+            if (!hasPython3Before) {
+                orderedCandidates.insert(orderedCandidates.begin() + i, "python3");
+            }
+            break;
+        }
+
         const std::string pathValue = detail::ReadEnvVar("PATH");
         const std::string_view pathText(pathValue);
 #ifdef _WIN32
@@ -88,7 +107,7 @@ namespace Zeri::Engines::Utils {
         const auto pathExtensions = detail::ResolvePathExtensions();
 
         std::string firstNonEmpty;
-        for (const auto& candidate : candidates) {
+        for (const auto& candidate : orderedCandidates) {
             if (candidate.empty()) {
                 continue;
             }
