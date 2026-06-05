@@ -47,7 +47,7 @@ namespace {
                 terminal.Write(line);
             },
             [&terminal](const std::string& line) {
-                terminal.WriteError(line);
+                terminal.WriteError("[ZERI][RUNTIME-027] Python one-shot stderr: " + line + " Hint: inspect Python output and runtime dependencies.");
             }
         );
     }
@@ -75,7 +75,7 @@ namespace {
         }
 
         if (!payload.stderrText.empty()) {
-            terminal.WriteError(payload.stderrText);
+            terminal.WriteError("[ZERI][RUNTIME-028] Python runtime stderr: " + payload.stderrText + " Hint: inspect Python output and runtime dependencies.");
         }
 
         if (payload.exitCode != 0) {
@@ -148,7 +148,7 @@ namespace Zeri::Engines::Defaults {
             return ExecuteViaSidecar(m_sidecarBridge, script, terminal, cmd.rawInput);
         }
 
-        terminal.WriteError("[WARN] Python sidecar launch failed, falling back to one-shot execution.");
+        terminal.WriteError("[ZERI][RUNTIME-029] Python sidecar launch failed, falling back to one-shot execution. Hint: verify Python installation and bootstrap script availability.");
         return ExecuteOneShot(m_bridge, executable, script, terminal);
     }
 

@@ -641,7 +641,7 @@ namespace Zeri::Engines::Defaults {
                     std::lock_guard lock(captureMutex);
                     capturedStderr += chunk;
                 }
-                terminal.WriteError(chunk);
+                terminal.WriteError("[ZERI][RUNTIME-005] Sandbox process stderr: " + chunk + " Hint: review the command/runtime output and fix the failing target.");
                 if (IsLikelyInputPrompt(chunk)) {
                     awaitingInput = true;
                 }

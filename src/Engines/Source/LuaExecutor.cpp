@@ -76,7 +76,7 @@ namespace {
         }
 
         if (!payload.stderrText.empty()) {
-            terminal.WriteError(payload.stderrText);
+            terminal.WriteError("[ZERI][RUNTIME-023] Lua runtime stderr: " + payload.stderrText + " Hint: inspect Lua output and runtime dependencies.");
         }
 
         if (payload.exitCode != 0) {
@@ -118,7 +118,7 @@ namespace {
                 terminal.Write(line);
             },
             [&terminal](const std::string& line) {
-                terminal.WriteError(line);
+                terminal.WriteError("[ZERI][RUNTIME-024] Lua one-shot stderr: " + line + " Hint: inspect Lua output and runtime dependencies.");
             }
         );
 
@@ -190,7 +190,7 @@ namespace Zeri::Engines::Defaults {
         const bool bootstrapExists = std::filesystem::exists(bootstrapPath);
 
         if (!bootstrapExists) {
-            terminal.WriteError("[WARN] Lua sidecar bootstrap not found, falling back to one-shot execution.");
+            terminal.WriteError("[ZERI][RUNTIME-025] Lua sidecar bootstrap not found, falling back to one-shot execution. Hint: ensure runtime/bootstrap_lua.lua is packaged.");
             return ExecuteOneShot(m_bridge, executable, script, terminal, cmd.rawInput);
         }
 
@@ -203,7 +203,7 @@ namespace Zeri::Engines::Defaults {
             return ExecuteViaSidecar(m_sidecarBridge, script, terminal, cmd.rawInput);
         }
 
-        terminal.WriteError("[WARN] Lua sidecar launch failed, falling back to one-shot execution.");
+        terminal.WriteError("[ZERI][RUNTIME-026] Lua sidecar launch failed, falling back to one-shot execution. Hint: verify luajit installation and executable path.");
         return ExecuteOneShot(m_bridge, executable, script, terminal, cmd.rawInput);
     }
 

@@ -57,7 +57,7 @@ namespace {
         }
 
         if (!payload.stderrText.empty()) {
-            terminal.WriteError(payload.stderrText);
+            terminal.WriteError("[ZERI][RUNTIME-030] Ruby runtime stderr: " + payload.stderrText + " Hint: inspect Ruby output and runtime dependencies.");
         }
 
         if (payload.exitCode != 0) {
@@ -86,7 +86,7 @@ namespace {
                 terminal.Write(line);
             },
             [&terminal](const std::string& line) {
-                terminal.WriteError(line);
+                terminal.WriteError("[ZERI][RUNTIME-031] Ruby one-shot stderr: " + line + " Hint: inspect Ruby output and runtime dependencies.");
             }
         );
 
@@ -153,7 +153,7 @@ namespace Zeri::Engines::Defaults {
         const bool bootstrapExists = std::filesystem::exists(bootstrapPath);
 
         if (!bootstrapExists) {
-            terminal.WriteError("[WARN] Ruby sidecar bootstrap not found, falling back to one-shot execution.");
+            terminal.WriteError("[ZERI][RUNTIME-032] Ruby sidecar bootstrap not found, falling back to one-shot execution. Hint: ensure runtime/bootstrap_ruby.rb is packaged.");
             return ExecuteOneShot(m_bridge, executable, script, terminal, cmd.rawInput);
         }
 
@@ -166,7 +166,7 @@ namespace Zeri::Engines::Defaults {
             return ExecuteViaSidecar(m_sidecarBridge, script, terminal, cmd.rawInput);
         }
 
-        terminal.WriteError("[WARN] Ruby sidecar launch failed, falling back to one-shot execution.");
+        terminal.WriteError("[ZERI][RUNTIME-033] Ruby sidecar launch failed, falling back to one-shot execution. Hint: verify Ruby installation and executable path.");
         return ExecuteOneShot(m_bridge, executable, script, terminal, cmd.rawInput);
     }
 

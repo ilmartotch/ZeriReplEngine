@@ -59,7 +59,7 @@ namespace {
         }
 
         if (!payload.stderrText.empty()) {
-            terminal.WriteError(payload.stderrText);
+            terminal.WriteError("[ZERI][RUNTIME-020] JS/TS runtime stderr: " + payload.stderrText + " Hint: inspect script output and runtime dependencies.");
         }
 
         if (payload.exitCode != 0) {
@@ -157,7 +157,7 @@ namespace Zeri::Engines::Defaults {
             if (launched) {
                 result = ExecuteViaSidecar(m_sidecarBridge, script, terminal, cmd.rawInput);
             } else {
-                terminal.WriteError("[WARN] JS/TS sidecar launch failed, falling back to one-shot execution.");
+                terminal.WriteError("[ZERI][RUNTIME-021] JS/TS sidecar launch failed, falling back to one-shot execution. Hint: verify Bun runtime installation and bootstrap scripts.");
                 result = m_bridge.Run(
                     executable,
                     { "run", scriptPath.string() },
@@ -165,7 +165,7 @@ namespace Zeri::Engines::Defaults {
                         terminal.Write(line);
                     },
                     [&terminal](const std::string& line) {
-                        terminal.WriteError(line);
+                        terminal.WriteError("[ZERI][RUNTIME-022] JS/TS one-shot stderr: " + line + " Hint: inspect script output and runtime dependencies.");
                     }
                 );
 

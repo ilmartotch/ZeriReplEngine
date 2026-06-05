@@ -4,7 +4,11 @@ build-release/
 dist/
 .vs
 vcpkg_installed
-docs
+docs/*
+!docs/manual-test-checklist.md
+!docs/error-codes.md
+!docs/user-guide/
+!docs/user-guide/*.md
 vcpkg/buildtrees/
 vcpkg/packages/
 vcpkg/downloads/

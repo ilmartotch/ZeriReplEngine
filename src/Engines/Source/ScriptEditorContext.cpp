@@ -67,7 +67,7 @@ namespace Zeri::Engines {
 
         if (input == "/run") {
             if (m_executor == nullptr) {
-                terminal.WriteError("Executor unavailable for ScriptEditorContext.");
+                terminal.WriteError("[ZERI][CONTEXT-008] Script editor executor is unavailable. Hint: re-enter the language context and retry /run.");
                 return std::unexpected(ExecutionError{ "EDITOR_EXECUTOR_MISSING", "Executor unavailable." });
             }
 
@@ -82,7 +82,7 @@ namespace Zeri::Engines {
 
         if (input == "/save") {
             if (!m_scriptName.has_value() || m_scriptName->empty()) {
-                terminal.WriteError("/save requires a scriptName associated with the context.");
+                terminal.WriteError("[ZERI][CONTEXT-009] /save requires a script name associated with the editor context. Hint: open the editor with /new <name> or /edit <name>.");
                 return std::unexpected(ExecutionError{
                     "EDITOR_SAVE_NAME_MISSING",
                     "Unable to save: missing script name.",

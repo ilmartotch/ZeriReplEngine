@@ -250,6 +250,21 @@ namespace {
         return nullptr;
     }
 
+    [[nodiscard]] std::string EnsureStandardErrorMessage(
+        std::string text,
+        std::string_view fallbackCode,
+        std::string_view fallbackHint
+    ) {
+        if (text.rfind("[ZERI][", 0) != 0) {
+            text = std::string("[ZERI][") + std::string(fallbackCode) + "] " + text;
+        }
+        if (text.find("Hint:") == std::string::npos) {
+            text += " Hint: ";
+            text += fallbackHint;
+        }
+        return text;
+    }
+
     void HandleOutcome(const Zeri::Engines::ExecutionOutcome& outcome, Zeri::Ui::ITerminal& terminal) {
         if (outcome.has_value()) {
             const auto& message = outcome.value();
@@ -266,7 +281,11 @@ namespace {
                     terminal.WriteSuccess(text);
                     break;
                 case Zeri::Engines::ExecutionMessageKind::Warning:
-                    terminal.WriteError(text);
+                    terminal.WriteError(EnsureStandardErrorMessage(
+                        text,
+                        "CONTEXT-006",
+                        "run /help in the current context and retry the command."
+                    ));
                     break;
                 case Zeri::Engines::ExecutionMessageKind::Output:
                 default:
@@ -277,7 +296,11 @@ namespace {
         } else {
             const auto& err = outcome.error();
             std::string formatted = err.Format();
-            terminal.WriteError(formatted);
+            terminal.WriteError(EnsureStandardErrorMessage(
+                std::move(formatted),
+                "CONTEXT-007",
+                "review the error code and retry with the documented command syntax."
+            ));
         }
     }
 
@@ -330,7 +353,7 @@ namespace {
                 return true;
             }
 
-            terminal.WriteError("Internal error: no active context available.");
+            terminal.WriteError("[ZERI][CONTEXT-001] No active context is available. Hint: run /reset to restore the global context.");
             return false;
         }
 
@@ -338,15 +361,15 @@ namespace {
         const std::string currentName = current ? ToLower(current->GetName()) : std::string{ "global" };
         if (!CanReachContext(currentName, normalized)) {
             terminal.WriteError(
-                "Context switch not allowed from $" + currentName + " to $" + normalized +
-                ". Use /context to list reachable contexts."
+                "[ZERI][CONTEXT-002] Context switch is not allowed from $" + currentName + " to $" + normalized +
+                ". Hint: run /context to list reachable targets."
             );
             return false;
         }
 
         auto nextContext = BuildContext(normalized);
         if (!nextContext) {
-            terminal.WriteError("Unknown context: " + ctxName);
+            terminal.WriteError("[ZERI][CONTEXT-003] Unknown context: " + ctxName + ". Hint: run /context and use one listed target.");
             return false;
         }
 
@@ -460,7 +483,7 @@ namespace {
             if (result.has_value()) {
                 terminal.WriteSuccess("Session saved successfully.");
             } else {
-                terminal.WriteError("Failed to save session: " + result.error());
+                terminal.WriteError("[ZERI][SESSION-001] Failed to save session: " + result.error() + ". Hint: verify write permission for the sessions directory shown by /status.");
             }
             return true;
         }
@@ -512,7 +535,7 @@ namespace {
                 });
                 const auto snapshotResult = Zeri::Core::CreateBugSnapshot(runtimeState, diagnostics, projectRoot, metadata);
                 if (!snapshotResult.has_value()) {
-                    terminal.WriteError("Failed to generate bug snapshot: " + snapshotResult.error());
+                    terminal.WriteError("[ZERI][SESSION-002] Failed to generate bug snapshot: " + snapshotResult.error() + ". Hint: verify file permissions in the project directory and retry /bug snapshot.");
                     return true;
                 }
 
@@ -541,7 +564,7 @@ namespace {
         }
 
         if (shellCmd.empty()) {
-            terminal.WriteError("Empty system command.");
+            terminal.WriteError("[ZERI][PARSE-001] Empty system command. Hint: use !<command>, for example !echo hello.");
             return false;
         }
 
@@ -553,7 +576,7 @@ namespace {
         FILE* pipe = Zeri::Platform::POpen(fullCmd.c_str(), "r");
 
         if (!pipe) {
-            terminal.WriteError("Failed to execute system command: " + shellCmd);
+            terminal.WriteError("[ZERI][RUNTIME-001] Failed to execute system command: " + shellCmd + ". Hint: confirm the command exists in PATH and retry.");
             return false;
         }
 
@@ -571,7 +594,7 @@ namespace {
         }
 
         if (exitCode != 0) {
-            terminal.WriteError("System command exited with code: " + std::to_string(exitCode));
+            terminal.WriteError("[ZERI][RUNTIME-002] System command exited with code: " + std::to_string(exitCode) + ". Hint: check command output above and fix the failing command.");
             return false;
         }
 
@@ -592,7 +615,7 @@ namespace {
             const auto& err = dispatchResult.error();
             std::string caret(err.position, ' ');
             caret += '^';
-            terminal.WriteError(err.message + "\n  " + stageInput + "\n  " + caret);
+            terminal.WriteError("[ZERI][PARSE-002] " + err.message + ". Hint: fix command syntax and retry.\n  " + stageInput + "\n  " + caret);
             return false;
         }
 
@@ -618,14 +641,14 @@ namespace {
         }();
 
         if (hasPipeOperator) {
-            terminal.WriteError("Unknown command. Use /help to see available commands.");
+            terminal.WriteError("[ZERI][PARSE-003] Unknown command. Hint: run /help to see available commands.");
             return false;
         }
 
         switch (cmd.type) {
         case Zeri::Engines::InputType::ContextSwitch:
             if (!cmd.args.empty() || !cmd.flags.empty()) {
-                terminal.WriteError("Unknown command. Use /help to see available commands.");
+                terminal.WriteError("[ZERI][PARSE-004] Invalid context switch syntax. Hint: use $<context> without flags or extra arguments.");
                 return false;
             }
             return SwitchContext(cmd.commandName, runtimeState, terminal, sink);
@@ -637,7 +660,7 @@ namespace {
         case Zeri::Engines::InputType::Command: {
             auto* currentCtx = runtimeState.GetCurrentContext();
             if (!currentCtx) {
-                terminal.WriteError("No active context available.");
+                terminal.WriteError("[ZERI][CONTEXT-004] No active context is available. Hint: run /reset to restore the global context.");
                 return false;
             }
 
@@ -656,7 +679,7 @@ namespace {
         }
 
         default:
-            terminal.WriteError("Unrecognized input type.");
+            terminal.WriteError("[ZERI][PARSE-005] Unrecognized input type. Hint: run /help to review supported input forms.");
             return false;
         }
     }
@@ -700,7 +723,7 @@ namespace {
             const std::string line = issue.code + " - " + issue.message + " Hint: " + issue.hint;
             LogStartupLine(line);
             if (terminal != nullptr) {
-                terminal->WriteError("[startup] " + line);
+                terminal->WriteError("[ZERI][RUNTIME-003] Startup diagnostic: " + line + " Hint: fix the reported runtime or startup dependency.");
             }
         }
     }
@@ -776,9 +799,8 @@ int RunMain(int argc, char* argv[]) {
 
     if (runtimeState.WasSessionCorrupted()) {
         terminalOwner->WriteError(
-            "Warning: the previous session file was corrupted or "
-            "could not be loaded. A backup recovery was attempted. "
-            "Use /save to write a fresh session."
+            "[ZERI][SESSION-003] Previous session file was corrupted or could not be loaded. "
+            "Hint: run /save to write a fresh session snapshot."
         );
     }
 
@@ -793,8 +815,8 @@ int RunMain(int argc, char* argv[]) {
         const auto& error = Zeri::Core::HelpCatalog::Instance().LastError();
         const std::string details = error.empty() ? "No additional diagnostics available." : error;
         terminal.WriteError(
-            "Help catalog is unavailable. /help output may be incomplete. "
-            "Ensure help/help_catalog.json is packaged next to the executable. "
+            "[ZERI][CONTEXT-005] Help catalog is unavailable, /help output may be incomplete. "
+            "Hint: package help/help_catalog.json next to the executable. "
             "Details: " + details
         );
     }
@@ -855,7 +877,7 @@ int RunMain(int argc, char* argv[]) {
     auto sessionPath = Zeri::Core::ResolveSessionPath();
     auto saveResult = runtimeState.SaveSession(sessionPath);
     if (!saveResult.has_value()) {
-        terminal.WriteError("Failed to save session on shutdown: " + saveResult.error());
+        terminal.WriteError("[ZERI][SESSION-004] Failed to save session on shutdown: " + saveResult.error() + ". Hint: run /status and ensure the sessions path is writable.");
     }
     return 0;
 }

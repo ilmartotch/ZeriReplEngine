@@ -228,7 +228,7 @@ namespace Zeri::Core {
 
     void SystemGuard::PrintGuide(const SystemHealth& health, Zeri::Ui::ITerminal& terminal) {
         if (!health.IsReady()) {
-            terminal.WriteError("SYSTEM CHECK FAILED");
+            terminal.WriteError("[ZERI][RUNTIME-004] System prerequisite check failed. Hint: install the missing tools listed below and retry.");
             for (const auto& tool : health.missingTools) {
                 if (tool.starts_with("[WARN]")) {
                     continue;

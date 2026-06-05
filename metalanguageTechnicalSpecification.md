@@ -2,73 +2,70 @@
 
 ## Overview
 
-This document defines the meta-language used by the project REPL. The REPL is designed as a logical execution engine rather than a general-purpose programming language. Its purpose is to orchestrate commands, expressions, and external scripts through a minimal, shell-like, context-driven DSL.
+Zeri uses a context-driven REPL meta-language. Each input line is parsed and dispatched by prefix and active context.
 
-The language prioritizes clarity over cleverness, experimentation over verbosity, and strict logical flow over syntactic freedom. The REPL is intended to be IDE- and UI-integratable; interactivity is a front-end concern, not a language constraint.
+## Input categories
 
-## Language Paradigm
+1. **Slash command**: `/...`
+2. **Context switch**: `$...`
+3. **System command**: `!...`
+4. **Expression**: any non-prefixed line
+5. **Comment**: `#` starts an inline comment outside quoted text
 
-The meta-language follows an imperative paradigm combined with a contextual DSL model. Commands do not merely execute actions; they activate a context. Each context defines which syntax is allowed, which expressions are valid, and which outputs are expected. The language is composed of isolated micro-languages bound to specific command contexts.
+## Prefix semantics
 
-## Command Model and Context Activation
+- `/` invokes a command in the current context.
+- `$` switches to a reachable context.
+- `!` executes a system shell command.
+- `#` strips the rest of the line unless inside quotes.
 
-Commands are explicit and always start with a reserved symbol. A command occupies a single line, may accept flags, and creates or modifies an execution context. Once a context is active, subsequent input lines are interpreted according to that context’s rules until the context is exited or replaced. Only one command is allowed per line.
+## Tokenization and parsing rules
 
-## Flags and Command Modifiers
+- Leading/trailing whitespace is trimmed.
+- Commands and context names are case-insensitive.
+- Quoted strings are supported.
+- `--flag` syntax is supported; flags default to `true` when no value is provided.
+- Parse failures are explicit (for example unclosed quoted string).
 
-Flags are allowed only on the command invocation line. They configure the behavior of the command or the rules of the context it creates. Flags are never allowed inside interactive input after a context has been entered. This separation simplifies parsing and guarantees predictable execution.
+## Context model
 
-## Syntax Flexibility and Case Sensitivity
+- `$global`
+- `$code`
+- `$customCommand`
+- `$math`
+- `$sandbox`
+- `$setup`
+- Script contexts reachable from `$code`: `$lua`, `$python`, `$js`, `$ts`, `$ruby`
 
-The language is permissive in syntax but strict in semantics. Commands and keywords are case-insensitive. Identifiers such as variables, functions, and modules preserve case but are resolved case-insensitively by default.
+## Command execution model
 
-## Expressions and Evaluation
+- Context-specific command sets are enforced.
+- Global commands are always available where configured (`/help`, `/context`, `/back`, `/save`, `/load`, `/status`, `/reset`, `/exit`, `/set`, `/get`, `/bug`, `/runtime-status`, `/copy`, `/clear`, `restart`).
+- Script contexts support `/new`, `/edit`, `/show`, `/run`, `/list`, `/delete`.
+- `$math` supports free-form expressions and `/eval`, `/fn`, `/vars`, `/fns`, `/promote`, `/calc`, `/logic`.
+- `$sandbox` supports `/open`, `/set-ide`, `/watch`, `/list`, `/build`, `/run`.
+- `$customCommand` supports `/define`, `/list`, `/run`, `/show`, `/delete`.
 
-Expressions may be mixed with commands depending on the active context. Evaluation is implicit: any valid expression is automatically evaluated. Every valid input produces an output, and outputs are never silently discarded.
+## Variables and scope
 
-## Function Invocation and Nesting
+- Variables are dynamically typed.
+- Scopes in runtime: local, session, global, persisted.
+- `/set` uses explicit type flags (`--number`, `--string`, `--bool`).
+- `/promote` in `$math` promotes local variables to `session`, `global`, or `persisted`.
 
-The language supports function nesting only. Chaining, piping, and operator overloading are intentionally excluded to preserve readability and debuggability. Function arguments follow a mixed model: positional arguments first, followed by named arguments. Named arguments cannot precede positional arguments.
+## Error model
 
-## Variables and Scope
+- Parser and command errors are explicit.
+- Execution errors include code, message, optional context, and optional hints.
+- Output stream differentiates output/info/success/error channels.
 
-The language uses dynamic typing. Variables may exist in local, session, or global scope. Promotion from local to global scope is allowed but must be explicit or accompanied by a warning. Variable names cannot shadow function names; such conflicts result in compilation failure.
 
-## Output Model
+## Planned
 
-Every execution produces an output. Outputs may be textual, structured objects, or typed errors with descriptive messages. Empty responses are never allowed.
+The following are intentionally not part of the current implementation and are reserved for future revisions:
 
-## Script Execution Model
-
-Scripts are executed as isolated modules following a black-box model. The REPL provides input, the script executes in isolation, and the script returns results or errors. The REPL does not introspect or manipulate the internal state of the script.
-
-## Script Metadata
-
-Scripts may optionally define a metadata header specifying execution context, constraints, or execution hints. Headers are optional and never required for execution.
-
-## Extensibility and Plugins
-
-User extensions may modify the resolver and the executor only. The parser and core syntax are immutable, ensuring structural stability, backward compatibility, and predictable evolution. Extensions can be implemented via scripts, compiled modules, or registered runtime hooks.
-
-## Error Handling
-
-Errors are explicit, typed, and always reported. Each error includes a clear message, contextual information, and optional correction hints. Silent failures are forbidden.
-
-## IDE and UI Integration
-
-The REPL is designed as a logic engine. All language decisions prioritize external IDE integration, UI-driven interaction, and programmatic usage. Autocomplete, suggestions, and validations are implementation concerns and do not affect core language semantics.
-
-## Symbol Semantics
-
-The following symbols have reserved semantic meaning. The list is intentionally minimal and extensible.
-
-- / indicates command invocation and context activation
-- -- indicates command flags and modifiers
-- () indicates function invocation and expression grouping
-- = indicates variable binding
-- # indicates inline comments
-
-## Design Constraints Summary
-
-The language explicitly avoids implicit context switching, hidden execution, parser-level extensibility, and syntax overloading. Every feature must preserve linear readability, deterministic parsing, and explicit user intent.
-
+- Script metadata headers interpreted by the REPL
+- Plugin hooks that modify parser behavior
+- Named argument syntax in function calls at parser level
+- Operator overloading
+- Command chaining or any pipeline syntax

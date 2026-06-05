@@ -148,7 +148,7 @@ func (c *Client) readLoop() {
 		data, ch, err := c.receive()
 		if err != nil {
 			if err != io.EOF {
-				fmt.Fprintf(os.Stderr, "[YUUMI_ERR][%d] Connection lost: %v\n", ErrReadTimeout, err)
+				fmt.Fprintf(os.Stderr, "[ZERI][IPC-011] IPC connection lost: %v. Hint: restart zeri and verify engine process health.\n", err)
 			}
 			exitErr = err
 			break

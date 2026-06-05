@@ -27,7 +27,7 @@ func main() {
 	defer cancel()
 
 	if err := ensureZeriDirectories(); err != nil {
-		fmt.Fprintf(os.Stderr, "Storage initialization error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "[ZERI][SESSION-010] Storage initialization failed: %v. Hint: verify write permissions for user data directories.\n", err)
 		os.Exit(1)
 	}
 
@@ -47,7 +47,7 @@ func main() {
 	} else {
 		execPath, err := os.Executable()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			fmt.Fprintf(os.Stderr, "[ZERI][SESSION-011] Unable to resolve executable path: %v. Hint: reinstall zeri or launch it from a valid installation directory.\n", err)
 			os.Exit(1)
 		}
 		execDir := filepath.Dir(execPath)
@@ -66,7 +66,7 @@ func main() {
 
 	finalModel, err := p.Run()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "TUI error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "[ZERI][IPC-010] TUI runtime error: %v. Hint: restart zeri and check engine startup diagnostics with /runtime-status.\n", err)
 		os.Exit(1)
 	}
 
