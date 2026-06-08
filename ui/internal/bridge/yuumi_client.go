@@ -9,11 +9,11 @@ import (
 )
 
 type RealYuumiClient struct {
-	client       *yuumi.Client
-	program      *tea.Program
+	client *yuumi.Client
+	program *tea.Program
 	messageMutex sync.Mutex
-	handlerCtx   context.Context
-	handlerStop  context.CancelFunc
+	handlerCtx context.Context
+	handlerStop context.CancelFunc
 }
 
 func NewRealYuumiClient(client *yuumi.Client) *RealYuumiClient {
@@ -61,7 +61,7 @@ func (r *RealYuumiClient) SendInputResponseCmd(value string) tea.Cmd {
 			return nil
 		}
 		payload := map[string]interface{}{
-			"type":    "input_response",
+			"type": "input_response",
 			"payload": value,
 		}
 		client.Send(payload, yuumi.ChannelCommand)
@@ -76,8 +76,19 @@ func (r *RealYuumiClient) SendDataCmd(s string) tea.Cmd {
 			return nil
 		}
 		payload := map[string]interface{}{
-			"type":    "command",
+			"type": "command",
 			"payload": s,
+		}
+		client.Send(payload, yuumi.ChannelCommand)
+		return nil
+	}
+}
+
+func (r *RealYuumiClient) SendCommandPayloadCmd(payload map[string]interface{}) tea.Cmd {
+	client := r.client
+	return func() tea.Msg {
+		if client == nil {
+			return nil
 		}
 		client.Send(payload, yuumi.ChannelCommand)
 		return nil
@@ -180,6 +191,47 @@ func (r *RealYuumiClient) RegisterMessageHandler() {
 				active = false
 			}
 			program.Send(ContextChangedMsg{ContextName: name, Active: active})
+		case "script_list_response":
+			records := make([]ScriptRecord, 0)
+			if scriptsRaw, ok := data["scripts"].([]interface{}); ok {
+				for _, itemRaw := range scriptsRaw {
+					item, ok := itemRaw.(map[string]interface{})
+					if !ok {
+						continue
+					}
+					size := 0
+					switch value := item["size"].(type) {
+					case float64:
+						size = int(value)
+					case int:
+						size = value
+					}
+					name, _ := item["name"].(string)
+					lang, _ := item["lang"].(string)
+					modified, _ := item["modified"].(string)
+					content, _ := item["content"].(string)
+					records = append(records, ScriptRecord{
+						Name: name,
+						Lang: lang,
+						Modified: modified,
+						Size: size,
+						Content: content,
+					})
+				}
+			}
+			program.Send(ScriptListResponseMsg{Scripts: records})
+		case "script_action_response":
+			action, _ := data["action"].(string)
+			ok, okType := data["ok"].(bool)
+			if !okType {
+				ok = false
+			}
+			errText, _ := data["error"].(string)
+			program.Send(ScriptActionResponseMsg{
+				Action: action,
+				Ok: ok,
+				Error: errText,
+			})
 		case "":
 			return
 		default:

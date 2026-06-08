@@ -6,14 +6,14 @@ type DataMsg struct{ Content string }
 type ErrorMsg struct{ Content string }
 type StatusMsg struct {
 	Connected bool
-	Lang      string
-	MemMB     uint64
+	Lang string
+	MemMB uint64
 }
 type ConnectedMsg struct{}
 type DisconnectedMsg struct{ Reason string }
 type InputRequestMsg struct{ Prompt string }
 type SelectionRequestMsg struct {
-	Title   string
+	Title string
 	Options []string
 }
 type ContextChangedMsg struct {
@@ -22,9 +22,28 @@ type ContextChangedMsg struct {
 }
 type StreamBatchEndMsg struct{ Reason string }
 
+type ScriptRecord struct {
+	Name string
+	Lang string
+	Modified string
+	Size int
+	Content string
+}
+
+type ScriptListResponseMsg struct {
+	Scripts []ScriptRecord
+}
+
+type ScriptActionResponseMsg struct {
+	Action string
+	Ok bool
+	Error string
+}
+
 type YuumiClient interface {
 	ConnectCmd() tea.Cmd
 	SendDataCmd(s string) tea.Cmd
+	SendCommandPayloadCmd(payload map[string]interface{}) tea.Cmd
 	SendInputResponseCmd(value string) tea.Cmd
 	SendControlCmd(cmd string) tea.Cmd
 	SendShutdownCmd() tea.Cmd

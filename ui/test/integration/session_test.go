@@ -1,9 +1,11 @@
 package integration
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"yuumi/test/integration/harness"
 )
@@ -97,5 +99,44 @@ func TestSessionVariableRoundTripAcrossRestart(t *testing.T) {
 	valueResponse := harness.Send(client2, "x+0")
 	if !responseContains(valueResponse.Output, "42") {
 		t.Fatalf("expected persisted variable value after restart, got reason=%q %s", valueResponse.Reason, responseDump(valueResponse.Output, valueResponse.Errors))
+	}
+}
+
+func TestSessionCrashDuringSaveDoesNotCorruptStateFile(t *testing.T) {
+	env, base := isolatedUserEnv(t)
+	env["ZERI_TEST_SAVE_PAUSE_MS"] = "500"
+
+	ep := harness.SpawnEngineWithEnv(t, env)
+	client := harness.Connect(ep)
+
+	switchResponse := harness.Send(client, "$math")
+	if switchResponse.Reason != "context_transition" {
+		t.Fatalf("expected context transition to math, got %q", switchResponse.Reason)
+	}
+	_ = harness.Send(client, "x = 7")
+	_ = harness.Send(client, "/promote x persisted")
+
+	if err := harness.SendFireAndForget(client, "/save"); err != nil {
+		t.Fatalf("failed to send /save: %v", err)
+	}
+	time.Sleep(100 * time.Millisecond)
+	harness.KillProcess(t, ep)
+	harness.Cleanup(t, ep)
+
+	statePath := expectedSessionStatePath(base)
+	data, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatalf("expected state file after crash save test: %v", err)
+	}
+	if !json.Valid(data) {
+		t.Fatalf("session state file is not valid JSON after crash: %s", string(data))
+	}
+
+	ep2 := harness.SpawnEngineWithEnv(t, env)
+	defer harness.Cleanup(t, ep2)
+	client2 := harness.Connect(ep2)
+	helpResponse := harness.Send(client2, "/help")
+	if len(helpResponse.Output) == 0 {
+		t.Fatalf("engine did not respond after crash-recovery save: %s", responseDump(helpResponse.Output, helpResponse.Errors))
 	}
 }

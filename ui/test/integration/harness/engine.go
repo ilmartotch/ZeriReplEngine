@@ -230,3 +230,11 @@ func randomToken(t *testing.T, bytesCount int) string {
 	}
 	return hex.EncodeToString(raw)
 }
+
+func KillProcess(t *testing.T, ep *EngineProcess) {
+	t.Helper()
+	if ep == nil || ep.cmd == nil || ep.cmd.Process == nil {
+		return
+	}
+	_ = ep.cmd.Process.Kill()
+}

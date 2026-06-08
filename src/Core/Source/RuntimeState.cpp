@@ -3,13 +3,103 @@
 #include "../../Engines/Include/Interface/IContext.h"
 #include "../../Modules/Include/ModuleManager.h"
 #include <nlohmann/json.hpp>
+#include <chrono>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <stdexcept>
+#include <thread>
+#if defined(_WIN32)
+#include <windows.h>
+#else
+#include <cerrno>
+#include <cstring>
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 
 namespace {
 
     using Zeri::Core::RuntimeState;
     using OverwritePolicy = RuntimeState::OverwritePolicy;
+
+    [[nodiscard]] bool PersistDurableFile(const std::filesystem::path& path, const std::string& data, std::string& error) {
+#if defined(_WIN32)
+        const std::wstring nativePath = path.wstring();
+        HANDLE handle = CreateFileW(
+            nativePath.c_str(),
+            GENERIC_WRITE,
+            0,
+            nullptr,
+            CREATE_ALWAYS,
+            FILE_ATTRIBUTE_NORMAL,
+            nullptr
+        );
+        if (handle == INVALID_HANDLE_VALUE) {
+            error = "Failed to open file for durable write.";
+            return false;
+        }
+
+        DWORD bytesWritten = 0;
+        const DWORD bytesToWrite = static_cast<DWORD>(data.size());
+        BOOL writeOk = TRUE;
+        if (bytesToWrite > 0U) {
+            writeOk = WriteFile(handle, data.data(), bytesToWrite, &bytesWritten, nullptr);
+        }
+        if (!writeOk || bytesWritten != bytesToWrite) {
+            CloseHandle(handle);
+            error = "Failed to write serialized session to temp file.";
+            return false;
+        }
+
+        if (!FlushFileBuffers(handle)) {
+            CloseHandle(handle);
+            error = "Failed to flush temp session file to disk.";
+            return false;
+        }
+
+        CloseHandle(handle);
+        return true;
+#else
+        const int fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (fd < 0) {
+            error = std::string("Failed to open file for durable write: ") + std::strerror(errno);
+            return false;
+        }
+
+        std::size_t totalWritten = 0;
+        while (totalWritten < data.size()) {
+            const ssize_t written = write(fd, data.data() + totalWritten, data.size() - totalWritten);
+            if (written < 0) {
+                close(fd);
+                error = std::string("Failed to write serialized session to temp file: ") + std::strerror(errno);
+                return false;
+            }
+            totalWritten += static_cast<std::size_t>(written);
+        }
+
+        if (fsync(fd) != 0) {
+            close(fd);
+            error = std::string("Failed to flush temp session file to disk: ") + std::strerror(errno);
+            return false;
+        }
+
+        close(fd);
+        return true;
+#endif
+    }
+
+    inline void ApplySavePauseHook() {
+        const char* pauseRaw = std::getenv("ZERI_TEST_SAVE_PAUSE_MS");
+        if (pauseRaw == nullptr || *pauseRaw == '\0') {
+            return;
+        }
+        const int pauseMs = std::atoi(pauseRaw);
+        if (pauseMs <= 0) {
+            return;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(pauseMs));
+    }
 
     [[nodiscard]] bool MergeAnyValue(std::any& current, const std::any& incoming) {
         if (current.type() == typeid(std::vector<std::any>) &&
@@ -598,16 +688,12 @@ namespace Zeri::Core {
             const std::filesystem::path backupPath = path.string() + ".bak";
             const std::string serialized = root.dump(2);
 
-            {
-                std::ofstream tempFile(tempPath, std::ios::trunc);
-                if (!tempFile.is_open()) {
-                    throw std::runtime_error("Failed to open temp state file for writing: " + tempPath.string());
-                }
-                tempFile << serialized;
-                if (!tempFile.good()) {
-                    throw std::runtime_error("Failed to write serialized session to temp file: " + tempPath.string());
-                }
+            std::string durableError;
+            if (!PersistDurableFile(tempPath, serialized, durableError)) {
+                throw std::runtime_error(durableError + " " + tempPath.string());
             }
+
+            ApplySavePauseHook();
 
             if (std::filesystem::exists(path)) {
                 if (std::filesystem::exists(backupPath)) {

@@ -108,6 +108,9 @@ func defaultHelpCatalog() helpCatalogData {
 				{Command: "/show", Synopsis: "Show the custom command body"},
 				{Command: "/delete", Synopsis: "Delete a custom command"},
 			},
+			"code": {
+				{Command: "/search", Synopsis: "Search scripts across all supported languages"},
+			},
 			"script": {
 				{Command: "/new", Synopsis: "Create a script"},
 				{Command: "/edit", Synopsis: "Edit an existing script"},
@@ -115,6 +118,10 @@ func defaultHelpCatalog() helpCatalogData {
 				{Command: "/run", Synopsis: "Run a script or last buffer"},
 				{Command: "/list", Synopsis: "List saved scripts"},
 				{Command: "/delete", Synopsis: "Delete a saved script"},
+				{Command: "/history", Synopsis: "Show script version history"},
+				{Command: "/diff", Synopsis: "Show unified diff between two versions"},
+				{Command: "/rollback", Synopsis: "Restore an old version as new latest"},
+				{Command: "/search", Synopsis: "Search scripts by name, language, or content"},
 			},
 		},
 	}
@@ -276,42 +283,42 @@ func ContextCommandsForContext(activeContext string) []CompletionEntry {
 }
 
 var globalSlashCommands = map[string]struct{}{
-	"/help":           {},
-	"/context":        {},
-	"/back":           {},
-	"/status":         {},
-	"/reset":          {},
-	"/bug":            {},
-	"/clear":          {},
-	"/exit":           {},
-	"/save":           {},
-	"/load":           {},
-	"/copy":           {},
+	"/help": {},
+	"/context": {},
+	"/back": {},
+	"/status": {},
+	"/reset": {},
+	"/bug": {},
+	"/clear": {},
+	"/exit": {},
+	"/save": {},
+	"/load": {},
+	"/copy": {},
 	"/runtime-status": {},
-	"/set":            {},
-	"/get":            {},
+	"/set": {},
+	"/get": {},
 }
 
 var scopedSlashCommands = map[string][]string{
-	"/new":     {"script"},
-	"/edit":    {"script"},
-	"/show":    {"script", "customcommand"},
-	"/run":     {"script", "sandbox", "customcommand"},
-	"/list":    {"script", "sandbox", "customcommand"},
-	"/delete":  {"script", "customcommand"},
-	"/define":  {"customcommand"},
-	"/open":    {"sandbox"},
+	"/new": {"script"},
+	"/edit": {"script"},
+	"/show": {"script", "customcommand"},
+	"/run": {"script", "sandbox", "customcommand"},
+	"/list": {"script", "sandbox", "customcommand"},
+	"/delete": {"script", "customcommand"},
+	"/define": {"customcommand"},
+	"/open": {"sandbox"},
 	"/set-ide": {"sandbox"},
-	"/watch":   {"sandbox"},
-	"/build":   {"sandbox"},
-	"/eval":    {"math"},
-	"/fn":      {"math"},
-	"/vars":    {"math"},
-	"/fns":     {"math"},
+	"/watch": {"sandbox"},
+	"/build": {"sandbox"},
+	"/eval": {"math"},
+	"/fn": {"math"},
+	"/vars": {"math"},
+	"/fns": {"math"},
 	"/promote": {"math"},
-	"/calc":    {"math"},
-	"/logic":   {"math"},
-	"/start":   {"setup"},
+	"/calc": {"math"},
+	"/logic": {"math"},
+	"/start": {"setup"},
 }
 
 func contextGroupFromActiveContext(activeContext string) string {
@@ -343,8 +350,8 @@ func ValidateSlashCommandForContext(activeContext string, input string) CommandS
 	}
 	if _, ok := globalSlashCommands[base]; ok {
 		return CommandScopeValidation{
-			Allowed:      true,
-			Command:      base,
+			Allowed: true,
+			Command: base,
 			CurrentGroup: contextGroupFromActiveContext(activeContext),
 		}
 	}
@@ -352,8 +359,8 @@ func ValidateSlashCommandForContext(activeContext string, input string) CommandS
 	allowedGroups, constrained := scopedSlashCommands[base]
 	if !constrained {
 		return CommandScopeValidation{
-			Allowed:      true,
-			Command:      base,
+			Allowed: true,
+			Command: base,
 			CurrentGroup: contextGroupFromActiveContext(activeContext),
 		}
 	}
@@ -362,8 +369,8 @@ func ValidateSlashCommandForContext(activeContext string, input string) CommandS
 	for _, group := range allowedGroups {
 		if group == currentGroup {
 			return CommandScopeValidation{
-				Allowed:       true,
-				Command:       base,
+				Allowed: true,
+				Command: base,
 				CurrentGroup:  currentGroup,
 				AllowedGroups: allowedGroups,
 			}
@@ -371,8 +378,8 @@ func ValidateSlashCommandForContext(activeContext string, input string) CommandS
 	}
 
 	return CommandScopeValidation{
-		Allowed:       false,
-		Command:       base,
+		Allowed: false,
+		Command: base,
 		CurrentGroup:  currentGroup,
 		AllowedGroups: allowedGroups,
 	}

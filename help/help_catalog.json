@@ -37,7 +37,9 @@
       { "command": "/set", "synopsis": "Store a typed variable in the current scope (--number|--string|--bool)" },
       { "command": "/get", "synopsis": "Read a variable from the current scope" }
     ],
-    "code": [],
+    "code": [
+      { "command": "/search", "synopsis": "Search scripts across all supported languages" }
+    ],
     "math": [
       { "command": "/eval", "synopsis": "Evaluate an expression" },
       { "command": "/fn", "synopsis": "Define a function" },
@@ -71,7 +73,11 @@
       { "command": "/show", "synopsis": "Show a saved script" },
       { "command": "/run", "synopsis": "Run a script or last buffer" },
       { "command": "/list", "synopsis": "List saved scripts" },
-      { "command": "/delete", "synopsis": "Delete a saved script" }
+      { "command": "/delete", "synopsis": "Delete a saved script" },
+      { "command": "/history", "synopsis": "Show script version history" },
+      { "command": "/diff", "synopsis": "Show unified diff between two versions" },
+      { "command": "/rollback", "synopsis": "Restore an old version as new latest" },
+      { "command": "/search", "synopsis": "Search scripts by name, language, or content" }
     ]
   }
 }

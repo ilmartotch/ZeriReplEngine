@@ -141,6 +141,22 @@ func Send(client *ZeriClient, command string) Response {
 	}
 }
 
+func SendFireAndForget(client *ZeriClient, command string) error {
+	deadline := time.Now().Add(client.sendTimeout)
+	if err := client.conn.SetDeadline(deadline); err != nil {
+		return err
+	}
+	defer func() {
+		_ = client.conn.SetDeadline(time.Time{})
+	}()
+
+	commandFrame := map[string]interface{}{
+		"type":    "command",
+		"payload": command,
+	}
+	return writeFrame(client.conn, commandFrame, channelCommand)
+}
+
 func Cleanup(t *testing.T, ep *EngineProcess) {
 	t.Helper()
 

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 	"yuumi/internal/bridge"
+	"yuumi/internal/scripthub"
 	"yuumi/internal/system"
 	"yuumi/internal/ui"
 	"yuumi/pkg/yuumi"
@@ -31,29 +32,30 @@ type AppMode int
 const (
 	ModeREPL AppMode = iota
 	ModeScriptEditor
+	ModeScriptHub
 )
 
 const (
 	editorTriggerCommand  = ":edit"
-	editorAliasCommand    = ":script"
-	copyCommandPrefix     = "/copy"
-	copyCommandModeLast   = "last"
-	copyCommandModeAll    = "all"
+	editorAliasCommand = ":script"
+	copyCommandPrefix = "/copy"
+	copyCommandModeLast = "last"
+	copyCommandModeAll = "all"
 	defaultScriptLanguage = "js"
-	saveCommandPrefix     = "/save"
-	loadCommandPrefix     = "/load"
-	newCommandPrefix      = "/new"
-	editCommandPrefix     = "/edit"
-	showCommandPrefix     = "/show"
-	runCommandPrefix      = "/run"
-	deleteCommandPrefix   = "/delete"
-	runtimeStatusCommand  = "/runtime-status"
-	restartCoreCommand    = "/restart core"
-	restartCommand        = "restart"
+	saveCommandPrefix = "/save"
+	loadCommandPrefix = "/load"
+	newCommandPrefix = "/new"
+	editCommandPrefix = "/edit"
+	showCommandPrefix = "/show"
+	runCommandPrefix = "/run"
+	deleteCommandPrefix = "/delete"
+	runtimeStatusCommand = "/runtime-status"
+	restartCoreCommand = "/restart core"
+	restartCommand = "restart"
 )
 
 const (
-	engineConnectTimeout       = 5 * time.Second
+	engineConnectTimeout = 5 * time.Second
 	engineConnectRetryInterval = 200 * time.Millisecond
 )
 
@@ -128,15 +130,15 @@ const (
 )
 
 type PendingBridgeRequest struct {
-	Kind       PendingBridgeRequestKind
+	Kind PendingBridgeRequestKind
 	ScriptName string
-	Language   string
+	Language string
 }
 
 type CodePreviewState struct {
-	Visible    bool
+	Visible bool
 	ScriptName string
-	Content    string
+	Content string
 }
 
 type EngineBatchChunk struct {
@@ -151,73 +153,74 @@ func tickStatusCmd() tea.Cmd {
 }
 
 type AppModel struct {
-	width  int
+	width int
 	height int
-	mode   AppMode
+	mode AppMode
 
-	viewport     viewport.Model
-	input        textarea.Model
+	viewport viewport.Model
+	input textarea.Model
 	autocomplete ui.AutocompleteModel
 
-	messages                    []ui.ChatMessage
-	scriptEditor                ui.ScriptEditor
-	inputHistory                []string
-	historyIndex                int
-	draftBuffer                 string
-	activeContext               string
-	activeContextPath           string
-	activeLanguage              string
-	sandboxProcessRunning       bool
-	pendingContextPath          string
-	pendingInputPrompt          string
-	selectionMenuVisible        bool
-	selectionMenuTitle          string
-	selectionMenuOptions        []string
-	selectionMenuCursor         int
-	isCommandMode               bool
-	pendingReset                bool
-	pendingScriptExecution      bool
-	pendingScriptLabel          string
-	pendingScriptCode           string
-	pendingScriptName           string
-	pendingScriptLanguage       string
-	pendingScriptIntent         ScriptEditorIntent
-	saveMenu                    SaveMenuState
-	saveMenuCursor              SaveMenuOption
-	sessionVars                 map[string]string
-	pendingSessionPrompt        SessionPromptKind
-	sessionOverwriteVisible     bool
-	sessionOverwriteCursor      SessionOverwriteOption
+	messages []ui.ChatMessage
+	scriptEditor ui.ScriptEditor
+	inputHistory []string
+	historyIndex int
+	draftBuffer string
+	activeContext string
+	activeContextPath string
+	activeLanguage string
+	sandboxProcessRunning bool
+	pendingContextPath string
+	pendingInputPrompt string
+	selectionMenuVisible bool
+	selectionMenuTitle string
+	selectionMenuOptions []string
+	selectionMenuCursor int
+	isCommandMode bool
+	pendingReset bool
+	pendingScriptExecution bool
+	pendingScriptLabel string
+	pendingScriptCode string
+	pendingScriptName string
+	pendingScriptLanguage string
+	pendingScriptIntent ScriptEditorIntent
+	saveMenu SaveMenuState
+	saveMenuCursor SaveMenuOption
+	sessionVars map[string]string
+	pendingSessionPrompt SessionPromptKind
+	sessionOverwriteVisible bool
+	sessionOverwriteCursor SessionOverwriteOption
 	pendingSessionOverwriteName string
-	deleteConfirmVisible        bool
-	deleteConfirmCursor         DeleteConfirmOption
-	pendingDeleteScriptName     string
-	pendingDeleteLanguage       string
-	pendingBridgeRequest        PendingBridgeRequest
-	codePreview                 CodePreviewState
-	runtimeCenterVisible        bool
-	runtimeCenter               RuntimeCenterState
-	startupLogPath              string
-	engineLogPath               string
-	enginePath                  string
-	pipeName                    string
+	deleteConfirmVisible bool
+	deleteConfirmCursor DeleteConfirmOption
+	pendingDeleteScriptName string
+	pendingDeleteLanguage string
+	pendingBridgeRequest PendingBridgeRequest
+	codePreview CodePreviewState
+	runtimeCenterVisible bool
+	runtimeCenter RuntimeCenterState
+	startupLogPath string
+	engineLogPath string
+	enginePath string
+	pipeName string
 
-	bridge              bridge.YuumiClient
-	runner              *yuumi.Runner
-	client              *yuumi.Client
-	engineState         ConnectionState
-	engineRestartCount  int
-	ready               bool
-	bridgeConnected     bool
-	memoryMB            uint64
-	lastStatusTick      time.Time
-	startupInProgress   bool
-	startupFailed       bool
-	startupStage        string
-	startupErrors       []string
+	bridge bridge.YuumiClient
+	runner *yuumi.Runner
+	client *yuumi.Client
+	engineState ConnectionState
+	engineRestartCount int
+	ready bool
+	bridgeConnected bool
+	memoryMB uint64
+	lastStatusTick time.Time
+	startupInProgress bool
+	startupFailed bool
+	startupStage string
+	startupErrors []string
 	startupSpinnerIndex int
-	engineBatchTitle    string
-	engineBatchChunks   []EngineBatchChunk
+	engineBatchTitle string
+	engineBatchChunks []EngineBatchChunk
+	scriptHub scripthub.ScriptHubModel
 }
 
 func newAppModel(b bridge.YuumiClient, enginePath string, pipeName string) AppModel {
@@ -244,21 +247,21 @@ func newAppModel(b bridge.YuumiClient, enginePath string, pipeName string) AppMo
 	vp.SetHeight(10)
 
 	return AppModel{
-		width:             80,
-		height:            24,
-		viewport:          vp,
-		input:             ta,
-		bridge:            b,
-		historyIndex:      -1,
-		activeContext:     "global",
+		width: 80,
+		height: 24,
+		viewport: vp,
+		input: ta,
+		bridge: b,
+		historyIndex: -1,
+		activeContext: "global",
 		activeContextPath: "global",
-		activeLanguage:    "",
-		engineState:       ConnectionConnected,
-		sessionVars:       map[string]string{},
-		enginePath:        strings.TrimSpace(enginePath),
-		pipeName:          strings.TrimSpace(pipeName),
+		activeLanguage: "",
+		engineState: ConnectionConnected,
+		sessionVars: map[string]string{},
+		enginePath: strings.TrimSpace(enginePath),
+		pipeName: strings.TrimSpace(pipeName),
 		startupInProgress: true,
-		startupStage:      "Initializing workspace...",
+		startupStage: "Initializing workspace...",
 	}
 }
 
@@ -372,6 +375,8 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.mode {
 	case ModeScriptEditor:
 		return m.updateScriptEditor(msg)
+	case ModeScriptHub:
+		return m.updateScriptHub(msg)
 	default:
 		return m.updateREPL(msg)
 	}
@@ -484,6 +489,12 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case bridge.StreamBatchEndMsg:
 		m.flushEngineBatch(false)
+		return m, nil
+
+	case bridge.ScriptActionResponseMsg:
+		if !msg.Ok {
+			m.addErrorMessage("Script action failed: " + strings.TrimSpace(msg.Error))
+		}
 		return m, nil
 
 	case bridge.InputRequestMsg:
@@ -685,6 +696,12 @@ func (m AppModel) updateScriptEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.flushEngineBatch(false)
 		return m, nil
 
+	case bridge.ScriptActionResponseMsg:
+		if !msg.Ok {
+			m.addErrorMessage("Script action failed: " + strings.TrimSpace(msg.Error))
+		}
+		return m, nil
+
 	case bridge.InputRequestMsg:
 		m.flushEngineBatch(false)
 		m.clearSelectionMenu()
@@ -737,10 +754,38 @@ func (m AppModel) updateScriptEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+func (m AppModel) updateScriptHub(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		m.recalculateLayout()
+		m.scriptHub.SetWidth(msg.Width)
+		m.scriptHub.SetHeight(msg.Height)
+		return m, nil
+
+	case scripthub.CloseMsg:
+		m.mode = ModeREPL
+		return m, nil
+
+	case scripthub.OpenEditorMsg:
+		m.mode = ModeScriptEditor
+		m.pendingScriptIntent = ScriptEditorIntentEdit
+		m.scriptEditor = ui.NewScriptEditorWithContent(msg.Entry.Lang, m.width, m.height, msg.Entry.Name, msg.Entry.Content)
+		return m, nil
+	}
+
+	var cmd tea.Cmd
+	m.scriptHub, cmd = m.scriptHub.Update(msg)
+	return m, cmd
+}
+
 func (m AppModel) View() tea.View {
 	switch m.mode {
 	case ModeScriptEditor:
 		return m.viewScriptEditor()
+	case ModeScriptHub:
+		return m.viewScriptHub()
 	default:
 		return m.viewREPL()
 	}
@@ -760,6 +805,7 @@ func (m AppModel) viewREPL() tea.View {
 		v.MouseMode = tea.MouseModeCellMotion
 		return v
 	}
+
 	if m.runtimeCenterVisible {
 		statusBar := ui.RenderStatusBar(m.width, displayContextPath, m.bridgeConnected, m.memoryMB, m.sandboxProcessRunning)
 		runtimePanel := m.renderRuntimeCenterModal()
@@ -781,6 +827,13 @@ func (m AppModel) viewREPL() tea.View {
 	full := lg.JoinVertical(lg.Left, sections...)
 
 	v := tea.NewView(pad.Render(full))
+	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
+	return v
+}
+
+func (m AppModel) viewScriptHub() tea.View {
+	v := tea.NewView(m.scriptHub.View())
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
 	return v
@@ -959,16 +1012,17 @@ func (m AppModel) handleDeleteConfirm() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	ext := languageExtension(language)
-	filename := name + "." + ext
-
-	if err := deleteScript(name, language); err != nil {
-		m.addErrorMessage("Delete failed: " + err.Error())
+	deleteCmd := m.bridge.SendCommandPayloadCmd(map[string]interface{}{
+		"type": "delete_script",
+		"name": name,
+		"lang": language,
+	})
+	if deleteCmd == nil {
+		m.addErrorMessage("Delete failed: bridge is unavailable.")
 		return m, nil
 	}
-
-	m.addSystemMessage(fmt.Sprintf("Script %q deleted.", filename))
-	return m, nil
+	m.addSystemMessage(fmt.Sprintf("Delete requested for script %q.", name))
+	return m, deleteCmd
 }
 
 func (m AppModel) renderScriptSaveMenu() string {
@@ -1139,9 +1193,9 @@ func (m AppModel) renderCodePreviewPanel() string {
 func (m *AppModel) addUserMessage(content string) {
 	normalised := ui.NormaliseContent(content)
 	msg := ui.ChatMessage{
-		Role:      ui.RoleUser,
-		Title:     m.currentMessageContextTitle(),
-		Content:   normalised,
+		Role: ui.RoleUser,
+		Title: m.currentMessageContextTitle(),
+		Content: normalised,
 		Timestamp: time.Now().Format("15:04"),
 	}
 	m.messages = append(m.messages, msg)
@@ -1151,9 +1205,9 @@ func (m *AppModel) addUserMessage(content string) {
 func (m *AppModel) addScriptSavedMessage(content string) {
 	normalised := ui.NormaliseContent(content)
 	msg := ui.ChatMessage{
-		Role:      ui.RoleScriptSaved,
-		Title:     m.currentMessageContextTitle(),
-		Content:   normalised,
+		Role: ui.RoleScriptSaved,
+		Title: m.currentMessageContextTitle(),
+		Content: normalised,
 		Timestamp: time.Now().Format("15:04"),
 	}
 	m.messages = append(m.messages, msg)
@@ -1163,9 +1217,9 @@ func (m *AppModel) addScriptSavedMessage(content string) {
 func (m *AppModel) addZeriMessage(content string, title string) {
 	normalised := ui.NormaliseContent(content)
 	msg := ui.ChatMessage{
-		Role:      ui.RoleZeri,
-		Title:     title,
-		Content:   normalised,
+		Role: ui.RoleZeri,
+		Title: title,
+		Content: normalised,
 		Timestamp: time.Now().Format("15:04"),
 	}
 	m.messages = append(m.messages, msg)
@@ -1175,9 +1229,9 @@ func (m *AppModel) addZeriMessage(content string, title string) {
 func (m *AppModel) addSystemMessage(content string) {
 	normalised := ui.NormaliseContent(content)
 	msg := ui.ChatMessage{
-		Role:      ui.RoleSystem,
-		Title:     m.currentMessageContextTitle(),
-		Content:   normalised,
+		Role: ui.RoleSystem,
+		Title: m.currentMessageContextTitle(),
+		Content: normalised,
 		Timestamp: time.Now().Format("15:04"),
 	}
 	m.messages = append(m.messages, msg)
@@ -1335,6 +1389,13 @@ func (m AppModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	if normalizedKey == "ctrl+c" {
 		return m, tea.Quit
+	}
+
+	if normalizedKey == "ctrl+h" {
+		runtimes := availableScriptHubRuntimes()
+		m.scriptHub = scripthub.New(m.bridge, runtimes, m.width, m.height)
+		m.mode = ModeScriptHub
+		return m, m.scriptHub.Init()
 	}
 
 	if isInputCopyShortcut(normalizedKey) {
@@ -1635,8 +1696,22 @@ func (m AppModel) handleScriptSaveMenuConfirm() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	if err := saveScript(name, language, content); err != nil {
-		m.addErrorMessage("Script save failed: " + err.Error())
+	if strings.TrimSpace(language) == "" {
+		language = m.scriptLanguageFromContext()
+	}
+	if strings.TrimSpace(language) == "" {
+		m.addErrorMessage("Script save failed: language context is missing.")
+		return m, nil
+	}
+
+	saveCmd := m.bridge.SendCommandPayloadCmd(map[string]interface{}{
+		"type": "save_script",
+		"name": name,
+		"lang": language,
+		"content": content,
+	})
+	if saveCmd == nil {
+		m.addErrorMessage("Script save failed: bridge is unavailable.")
 		return m, nil
 	}
 
@@ -1644,13 +1719,21 @@ func (m AppModel) handleScriptSaveMenuConfirm() (tea.Model, tea.Cmd) {
 	m.mode = ModeREPL
 
 	if selection == SaveAndExecute {
-		return m, m.submitScript(name, content, true)
+		runCmd := m.bridge.SendCommandPayloadCmd(map[string]interface{}{
+			"type": "run_script",
+			"name": name,
+			"lang": language,
+		})
+		if runCmd == nil {
+			return m, saveCmd
+		}
+		return m, tea.Sequence(saveCmd, runCmd)
 	}
 
 	m.pendingScriptCode = ""
 	m.pendingScriptName = ""
 	m.pendingScriptLanguage = ""
-	return m, nil
+	return m, saveCmd
 }
 
 func (m AppModel) handleSessionPromptSubmit(name string) (tea.Model, tea.Cmd) {
@@ -1769,22 +1852,9 @@ func (m *AppModel) populateSessionCommandAutocomplete(command string, prefix str
 }
 
 func (m *AppModel) populateScriptCommandAutocomplete(command string, prefix string) {
-	names, err := listScriptNames(prefix, m.scriptLanguageFromContext())
-	if err != nil || len(names) == 0 {
-		m.autocomplete.Dismiss()
-		return
-	}
-
-	entries := make([]ui.CompletionEntry, 0, len(names))
-	for _, name := range names {
-		entries = append(entries, ui.CompletionEntry{
-			Command:  command + " " + quoteScriptName(name),
-			Synopsis: "saved script",
-		})
-	}
-	m.autocomplete.Filtered = entries
-	m.autocomplete.Visible = true
-	m.autocomplete.SelectedIndex = 0
+	_ = command
+	_ = prefix
+	m.autocomplete.Dismiss()
 }
 
 func (m *AppModel) updateAutocompleteForInput(value string) {
@@ -1952,9 +2022,9 @@ func (m *AppModel) flushEngineBatch(forceError bool) {
 		m.addErrorMessageWithTitle(builder.String(), title)
 	} else {
 		msg := ui.ChatMessage{
-			Role:      ui.RoleZeri,
-			Title:     title,
-			Content:   builder.String(),
+			Role: ui.RoleZeri,
+			Title: title,
+			Content: builder.String(),
 			Timestamp: time.Now().Format("15:04"),
 		}
 		m.messages = append(m.messages, msg)
@@ -1974,9 +2044,9 @@ func (m *AppModel) addErrorMessage(content string) {
 func (m *AppModel) addErrorMessageWithTitle(content string, title string) {
 	enriched := enrichReactiveErrorMessage(content, m.activeContext)
 	msg := ui.ChatMessage{
-		Role:      ui.RoleError,
-		Title:     title,
-		Content:   ui.NormaliseContent(enriched),
+		Role: ui.RoleError,
+		Title: title,
+		Content: ui.NormaliseContent(enriched),
 		Timestamp: time.Now().Format("15:04"),
 	}
 	m.messages = append(m.messages, msg)
@@ -1992,10 +2062,10 @@ func (m *AppModel) addErrorMessageWithTitle(content string, title string) {
 func (m *AppModel) addScriptExecutionMessage(label string, content string) {
 	cleaned := sanitizeScriptExecutionContent(content)
 	msg := ui.ChatMessage{
-		Role:      ui.RoleScriptExecution,
-		Label:     strings.TrimSpace(label),
-		Title:     m.currentMessageContextTitle(),
-		Content:   ui.NormaliseContent(cleaned),
+		Role: ui.RoleScriptExecution,
+		Label: strings.TrimSpace(label),
+		Title: m.currentMessageContextTitle(),
+		Content: ui.NormaliseContent(cleaned),
 		Timestamp: time.Now().Format("15:04"),
 	}
 	m.messages = append(m.messages, msg)
@@ -2132,9 +2202,9 @@ func (m *AppModel) handlePendingBridgeData(content string) {
 		m.openScriptEditor(req.Language, req.ScriptName, content, ScriptEditorIntentEdit)
 	case PendingBridgeRequestShowPreview:
 		m.codePreview = CodePreviewState{
-			Visible:    true,
+			Visible: true,
 			ScriptName: req.ScriptName,
-			Content:    content,
+			Content: content,
 		}
 		m.refreshViewport()
 	default:
@@ -2312,10 +2382,10 @@ func (m *AppModel) appendShowBlock(scriptName string, language string, content s
 	numbered := addLineNumbers(content)
 	body := header + "\n" + numbered
 	msg := ui.ChatMessage{
-		Role:      ui.RoleCodeView,
-		Label:     "[show - \"" + scriptName + "\"]",
-		Title:     m.currentMessageContextTitle(),
-		Content:   body,
+		Role: ui.RoleCodeView,
+		Label: "[show - \"" + scriptName + "\"]",
+		Title: m.currentMessageContextTitle(),
+		Content: body,
 		Timestamp: time.Now().Format("15:04"),
 	}
 	m.messages = append(m.messages, msg)
@@ -2344,10 +2414,10 @@ func (m *AppModel) closeCodePreview() {
 func (m *AppModel) addCodeViewHistoryBlock(scriptName string) {
 	label := "[code view - \"" + scriptName + "\"]"
 	msg := ui.ChatMessage{
-		Role:      ui.RoleCodeView,
-		Label:     label,
-		Title:     m.currentMessageContextTitle(),
-		Content:   "closed",
+		Role: ui.RoleCodeView,
+		Label: label,
+		Title: m.currentMessageContextTitle(),
+		Content: "closed",
 		Timestamp: time.Now().Format("15:04"),
 	}
 	m.messages = append(m.messages, msg)
@@ -2412,6 +2482,38 @@ func quoteScriptName(name string) string {
 func isScriptNotFoundError(content string) bool {
 	lower := strings.ToLower(content)
 	return strings.Contains(lower, "script_not_found") || strings.Contains(lower, "script not found")
+}
+
+func availableScriptHubRuntimes() []string {
+	manifest, err := loadRuntimeManifest()
+	if err != nil {
+		return []string{"js", "ts", "py", "lua", "ruby"}
+	}
+
+	available := map[string]bool{}
+	for _, result := range validateRequiredRuntimes(manifest) {
+		if result.Status != RuntimeStatusOK {
+			continue
+		}
+		name := strings.ToLower(strings.TrimSpace(result.Runtime.Name))
+		switch name {
+		case "bun":
+			available["js"] = true
+			available["ts"] = true
+		case "python":
+			available["py"] = true
+		case "luajit":
+			available["lua"] = true
+		case "ruby":
+			available["ruby"] = true
+		}
+	}
+
+	runtimes := make([]string, 0, len(available))
+	for runtime := range available {
+		runtimes = append(runtimes, runtime)
+	}
+	return runtimes
 }
 
 func roleNameForClipboard(role ui.MessageRole) string {
@@ -2592,12 +2694,12 @@ func (m AppModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.addUserMessage(cmd)
-		if _, err := readScript(scriptName, m.scriptLanguageFromContext()); err == nil {
-			m.addSystemMessage("Script already exists. Use /edit to modify it.")
-			return m, nil
+		m.pendingBridgeRequest = PendingBridgeRequest{
+			Kind: PendingBridgeRequestNewExistsCheck,
+			ScriptName: scriptName,
+			Language: m.scriptLanguageFromContext(),
 		}
-		m.openScriptEditor(m.scriptLanguageFromContext(), scriptName, "", ScriptEditorIntentNew)
-		return m, nil
+		return m, m.bridge.SendDataCmd(showCommandPrefix + " " + quoteScriptName(scriptName))
 	case strings.HasPrefix(cmd, editCommandPrefix):
 		if !m.isCodeContextActive() {
 			m.addUserMessage(cmd)
@@ -2609,13 +2711,12 @@ func (m AppModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.addUserMessage(cmd)
-		content, err := readScript(scriptName, m.scriptLanguageFromContext())
-		if err != nil {
-			m.addErrorMessage("Unable to open script: " + err.Error())
-			return m, nil
+		m.pendingBridgeRequest = PendingBridgeRequest{
+			Kind: PendingBridgeRequestEditLoad,
+			ScriptName: scriptName,
+			Language: m.scriptLanguageFromContext(),
 		}
-		m.openScriptEditor(m.scriptLanguageFromContext(), scriptName, content, ScriptEditorIntentEdit)
-		return m, nil
+		return m, m.bridge.SendDataCmd(showCommandPrefix + " " + quoteScriptName(scriptName))
 	case strings.HasPrefix(cmd, showCommandPrefix):
 		if !m.isCodeContextActive() {
 			m.addUserMessage(cmd)
@@ -2627,15 +2728,18 @@ func (m AppModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.addUserMessage(cmd)
-		content, err := readScript(scriptName, m.scriptLanguageFromContext())
-		if err != nil {
-			m.addErrorMessage("Unable to show script: " + err.Error())
-			return m, nil
+		m.pendingBridgeRequest = PendingBridgeRequest{
+			Kind: PendingBridgeRequestShowPreview,
+			ScriptName: scriptName,
+			Language: m.scriptLanguageFromContext(),
 		}
-		m.appendShowBlock(scriptName, m.scriptLanguageFromContext(), content)
-		return m, nil
+		return m, m.bridge.SendDataCmd(showCommandPrefix + " " + quoteScriptName(scriptName))
 	case strings.HasPrefix(cmd, deleteCommandPrefix):
 		if !m.isCodeContextActive() {
+			m.addUserMessage(cmd)
+			return m, m.bridge.SendDataCmd(cmd)
+		}
+		if strings.Contains(strings.ToLower(cmd), "--hard") {
 			m.addUserMessage(cmd)
 			return m, m.bridge.SendDataCmd(cmd)
 		}
@@ -2646,11 +2750,6 @@ func (m AppModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 		}
 		m.addUserMessage(cmd)
 		language := m.scriptLanguageFromContext()
-		if _, err := readScript(scriptName, language); err != nil {
-			ext := languageExtension(language)
-			m.addErrorMessage(fmt.Sprintf("[SCRIPT_NOT_FOUND] Script not found: %s.%s", scriptName, ext))
-			return m, nil
-		}
 		m.pendingDeleteScriptName = scriptName
 		m.pendingDeleteLanguage = language
 		m.deleteConfirmVisible = true
@@ -2721,8 +2820,8 @@ func (m AppModel) launchAndConnectEngine() (*yuumi.Runner, *yuumi.Client, error)
 
 	sessionTempDir := resolveSessionTempDir()
 	runner := &yuumi.Runner{
-		BinaryPath:     enginePath,
-		PipeName:       pipeName,
+		BinaryPath: enginePath,
+		PipeName: pipeName,
 		SessionTempDir: sessionTempDir,
 	}
 
@@ -2754,8 +2853,8 @@ func (m AppModel) launchAndConnectEngine() (*yuumi.Runner, *yuumi.Client, error)
 
 	connectOptions := yuumi.ConnectOptions{
 		MaxRetries:  0,
-		BaseDelay:   engineConnectRetryInterval,
-		MaxDelay:    engineConnectRetryInterval,
+		BaseDelay: engineConnectRetryInterval,
+		MaxDelay: engineConnectRetryInterval,
 		DialTimeout: engineConnectRetryInterval,
 	}
 

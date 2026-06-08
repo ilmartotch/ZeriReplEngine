@@ -13,6 +13,7 @@
 #include "Engines/Include/PythonContext.h"
 #include "Engines/Include/ScriptEditorContext.h"
 #include "Engines/Include/ScriptHubContext.h"
+#include "Engines/Include/ScriptRegistry.h"
 #include "Engines/Include/RubyContext.h"
 #include "Engines/Include/SandboxContext.h"
 #include "Engines/Include/SetupContext.h"
@@ -63,6 +64,8 @@ namespace Zeri::Platform {
 }
 
 namespace {
+    inline constexpr std::string_view kBridgeRequestPrefix = "__bridge_request__";
+
     [[nodiscard]] bool IsUnreservedUrlChar(unsigned char c) {
         return std::isalnum(c) != 0 || c == '-' || c == '_' || c == '.' || c == '~';
     }
@@ -684,6 +687,151 @@ namespace {
         }
     }
 
+    [[nodiscard]] std::string BridgeRequestError(std::string_view action, std::string_view details) {
+        std::string message = "[";
+        message.append(action);
+        message.append("] ");
+        message.append(details);
+        return message;
+    }
+
+    void SendScriptActionResponse(
+        Zeri::Ui::OutputSink& sink,
+        std::string_view action,
+        bool ok,
+        std::string_view error = {}
+    ) {
+        nlohmann::json response;
+        response["type"] = "script_action_response";
+        response["action"] = std::string(action);
+        response["ok"] = ok;
+        if (!ok) {
+            response["error"] = std::string(error);
+        }
+        sink.Send(response);
+    }
+
+    void SendScriptListResponse(
+        Zeri::Ui::OutputSink& sink,
+        const std::vector<Zeri::Engines::ScriptEntry>& scripts
+    ) {
+        nlohmann::json response;
+        response["type"] = "script_list_response";
+        response["scripts"] = nlohmann::json::array();
+        for (const auto& script : scripts) {
+            response["scripts"].push_back({
+                {"name", script.name},
+                {"lang", script.language},
+                {"modified", script.modifiedUtc},
+                {"size", script.sizeBytes},
+                {"content", script.content}
+            });
+        }
+        sink.Send(response);
+    }
+
+    [[nodiscard]] bool HandleBridgeRequest(
+        const std::string& encodedInput,
+        Zeri::Engines::Defaults::CachedDispatcher& dispatcher,
+        Zeri::Core::RuntimeState& runtimeState,
+        Zeri::Ui::ITerminal& terminal,
+        Zeri::Ui::OutputSink& sink,
+        const Zeri::Core::StartupDiagnosticsReport* startupDiagnostics,
+        const std::vector<Zeri::Core::BugSnapshotCommandRecord>* commandHistory
+    ) {
+        if (!encodedInput.starts_with(kBridgeRequestPrefix)) {
+            return false;
+        }
+
+        const std::string payload = encodedInput.substr(kBridgeRequestPrefix.size());
+        nlohmann::json request;
+        try {
+            request = nlohmann::json::parse(payload);
+        } catch (const std::exception&) {
+            SendScriptActionResponse(sink, "invalid", false, "Malformed bridge request payload.");
+            return true;
+        }
+
+        const std::string type = request.value("type", "");
+        if (type == "list_scripts_with_content") {
+            SendScriptListResponse(sink, Zeri::Engines::ListScriptsWithContent(runtimeState));
+            return true;
+        }
+
+        if (type == "save_script") {
+            const std::string name = request.value("name", "");
+            const std::string lang = request.value("lang", "");
+            const std::string content = request.value("content", "");
+            if (name.empty() || lang.empty()) {
+                SendScriptActionResponse(sink, "save_script", false, "Missing required fields name/lang.");
+                return true;
+            }
+            Zeri::Engines::SaveScript(runtimeState, lang, name, content);
+            SendScriptActionResponse(sink, "save_script", true);
+            return true;
+        }
+
+        if (type == "delete_script") {
+            const std::string name = request.value("name", "");
+            const std::string lang = request.value("lang", "");
+            const bool hard = request.value("hard", false);
+            if (name.empty() || lang.empty()) {
+                SendScriptActionResponse(sink, "delete_script", false, "Missing required fields name/lang.");
+                return true;
+            }
+
+            bool removed = false;
+            if (hard) {
+                removed = Zeri::Engines::HardDeleteScript(runtimeState, lang, name);
+            } else {
+                removed = Zeri::Engines::DeleteScript(runtimeState, lang, name);
+            }
+            if (!removed) {
+                SendScriptActionResponse(sink, "delete_script", false, "Script not found.");
+                return true;
+            }
+            SendScriptActionResponse(sink, "delete_script", true);
+            return true;
+        }
+
+        if (type == "run_script") {
+            const std::string name = request.value("name", "");
+            const std::string lang = request.value("lang", "");
+            if (name.empty() || lang.empty()) {
+                SendScriptActionResponse(sink, "run_script", false, "Missing required fields name/lang.");
+                return true;
+            }
+
+            std::string previousContext = "global";
+            if (const auto* current = runtimeState.GetCurrentContext(); current != nullptr) {
+                previousContext = current->GetName();
+            }
+
+            const std::string switchCmd = "$" + lang;
+            if (!ExecuteStage(switchCmd, dispatcher, runtimeState, terminal, &sink, startupDiagnostics, commandHistory)) {
+                SendScriptActionResponse(sink, "run_script", false, BridgeRequestError("run_script", "context switch failed."));
+                return true;
+            }
+
+            const std::string runCmd = "/run \"" + name + "\"";
+            if (!ExecuteStage(runCmd, dispatcher, runtimeState, terminal, &sink, startupDiagnostics, commandHistory)) {
+                SendScriptActionResponse(sink, "run_script", false, BridgeRequestError("run_script", "execution failed."));
+                return true;
+            }
+
+            if (!previousContext.empty() && previousContext != lang) {
+                const std::string restoreCmd = "$" + previousContext;
+                (void)ExecuteStage(restoreCmd, dispatcher, runtimeState, terminal, &sink, startupDiagnostics, commandHistory);
+            }
+
+            SendScriptActionResponse(sink, "run_script", true);
+            return true;
+        }
+
+        SendScriptActionResponse(sink, type.empty() ? "unknown" : type, false, "Unsupported bridge request type.");
+        return true;
+    }
+
 }
 
 namespace {
@@ -767,6 +915,13 @@ int RunMain(int argc, char* argv[]) {
         } else if (type == "input_response") {
             std::string payload = msg.value("payload", "");
             bridgeTerminal->EnqueueInputResponse(payload);
+        } else if (
+            type == "list_scripts_with_content" ||
+            type == "save_script" ||
+            type == "delete_script" ||
+            type == "run_script"
+        ) {
+            bridgeTerminal->EnqueueCommand(std::string(kBridgeRequestPrefix) + msg.dump());
         }
     });
 
@@ -838,6 +993,19 @@ int RunMain(int argc, char* argv[]) {
         if (!inputOpt.has_value()) break;
 
         std::string input = *inputOpt;
+
+        if (HandleBridgeRequest(
+            input,
+            dispatcher,
+            runtimeState,
+            terminal,
+            *sinkOwner,
+            &startupDiagnostics,
+            &commandHistory
+        )) {
+            bridgeTerminal->EmitBatchEnd(Zeri::Ui::kBatchEndExecutionComplete);
+            continue;
+        }
         if (Trim(input).empty()) continue;
 
         auto* activeContext = runtimeState.GetCurrentContext();
@@ -917,11 +1085,17 @@ Bridge protocol (high-level):
   - Input from Go UI:
       {"type": "command", "payload": "<user input>"}
       {"type": "input_response", "payload": "<wizard reply>"}
+      {"type": "list_scripts_with_content"}
+      {"type": "save_script", "name": "<name>", "lang": "<lang>", "content": "<code>"}
+      {"type": "delete_script", "name": "<name>", "lang": "<lang>", "hard": <bool>}
+      {"type": "run_script", "name": "<name>", "lang": "<lang>"}
   - Output to Go UI:
       {"type": "ready"}
       {"type": "output"|"error"|"info"|"success", "payload": "<text>"}
       {"type": "context_changed", "context": "<name>", "prompt": "<prompt>"}
       {"type": "req_input", "prompt": "<text>"}
+      {"type": "script_list_response", "scripts": [ ... ]}
+      {"type": "script_action_response", "action": "<...>", "ok": <bool>, "error": "<...>"}
       {"type": "stream_batch_end", "reason": "<execution_complete|before_input_request|context_transition|runtime_idle|engine_shutdown>"}
 
 Behavior notes:

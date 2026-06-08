@@ -1,7 +1,10 @@
 #include "../Include/ScriptHubContext.h"
+#include "../Include/ScriptRegistry.h"
 #include "../../Core/Include/HelpCatalog.h"
+#include "../../Core/Include/StringUtils.h"
 
 #include <string>
+#include <sstream>
 
 namespace Zeri::Engines::Defaults {
 
@@ -14,9 +17,6 @@ namespace Zeri::Engines::Defaults {
         Zeri::Core::RuntimeState& state,
         Zeri::Ui::ITerminal& terminal
     ) {
-        (void)state;
-        (void)terminal;
-
         if (cmd.commandName == "help") {
             std::string output = "Code Context — Available Commands\n";
             output += "\n";
@@ -38,8 +38,37 @@ namespace Zeri::Engines::Defaults {
             output += "  $ruby — Enter Ruby context\n";
             output += "  $global — Return to root context\n";
             output += "\n";
+            output += "Search:\n";
+            output += "  /search <query> — Search scripts across all supported languages\n";
+            output += "\n";
             output += "Note: language entry uses $<context>, not /<command>.";
             return output;
+        }
+
+        if (cmd.commandName == "search") {
+            const std::string query = Zeri::Core::Utils::JoinArgs(cmd.args);
+            if (query.empty()) {
+                return std::unexpected(ExecutionError{
+                    "SCRIPTHUB_SEARCH_QUERY_MISSING",
+                    "Missing query for /search.",
+                    cmd.rawInput,
+                    { "Usage: /search <query>" }
+                });
+            }
+
+            const auto matches = SearchScripts(state, query);
+            if (matches.empty()) {
+                return "No scripts matched query: " + query;
+            }
+
+            std::ostringstream output;
+            output << "Search results for \"" << query << "\"\n";
+            for (const auto& match : matches) {
+                output << " - [" << match.language << "] " << match.name
+                    << "  " << match.sizeBytes << " bytes"
+                    << "  " << match.modifiedUtc << "\n";
+            }
+            return output.str();
         }
 
         return std::unexpected(ExecutionError{
@@ -47,6 +76,7 @@ namespace Zeri::Engines::Defaults {
             "Unknown command in code context: " + cmd.commandName,
             cmd.rawInput,
             { "Use /help to list available commands.",
+              "Use /search <query> to search scripts across languages.",
               "Use /context and switch with $<context> for language contexts." }
         });
     }
