@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../../src/Engines/Include/ExecutionResult.h"
+#include "../../../src/Core/Include/RuntimeState.h"
 #include "../../../src/Ui/Include/ITerminal.h"
 #include "../../../src/ZeriLink/Include/ProcessBridge.h"
 
@@ -36,7 +37,7 @@ namespace Zeri::Bridge {
             const std::string& bootstrapPath
         );
 
-        [[nodiscard]] ExecutionResult Execute(const std::string& code, Zeri::Ui::ITerminal& terminal);
+        [[nodiscard]] ExecutionResult Execute(const std::string& code, Zeri::Core::RuntimeState& runtimeState, Zeri::Ui::ITerminal& terminal);
 
         void Shutdown();
 
@@ -52,6 +53,11 @@ namespace Zeri::Bridge {
             Zeri::Link::SidecarProcessBridge& bridge,
             const std::string& payload,
             Zeri::Ui::ITerminal& terminal
+        );
+        static void HandleSystemEvent(
+            Zeri::Link::SidecarProcessBridge& bridge,
+            Zeri::Core::RuntimeState& runtimeState,
+            const std::string& payload
         );
 
         std::unique_ptr<Zeri::Link::SidecarProcessBridge> m_bridge;

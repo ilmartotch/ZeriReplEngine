@@ -37,10 +37,11 @@ namespace {
     [[nodiscard]] Zeri::Engines::ExecutionOutcome ExecuteViaSidecar(
         Zeri::Bridge::ZeriWireSidecarBridge& sidecar,
         const std::string& script,
+        Zeri::Core::RuntimeState& state,
         Zeri::Ui::ITerminal& terminal,
         const std::string& context
     ) {
-        auto result = sidecar.Execute(script, terminal);
+        auto result = sidecar.Execute(script, state, terminal);
         if (!result.has_value()) {
             return std::unexpected(Zeri::Engines::ExecutionError{
                 "RUBY_SIDECAR_EXEC_ERR",
@@ -158,12 +159,12 @@ namespace Zeri::Engines::Defaults {
         }
 
         if (m_sidecarBridge.IsAlive()) {
-            return ExecuteViaSidecar(m_sidecarBridge, script, terminal, cmd.rawInput);
+            return ExecuteViaSidecar(m_sidecarBridge, script, state, terminal, cmd.rawInput);
         }
 
         const bool launched = m_sidecarBridge.Launch(executable, {}, bootstrapPath.string());
         if (launched) {
-            return ExecuteViaSidecar(m_sidecarBridge, script, terminal, cmd.rawInput);
+            return ExecuteViaSidecar(m_sidecarBridge, script, state, terminal, cmd.rawInput);
         }
 
         terminal.WriteError("[ZERI][RUNTIME-033] Ruby sidecar launch failed, falling back to one-shot execution. Hint: verify Ruby installation and executable path.");

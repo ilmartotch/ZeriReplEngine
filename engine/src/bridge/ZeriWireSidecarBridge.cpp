@@ -58,7 +58,7 @@ namespace Zeri::Bridge {
         return true;
     }
 
-    ExecutionResult ZeriWireSidecarBridge::Execute(const std::string& code, Zeri::Ui::ITerminal& terminal) {
+    ExecutionResult ZeriWireSidecarBridge::Execute(const std::string& code, Zeri::Core::RuntimeState& runtimeState, Zeri::Ui::ITerminal& terminal) {
         std::unique_lock executeLock(m_executeMutex);
 
         Zeri::Link::SidecarProcessBridge* bridge = nullptr;
@@ -77,6 +77,9 @@ namespace Zeri::Bridge {
 
         bridge->SetInputRequestHandler([bridge, &terminal](const std::string& payload) {
             HandleInputRequest(*bridge, payload, terminal);
+        });
+        bridge->SetSystemEventHandler([bridge, &runtimeState](const std::string& payload) {
+            HandleSystemEvent(*bridge, runtimeState, payload);
         });
 
         std::mutex resultMutex;
@@ -107,6 +110,7 @@ namespace Zeri::Bridge {
 
             if (!signaled) {
                 bridge->SetInputRequestHandler({});
+                bridge->SetSystemEventHandler({});
                 return std::unexpected(Zeri::Engines::ExecutionError{
                     "SIDECAR_WAIT_TIMEOUT",
                     "Timed out while waiting for sidecar execution result.",
@@ -117,6 +121,7 @@ namespace Zeri::Bridge {
         }
 
         bridge->SetInputRequestHandler({});
+        bridge->SetSystemEventHandler({});
 
         if (!executionResult.has_value()) {
             if (executionResult.error().code == "SIDECAR_TIMEOUT") {
@@ -257,6 +262,83 @@ namespace Zeri::Bridge {
 
         const std::optional<std::string> input = terminal.ReadLine(promptText);
         bridge.SendInputResponse(BuildInputResponsePayload(input.value_or(std::string{})));
+    }
+
+    void ZeriWireSidecarBridge::HandleSystemEvent(
+        Zeri::Link::SidecarProcessBridge& bridge,
+        Zeri::Core::RuntimeState& runtimeState,
+        const std::string& payload
+    ) {
+        const auto message = nlohmann::json::parse(payload, nullptr, false);
+        if (message.is_discarded() || !message.is_object()) {
+            return;
+        }
+
+        const std::string type = message.value("type", "");
+        if (type.empty()) {
+            return;
+        }
+
+        if (type == "shared_get") {
+            const std::string key = message.value("key", "");
+            nlohmann::json response;
+            response["type"] = "shared_value";
+            response["key"] = key;
+            if (message.contains("request_id")) {
+                response["request_id"] = message["request_id"];
+            }
+            const auto value = runtimeState.GetShared(key);
+            if (!value.has_value()) {
+                response["value"] = nullptr;
+            } else {
+                const auto serialized = Zeri::Core::RuntimeState::SerializeAnyValue(*value);
+                response["value"] = serialized.has_value() ? *serialized : nlohmann::json(nullptr);
+            }
+            bridge.SendSystemEvent(response.dump());
+            return;
+        }
+
+        if (type == "shared_set") {
+            const std::string key = message.value("key", "");
+            nlohmann::json response;
+            response["type"] = "shared_ack";
+            response["key"] = key;
+            if (message.contains("request_id")) {
+                response["request_id"] = message["request_id"];
+            }
+            if (message.contains("value")) {
+                const auto converted = Zeri::Core::RuntimeState::DeserializeAnyValue(message["value"]);
+                if (converted.has_value()) {
+                    runtimeState.SetShared(key, *converted);
+                } else {
+                    response["error"] = "Unsupported value type.";
+                }
+            } else {
+                response["error"] = "Missing value field.";
+            }
+            bridge.SendSystemEvent(response.dump());
+            return;
+        }
+
+        if (type == "shared_list") {
+            nlohmann::json response;
+            response["type"] = "shared_list_response";
+            if (message.contains("request_id")) {
+                response["request_id"] = message["request_id"];
+            }
+            response["entries"] = nlohmann::json::array();
+            for (const auto& [key, value] : runtimeState.ListShared()) {
+                const auto serialized = Zeri::Core::RuntimeState::SerializeAnyValue(value);
+                if (!serialized.has_value()) {
+                    continue;
+                }
+                response["entries"].push_back({
+                    {"key", key},
+                    {"value", *serialized}
+                });
+            }
+            bridge.SendSystemEvent(response.dump());
+        }
     }
 
 }

@@ -17,6 +17,7 @@ namespace Zeri::Engines::Defaults {
         Zeri::Core::RuntimeState& state,
         Zeri::Ui::ITerminal& terminal
     ) {
+        (void)terminal;
         if (cmd.commandName == "help") {
             std::string output = "Code Context — Available Commands\n";
             output += "\n";

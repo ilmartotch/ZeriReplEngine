@@ -55,10 +55,11 @@ namespace {
     [[nodiscard]] Zeri::Engines::ExecutionOutcome ExecuteViaSidecar(
         Zeri::Bridge::ZeriWireSidecarBridge& sidecar,
         const std::string& script,
+        Zeri::Core::RuntimeState& state,
         Zeri::Ui::ITerminal& terminal,
         const std::string& context
     ) {
-        auto result = sidecar.Execute(script, terminal);
+        auto result = sidecar.Execute(script, state, terminal);
         if (!result.has_value()) {
             return std::unexpected(Zeri::Engines::ExecutionError{
                 "PYTHON_SIDECAR_EXEC_ERR",
@@ -135,7 +136,7 @@ namespace Zeri::Engines::Defaults {
         const std::filesystem::path bootstrapPath = Zeri::Engines::Utils::ResolveBootstrapPath(kPythonEngineDir, kPythonBootstrapScript);
 
         if (m_sidecarBridge.IsAlive()) {
-            return ExecuteViaSidecar(m_sidecarBridge, script, terminal, cmd.rawInput);
+            return ExecuteViaSidecar(m_sidecarBridge, script, state, terminal, cmd.rawInput);
         }
 
         const bool launched = m_sidecarBridge.Launch(
@@ -145,7 +146,7 @@ namespace Zeri::Engines::Defaults {
         );
 
         if (launched) {
-            return ExecuteViaSidecar(m_sidecarBridge, script, terminal, cmd.rawInput);
+            return ExecuteViaSidecar(m_sidecarBridge, script, state, terminal, cmd.rawInput);
         }
 
         terminal.WriteError("[ZERI][RUNTIME-029] Python sidecar launch failed, falling back to one-shot execution. Hint: verify Python installation and bootstrap script availability.");

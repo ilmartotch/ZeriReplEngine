@@ -16,6 +16,7 @@ $stdout.binmode
 
 ORIG_STDIN = STDIN
 ORIG_STDOUT = STDOUT.dup
+SHARED_REQUEST_ID = Struct.new(:value).new(0)
 
 class FrameDecoder
   def initialize
@@ -126,6 +127,68 @@ def install_input_hook(decoder)
       value = wait_for_input_response(decoder)
       value + "\n"
     end
+
+    def next_shared_request_id
+      SHARED_REQUEST_ID.value += 1
+      SHARED_REQUEST_ID.value
+    end
+
+    def wait_for_shared_response(decoder, expected_type, request_id)
+      loop do
+        chunk = ORIG_STDIN.readpartial(4096)
+        return nil if chunk.nil? || chunk.empty?
+
+        frames = decoder.feed(chunk)
+        frames.each do |type, payload|
+          next unless type == SYS_EVENT
+
+          begin
+            parsed = JSON.parse(payload)
+          rescue JSON::ParserError
+            handle_sys_event(payload)
+            next
+          end
+
+          if parsed["type"] == expected_type && parsed["request_id"] == request_id
+            return parsed
+          end
+          handle_sys_event(payload)
+        end
+      end
+    rescue EOFError
+      nil
+    end
+
+    module Zeri
+      class << self
+        attr_accessor :decoder
+      end
+
+      def self.get(key)
+        req_id = next_shared_request_id
+        write_frame(SYS_EVENT, JSON.generate({
+          type: "shared_get",
+          key: key.to_s,
+          request_id: req_id
+        }))
+        response = wait_for_shared_response(decoder, "shared_value", req_id)
+        return nil if response.nil?
+        response["value"]
+      end
+
+      def self.set(key, value)
+        req_id = next_shared_request_id
+        write_frame(SYS_EVENT, JSON.generate({
+          type: "shared_set",
+          key: key.to_s,
+          value: value,
+          request_id: req_id
+        }))
+        response = wait_for_shared_response(decoder, "shared_ack", req_id)
+        raise(response["error"]) if response.is_a?(Hash) && response["error"].is_a?(String) && !response["error"].empty?
+        nil
+      end
+    end
   end
 end
 
@@ -184,6 +247,7 @@ def main
   decoder = FrameDecoder.new
   bind = TOPLEVEL_BINDING
 
+  Zeri.decoder = decoder
   install_input_hook(decoder)
   send_sys_event("READY")
 

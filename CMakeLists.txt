@@ -332,6 +332,43 @@ if(BUILD_TESTING)
         WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
     )
 
+    add_executable(zeri_unit_runtime_state_shared
+        test/unit/test_runtime_state_shared.cpp
+        src/Core/Source/RuntimeState.cpp
+        src/Core/Source/ContextManager.cpp
+        src/Core/Source/UserPaths.cpp
+        src/Core/Source/AppPaths.cpp
+        src/Modules/Source/ModuleManager.cpp
+    )
+    target_include_directories(zeri_unit_runtime_state_shared PRIVATE
+        src
+        src/Core/Include
+        src/Engines/Include
+        src/Engines/Include/Interface
+        src/Modules/Include
+        src/Ui/Include
+        "${CMAKE_CURRENT_BINARY_DIR}/generated"
+    )
+    target_link_libraries(zeri_unit_runtime_state_shared PRIVATE
+        Threads::Threads
+        nlohmann_json::nlohmann_json
+    )
+    if(MSVC)
+        target_compile_options(zeri_unit_runtime_state_shared PRIVATE /W4 /WX /permissive- /bigobj /wd4702)
+    else()
+        target_compile_options(zeri_unit_runtime_state_shared PRIVATE -Wall -Wextra -Werror -pedantic -Wno-ignored-attributes
+                -Wno-missing-field-initializers
+            )
+    endif()
+    add_test(
+        NAME RuntimeStateShared-suite
+        COMMAND zeri_unit_runtime_state_shared
+    )
+    set_tests_properties(RuntimeStateShared-suite PROPERTIES
+        ENVIRONMENT "APPDATA=${CMAKE_BINARY_DIR}/test-isolation/runtime-state-shared;USERPROFILE=${CMAKE_BINARY_DIR}/test-isolation/runtime-state-shared;XDG_CONFIG_HOME=${CMAKE_BINARY_DIR}/test-isolation/runtime-state-shared;HOME=${CMAKE_BINARY_DIR}/test-isolation/runtime-state-shared"
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+    )
+
     add_executable(zeri_unit_context_manager
         test/unit/test_context_manager.cpp
         src/Core/Source/ContextManager.cpp

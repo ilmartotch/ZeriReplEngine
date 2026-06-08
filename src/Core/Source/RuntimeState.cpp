@@ -4,6 +4,7 @@
 #include "../../Modules/Include/ModuleManager.h"
 #include <nlohmann/json.hpp>
 #include <chrono>
+#include <cstdint>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -90,11 +91,25 @@ namespace {
     }
 
     inline void ApplySavePauseHook() {
+        int pauseMs = 0;
+#if defined(_WIN32)
+        char* pauseRaw = nullptr;
+        size_t pauseLen = 0;
+        if (_dupenv_s(&pauseRaw, &pauseLen, "ZERI_TEST_SAVE_PAUSE_MS") != 0 || pauseRaw == nullptr || pauseLen == 0) {
+            if (pauseRaw != nullptr) {
+                std::free(pauseRaw);
+            }
+            return;
+        }
+        pauseMs = std::atoi(pauseRaw);
+        std::free(pauseRaw);
+#else
         const char* pauseRaw = std::getenv("ZERI_TEST_SAVE_PAUSE_MS");
         if (pauseRaw == nullptr || *pauseRaw == '\0') {
             return;
         }
-        const int pauseMs = std::atoi(pauseRaw);
+        pauseMs = std::atoi(pauseRaw);
+#endif
         if (pauseMs <= 0) {
             return;
         }
@@ -179,6 +194,132 @@ namespace {
             return false;
         }
         return false;
+    }
+
+    [[nodiscard]] std::optional<nlohmann::json> AnyValueToJson(const Zeri::Core::AnyValue& value) {
+        if (!value.has_value()) {
+            return nlohmann::json(nullptr);
+        }
+
+        const auto& type = value.type();
+        if (type == typeid(std::nullptr_t)) {
+            return nlohmann::json(nullptr);
+        }
+        if (type == typeid(std::string)) {
+            return nlohmann::json(std::any_cast<std::string>(value));
+        }
+        if (type == typeid(const char*)) {
+            return nlohmann::json(std::string(std::any_cast<const char*>(value)));
+        }
+        if (type == typeid(char*)) {
+            return nlohmann::json(std::string(std::any_cast<char*>(value)));
+        }
+        if (type == typeid(bool)) {
+            return nlohmann::json(std::any_cast<bool>(value));
+        }
+        if (type == typeid(std::int64_t)) {
+            return nlohmann::json(std::any_cast<std::int64_t>(value));
+        }
+        if (type == typeid(int)) {
+            return nlohmann::json(static_cast<std::int64_t>(std::any_cast<int>(value)));
+        }
+        if (type == typeid(long)) {
+            return nlohmann::json(static_cast<std::int64_t>(std::any_cast<long>(value)));
+        }
+        if (type == typeid(long long)) {
+            return nlohmann::json(static_cast<std::int64_t>(std::any_cast<long long>(value)));
+        }
+        if (type == typeid(double)) {
+            return nlohmann::json(std::any_cast<double>(value));
+        }
+        if (type == typeid(float)) {
+            return nlohmann::json(static_cast<double>(std::any_cast<float>(value)));
+        }
+        if (type == typeid(std::vector<Zeri::Core::AnyValue>)) {
+            nlohmann::json out = nlohmann::json::array();
+            const auto& values = std::any_cast<const std::vector<Zeri::Core::AnyValue>&>(value);
+            for (const auto& item : values) {
+                const auto serialized = AnyValueToJson(item);
+                if (!serialized.has_value()) {
+                    return std::nullopt;
+                }
+                out.push_back(*serialized);
+            }
+            return out;
+        }
+        if (type == typeid(std::map<std::string, Zeri::Core::AnyValue>)) {
+            nlohmann::json out = nlohmann::json::object();
+            const auto& values = std::any_cast<const std::map<std::string, Zeri::Core::AnyValue>&>(value);
+            for (const auto& [key, item] : values) {
+                const auto serialized = AnyValueToJson(item);
+                if (!serialized.has_value()) {
+                    return std::nullopt;
+                }
+                out[key] = *serialized;
+            }
+            return out;
+        }
+
+        return std::nullopt;
+    }
+
+    [[nodiscard]] std::optional<Zeri::Core::AnyValue> JsonToAnyValue(const nlohmann::json& value) {
+        if (value.is_null()) {
+            return Zeri::Core::AnyValue(std::nullptr_t{});
+        }
+        if (value.is_boolean()) {
+            return Zeri::Core::AnyValue(value.get<bool>());
+        }
+        if (value.is_number_integer()) {
+            return Zeri::Core::AnyValue(value.get<std::int64_t>());
+        }
+        if (value.is_number_float()) {
+            return Zeri::Core::AnyValue(value.get<double>());
+        }
+        if (value.is_string()) {
+            return Zeri::Core::AnyValue(value.get<std::string>());
+        }
+        if (value.is_array()) {
+            std::vector<Zeri::Core::AnyValue> out;
+            out.reserve(value.size());
+            for (const auto& item : value) {
+                const auto converted = JsonToAnyValue(item);
+                if (!converted.has_value()) {
+                    return std::nullopt;
+                }
+                out.push_back(*converted);
+            }
+            return Zeri::Core::AnyValue(std::move(out));
+        }
+        if (value.is_object()) {
+            std::map<std::string, Zeri::Core::AnyValue> out;
+            for (const auto& [key, item] : value.items()) {
+                const auto converted = JsonToAnyValue(item);
+                if (!converted.has_value()) {
+                    return std::nullopt;
+                }
+                out.emplace(key, *converted);
+            }
+            return Zeri::Core::AnyValue(std::move(out));
+        }
+
+        return std::nullopt;
+    }
+
+    [[nodiscard]] std::string AnyValueTypeName(const Zeri::Core::AnyValue& value) {
+        if (!value.has_value()) {
+            return "null";
+        }
+
+        const auto& type = value.type();
+        if (type == typeid(std::nullptr_t)) return "null";
+        if (type == typeid(std::string) || type == typeid(const char*) || type == typeid(char*)) return "string";
+        if (type == typeid(bool)) return "bool";
+        if (type == typeid(std::int64_t) || type == typeid(int) || type == typeid(long) || type == typeid(long long)) return "int64";
+        if (type == typeid(double) || type == typeid(float)) return "double";
+        if (type == typeid(std::vector<Zeri::Core::AnyValue>)) return "array";
+        if (type == typeid(std::map<std::string, Zeri::Core::AnyValue>)) return "object";
+        return "unsupported";
     }
 
 }
@@ -395,6 +536,52 @@ namespace Zeri::Core {
 
     bool RuntimeState::HasPersistedVariable(const std::string& key) const {
         return HasVariable(VariableScope::Persisted, key);
+    }
+
+    std::optional<AnyValue> RuntimeState::GetShared(const std::string& key) const {
+        std::shared_lock lock(m_sharedMutex);
+        const auto it = m_sharedVariables.find(key);
+        if (it == m_sharedVariables.end()) {
+            return std::nullopt;
+        }
+        return it->second;
+    }
+
+    void RuntimeState::SetShared(const std::string& key, const AnyValue& value) {
+        std::unique_lock lock(m_sharedMutex);
+        m_sharedVariables[key] = value;
+    }
+
+    std::vector<std::pair<std::string, AnyValue>> RuntimeState::ListShared() const {
+        std::shared_lock lock(m_sharedMutex);
+        std::vector<std::pair<std::string, AnyValue>> entries;
+        entries.reserve(m_sharedVariables.size());
+        for (const auto& [key, value] : m_sharedVariables) {
+            entries.emplace_back(key, value);
+        }
+        return entries;
+    }
+
+    void RuntimeState::DeleteShared(const std::string& key) {
+        std::unique_lock lock(m_sharedMutex);
+        m_sharedVariables.erase(key);
+    }
+
+    void RuntimeState::ClearShared() {
+        std::unique_lock lock(m_sharedMutex);
+        m_sharedVariables.clear();
+    }
+
+    std::optional<nlohmann::json> RuntimeState::SerializeAnyValue(const AnyValue& value) {
+        return AnyValueToJson(value);
+    }
+
+    std::optional<AnyValue> RuntimeState::DeserializeAnyValue(const nlohmann::json& value) {
+        return JsonToAnyValue(value);
+    }
+
+    std::string RuntimeState::DescribeAnyValueType(const AnyValue& value) {
+        return AnyValueTypeName(value);
     }
 
     bool RuntimeState::SetFunction(VariableScope scope, const std::string& name, FunctionSignature function, OverwritePolicy policy) {
@@ -797,6 +984,10 @@ namespace Zeri::Core {
             m_localFunctions.clear();
             m_localVariables.emplace_back();
             m_localFunctions.emplace_back();
+        }
+        {
+            std::unique_lock lock(m_sharedMutex);
+            m_sharedVariables.clear();
         }
     }
 

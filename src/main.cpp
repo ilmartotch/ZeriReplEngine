@@ -238,6 +238,17 @@ namespace {
         return output;
     }
 
+    [[nodiscard]] std::string SharedValueToDisplay(const Zeri::Core::AnyValue& value) {
+        const auto serialized = Zeri::Core::RuntimeState::SerializeAnyValue(value);
+        if (!serialized.has_value()) {
+            return "<unsupported>";
+        }
+        if (serialized->is_string()) {
+            return serialized->get<std::string>();
+        }
+        return serialized->dump();
+    }
+
     [[nodiscard]] std::unique_ptr<Zeri::Engines::IContext> BuildContext(const std::string& name) {
         const std::string normalized = ToLower(name);
         if (normalized == "code") return std::make_unique<Zeri::Engines::Defaults::ScriptHubContext>();
@@ -488,6 +499,44 @@ namespace {
             } else {
                 terminal.WriteError("[ZERI][SESSION-001] Failed to save session: " + result.error() + ". Hint: verify write permission for the sessions directory shown by /status.");
             }
+            return true;
+        }
+
+        if (cmd.commandName == "shared") {
+            if (cmd.args.empty()) {
+                terminal.WriteInfo("Usage: /shared list | /shared clear");
+                return true;
+            }
+
+            const std::string action = ToLower(cmd.args[0]);
+            if (action == "list") {
+                const auto entries = runtimeState.ListShared();
+                std::string output = "Shared Scope\n";
+                output += "  Key | Type | Value\n";
+                output += "  ----|------|------\n";
+                for (const auto& [key, value] : entries) {
+                    output += "  ";
+                    output += key;
+                    output += " | ";
+                    output += Zeri::Core::RuntimeState::DescribeAnyValueType(value);
+                    output += " | ";
+                    output += SharedValueToDisplay(value);
+                    output += "\n";
+                }
+                if (entries.empty()) {
+                    output += "  (empty)";
+                }
+                terminal.WriteLine(output);
+                return true;
+            }
+
+            if (action == "clear") {
+                runtimeState.ClearShared();
+                terminal.WriteSuccess("Shared scope cleared.");
+                return true;
+            }
+
+            terminal.WriteInfo("Usage: /shared list | /shared clear");
             return true;
         }
 

@@ -1,3 +1,5 @@
+const fs = require("fs");
+
 const EXEC_CODE = 0x01;
 const EXEC_RESULT = 0x02;
 const REQ_INPUT = 0x03;
@@ -6,24 +8,71 @@ const SYS_EVENT = 0x05;
 
 const HEADER_SIZE = 4;
 const TYPE_SIZE = 1;
-
-let inputResolve = null;
-
-const globalScope = {};
+const MAX_PAYLOAD = 16 * 1024 * 1024;
+const STDIN_FD = 0;
+const STDOUT_FD = 1;
 
 const capturedOutput = [];
 const capturedErrors = [];
+const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+let sharedRequestId = 0;
 
 const originalLog = console.log;
 const originalError = console.error;
 
+function writeAll(fd, data) {
+    let offset = 0;
+    while (offset < data.length) {
+        const written = fs.writeSync(fd, data, offset, data.length - offset);
+        if (written <= 0) {
+            break;
+        }
+        offset += written;
+    }
+}
+
 function writeFrame(type, payload) {
     const payloadBuf = Buffer.from(payload, "utf-8");
-    const frame = Buffer.alloc(HEADER_SIZE + TYPE_SIZE + payloadBuf.length);
-    frame.writeUInt32LE(payloadBuf.length, 0);
-    frame.writeUInt8(type, HEADER_SIZE);
-    payloadBuf.copy(frame, HEADER_SIZE + TYPE_SIZE);
-    Bun.write(Bun.stdout, frame);
+    const header = Buffer.alloc(HEADER_SIZE + TYPE_SIZE);
+    header.writeUInt32LE(payloadBuf.length, 0);
+    header.writeUInt8(type, HEADER_SIZE);
+    writeAll(STDOUT_FD, Buffer.concat([header, payloadBuf]));
+}
+
+function readExact(size) {
+    if (size <= 0) {
+        return Buffer.alloc(0);
+    }
+    const out = Buffer.alloc(size);
+    let offset = 0;
+    while (offset < size) {
+        const read = fs.readSync(STDIN_FD, out, offset, size - offset, null);
+        if (read <= 0) {
+            return null;
+        }
+        offset += read;
+    }
+    return out;
+}
+
+function readFrame() {
+    const header = readExact(HEADER_SIZE + TYPE_SIZE);
+    if (!header) {
+        return null;
+    }
+    const payloadLen = header.readUInt32LE(0);
+    if (payloadLen > MAX_PAYLOAD) {
+        return null;
+    }
+    const type = header.readUInt8(HEADER_SIZE);
+    const payload = payloadLen > 0 ? readExact(payloadLen) : Buffer.alloc(0);
+    if (payload == null) {
+        return null;
+    }
+    return {
+        type,
+        payload: payload.toString("utf-8")
+    };
 }
 
 function sendSysEvent(status, extra) {
@@ -33,16 +82,15 @@ function sendSysEvent(status, extra) {
 
 function sendExecResult(output, error, exitCode) {
     writeFrame(EXEC_RESULT, JSON.stringify({
-        output: output,
-        error: error,
-        exitCode: exitCode
+        output,
+        error,
+        exitCode
     }));
 }
 
 function overrideConsole() {
     capturedOutput.length = 0;
     capturedErrors.length = 0;
-
     console.log = (...args) => {
         capturedOutput.push(args.map(String).join(" "));
     };
@@ -52,12 +100,102 @@ function overrideConsole() {
 }
 
 function restoreConsole() {
-    console.log   = originalLog;
+    console.log = originalLog;
     console.error = originalError;
 }
 
-globalThis.prompt = function(message) {
-    throw new Error("__ZERI_INPUT_REQUEST__:" + (message || ""));
+function handleSysEvent(payload) {
+    let parsed;
+    try {
+        parsed = JSON.parse(payload);
+    } catch {
+        return;
+    }
+    if (parsed.status === "TERMINATE") {
+        process.exit(0);
+    }
+}
+
+function waitForInputResponse() {
+    while (true) {
+        const frame = readFrame();
+        if (!frame) {
+            return "";
+        }
+        if (frame.type === RES_INPUT) {
+            try {
+                const parsed = JSON.parse(frame.payload);
+                return typeof parsed.value === "string" ? parsed.value : String(parsed.value ?? "");
+            } catch {
+                return frame.payload;
+            }
+        }
+        if (frame.type === SYS_EVENT) {
+            handleSysEvent(frame.payload);
+        }
+    }
+}
+
+function nextSharedRequestId() {
+    sharedRequestId += 1;
+    return sharedRequestId;
+}
+
+function waitForSharedResponse(expectedType, requestId) {
+    while (true) {
+        const frame = readFrame();
+        if (!frame) {
+            return null;
+        }
+        if (frame.type !== SYS_EVENT) {
+            continue;
+        }
+        let parsed;
+        try {
+            parsed = JSON.parse(frame.payload);
+        } catch {
+            handleSysEvent(frame.payload);
+            continue;
+        }
+        if (parsed.type === expectedType && parsed.request_id === requestId) {
+            return parsed;
+        }
+        handleSysEvent(frame.payload);
+    }
+}
+
+globalThis.prompt = function (message) {
+    writeFrame(REQ_INPUT, JSON.stringify({ prompt: String(message || "") }));
+    return waitForInputResponse();
+};
+
+globalThis.zeri = {
+    async get(key) {
+        const requestId = nextSharedRequestId();
+        writeFrame(SYS_EVENT, JSON.stringify({
+            type: "shared_get",
+            key: String(key),
+            request_id: requestId
+        }));
+        const response = waitForSharedResponse("shared_value", requestId);
+        if (!response || !Object.prototype.hasOwnProperty.call(response, "value")) {
+            return null;
+        }
+        return response.value;
+    },
+    async set(key, value) {
+        const requestId = nextSharedRequestId();
+        writeFrame(SYS_EVENT, JSON.stringify({
+            type: "shared_set",
+            key: String(key),
+            value,
+            request_id: requestId
+        }));
+        const response = waitForSharedResponse("shared_ack", requestId);
+        if (response && typeof response.error === "string" && response.error.length > 0) {
+            throw new Error(response.error);
+        }
+    }
 };
 
 async function handleExecCode(payload) {
@@ -70,31 +208,18 @@ async function handleExecCode(payload) {
     }
 
     const code = parsed.code || parsed.source || "";
-
     overrideConsole();
 
     try {
-        const fn = new Function(
-            ...Object.keys(globalScope),
-            `"use strict";\n${code}`
-        );
-        const result = fn(...Object.values(globalScope));
-
+        const fn = new AsyncFunction(`"use strict";\n${code}`);
+        const result = await fn();
         if (result !== undefined) {
             capturedOutput.push(String(result));
         }
     } catch (err) {
-        if (typeof err.message === "string" && err.message.startsWith("__ZERI_INPUT_REQUEST__:")) {
-            restoreConsole();
-            const promptMsg = err.message.slice("__ZERI_INPUT_REQUEST__:".length);
-            await handleInputRequest(promptMsg);
-            return;
-        }
-
         const errStr = capturedErrors.length > 0
             ? capturedErrors.join("\n") + "\n" + String(err)
             : String(err);
-
         restoreConsole();
         sendExecResult(capturedOutput.join("\n"), errStr, 1);
         return;
@@ -104,109 +229,22 @@ async function handleExecCode(payload) {
     sendExecResult(capturedOutput.join("\n"), null, 0);
 }
 
-async function handleInputRequest(promptMessage) {
-    writeFrame(REQ_INPUT, JSON.stringify({ prompt: promptMessage }));
-
-    const response = await waitForInputResponse();
-
-    let value = "";
-    try {
-        const parsed = JSON.parse(response);
-        value = parsed.value || "";
-    } catch {
-        value = response;
-    }
-
-    globalScope["__zeri_last_input"] = value;
-
-    const resumeCode = `var __input_result = __zeri_last_input;`;
-    await handleExecCode(JSON.stringify({ code: resumeCode }));
-}
-
-function waitForInputResponse() {
-    return new Promise((resolve) => {
-        inputResolve = resolve;
-    });
-}
-
-function handleResInput(payload) {
-    if (inputResolve) {
-        const cb = inputResolve;
-        inputResolve = null;
-        cb(payload);
-    }
-}
-
-function handleSysEvent(payload) {
-    let parsed;
-    try {
-        parsed = JSON.parse(payload);
-    } catch {
-        return;
-    }
-
-    if (parsed.status === "TERMINATE") {
-        process.exit(0);
-    }
-}
-
-class FrameDecoder {
-    constructor() {
-        this.buffer = Buffer.alloc(0);
-    }
-
-    feed(chunk) {
-        this.buffer = Buffer.concat([this.buffer, chunk]);
-        const frames = [];
-
-        while (this.buffer.length >= HEADER_SIZE + TYPE_SIZE) {
-            const payloadLen = this.buffer.readUInt32LE(0);
-
-            if (payloadLen > 16 * 1024 * 1024) {
-                this.buffer = Buffer.alloc(0);
-                break;
-            }
-
-            const totalLen = HEADER_SIZE + TYPE_SIZE + payloadLen;
-            if (this.buffer.length < totalLen) break;
-
-            const type = this.buffer.readUInt8(HEADER_SIZE);
-            const payload = this.buffer.slice(HEADER_SIZE + TYPE_SIZE, totalLen).toString("utf-8");
-
-            frames.push({ type, payload });
-            this.buffer = this.buffer.slice(totalLen);
-        }
-
-        return frames;
-    }
-}
-
 async function main() {
-    const decoder = new FrameDecoder();
-
     sendSysEvent("READY");
-
-    const stream = Bun.stdin.stream();
-    const reader = stream.getReader();
-
     while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-
-        const frames = decoder.feed(Buffer.from(value));
-
-        for (const frame of frames) {
-            switch (frame.type) {
-                case EXEC_CODE:
-                    await handleExecCode(frame.payload);
-                    break;
-                case RES_INPUT:
-                    handleResInput(frame.payload);
-                    break;
-                case SYS_EVENT:
-                    handleSysEvent(frame.payload);
-                    break;
-            }
+        const frame = readFrame();
+        if (!frame) {
+            break;
+        }
+        switch (frame.type) {
+            case EXEC_CODE:
+                await handleExecCode(frame.payload);
+                break;
+            case SYS_EVENT:
+                handleSysEvent(frame.payload);
+                break;
+            default:
+                break;
         }
     }
 }
@@ -217,53 +255,7 @@ main().catch((err) => {
 });
 
 /*
-Implements the Zeri-Wire binary protocol over stdin/stdout for bidirectional
-communication with the C++ ProcessBridge core.
-
-Wire format (matches ZeriWireProtocol.h):
-  [4 bytes] uint32 LE = payload length (N)
-  [1 byte] MsgType
-  [N bytes] JSON payload (UTF-8)
-
-Startup:
-  Sends SYS_EVENT {"status":"READY"} immediately on stdout to unblock
-  the ProcessBridge::Launch() handshake. The C++ side waits for this
-  frame before marking the sidecar as operational.
-
-Execution model:
-  Code received via EXEC_CODE is executed using new Function() with the
-  globalScope object destructured as parameters. This provides:
-  - Persistent state: variables added to globalScope survive across executions.
-  - Isolation: "use strict" prevents accidental global pollution.
-  - Safety: new Function() is preferred over raw eval() because it creates
-    a new scope while still allowing access to shared state via globalScope.
-
-Console capture:
-  console.log and console.error are temporarily overridden during execution
-  to capture all output into arrays. After execution, the originals are restored.
-  This ensures sidecar diagnostic output (if any) doesn't corrupt the wire
-  protocol on stdout.
-
-Input handling (prompt):
-  globalThis.prompt is overridden to throw a sentinel error
-  (__ZERI_INPUT_REQUEST__). When caught in handleExecCode:
-  1. A REQ_INPUT frame is sent to the C++ host with the prompt message.
-  2. The sidecar awaits a RES_INPUT frame via a Promise (waitForInputResponse).
-  3. The user's response is stored in globalScope.__zeri_last_input.
-  4. Execution resumes with a synthetic code snippet that reads the value.
-  This mechanism avoids blocking stdin (which carries the wire protocol)
-  and keeps the async read loop running during the input wait.
-
-FrameDecoder:
-  JavaScript port of the C++ FrameDecoder state machine. Uses Buffer.concat
-  for accumulation and readUInt32LE/readUInt8 for header parsing. Includes
-  the same 16MB safety cap to reject malformed frames.
-
-Shutdown:
-  On SYS_EVENT {"status":"TERMINATE"}, process.exit(0) is called immediately.
-  If the main loop throws, a SYS_EVENT CRASHED is sent before exiting with
-  code 1, allowing the C++ side to detect the failure.
-
-Dependencies: Bun native APIs only (Bun.stdin.stream, Bun.write, Buffer).
-No npm packages required.
+Implements Zeri-Wire over raw fd reads/writes for Bun sidecar execution.
+Supports synchronous in-execution IPC for prompt() and cross-language shared
+scope requests through SYS_EVENT frames while preserving EXEC_RESULT framing.
 */

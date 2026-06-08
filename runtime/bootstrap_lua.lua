@@ -127,6 +127,192 @@ local function json_extract_string_field(payload, key)
         return nil
     end
 
+    local function json_skip_ws(text, index)
+        local i = index
+        while i <= #text do
+            local ch = text:sub(i, i)
+            if ch ~= " " and ch ~= "\n" and ch ~= "\r" and ch ~= "\t" then
+                break
+            end
+            i = i + 1
+        end
+        return i
+    end
+
+    local function json_parse_string(text, index)
+        local i = index + 1
+        local out = {}
+        local escaped = false
+        while i <= #text do
+            local ch = text:sub(i, i)
+            if escaped then
+                out[#out + 1] = "\\" .. ch
+                escaped = false
+            elseif ch == "\\" then
+                escaped = true
+            elseif ch == '"' then
+                return json_unescape(table.concat(out)), i + 1
+            else
+                out[#out + 1] = ch
+            end
+            i = i + 1
+        end
+        return nil, index
+    end
+
+    local function json_parse_number(text, index)
+        local i = index
+        while i <= #text do
+            local ch = text:sub(i, i)
+            if not ch:match("[0-9%+%-%eE%.]") then
+                break
+            end
+            i = i + 1
+        end
+        local number_text = text:sub(index, i - 1)
+        local value = tonumber(number_text)
+        if value == nil then
+            return nil, index
+        end
+        return value, i
+    end
+
+    local function json_parse_value(text, index)
+        local i = json_skip_ws(text, index)
+        if i > #text then
+            return nil, i
+        end
+        local ch = text:sub(i, i)
+        if ch == '"' then
+            return json_parse_string(text, i)
+        end
+        if ch == "{" then
+            local obj = {}
+            i = json_skip_ws(text, i + 1)
+            if text:sub(i, i) == "}" then
+                return obj, i + 1
+            end
+            while i <= #text do
+                if text:sub(i, i) ~= '"' then
+                    return nil, index
+                end
+                local key
+                key, i = json_parse_string(text, i)
+                i = json_skip_ws(text, i)
+                if text:sub(i, i) ~= ":" then
+                    return nil, index
+                end
+                i = json_skip_ws(text, i + 1)
+                local value
+                value, i = json_parse_value(text, i)
+                obj[key] = value
+                i = json_skip_ws(text, i)
+                local delim = text:sub(i, i)
+                if delim == "}" then
+                    return obj, i + 1
+                end
+                if delim ~= "," then
+                    return nil, index
+                end
+                i = json_skip_ws(text, i + 1)
+            end
+            return nil, index
+        end
+        if ch == "[" then
+            local arr = {}
+            i = json_skip_ws(text, i + 1)
+            if text:sub(i, i) == "]" then
+                return arr, i + 1
+            end
+            local idx = 1
+            while i <= #text do
+                local value
+                value, i = json_parse_value(text, i)
+                arr[idx] = value
+                idx = idx + 1
+                i = json_skip_ws(text, i)
+                local delim = text:sub(i, i)
+                if delim == "]" then
+                    return arr, i + 1
+                end
+                if delim ~= "," then
+                    return nil, index
+                end
+                i = json_skip_ws(text, i + 1)
+            end
+            return nil, index
+        end
+        if text:sub(i, i + 3) == "null" then
+            return nil, i + 4
+        end
+        if text:sub(i, i + 3) == "true" then
+            return true, i + 4
+        end
+        if text:sub(i, i + 4) == "false" then
+            return false, i + 5
+        end
+        return json_parse_number(text, i)
+    end
+
+    local function json_decode(text)
+        local value, _ = json_parse_value(text, 1)
+        return value
+    end
+
+    local function lua_is_array(value)
+        if type(value) ~= "table" then
+            return false
+        end
+        local max_index = 0
+        local count = 0
+        for key, _ in pairs(value) do
+            if type(key) ~= "number" or key < 1 or key % 1 ~= 0 then
+                return false
+            end
+            if key > max_index then
+                max_index = key
+            end
+            count = count + 1
+        end
+        return max_index == count
+    end
+
+    local function json_encode_value(value)
+        local value_type = type(value)
+        if value_type == "nil" then
+            return "null"
+        end
+        if value_type == "string" then
+            return '"' .. json_escape(value) .. '"'
+        end
+        if value_type == "number" then
+            return tostring(value)
+        end
+        if value_type == "boolean" then
+            if value then
+                return "true"
+            end
+            return "false"
+        end
+        if value_type ~= "table" then
+            return "null"
+        end
+        if lua_is_array(value) then
+            local parts = {}
+            for i = 1, #value do
+                parts[#parts + 1] = json_encode_value(value[i])
+            end
+            return "[" .. table.concat(parts, ",") .. "]"
+        end
+        local parts = {}
+        for key, item in pairs(value) do
+            if type(key) == "string" then
+                parts[#parts + 1] = '"' .. json_escape(key) .. '":' .. json_encode_value(item)
+            end
+        end
+        return "{" .. table.concat(parts, ",") .. "}"
+    end
+
     local i = end_pos + 1
     local out = {}
     local escaped = false
@@ -245,6 +431,31 @@ local function wait_for_input_response()
             return ""
         end
 
+        local shared_request_id = 0
+
+        local function next_shared_request_id()
+            shared_request_id = shared_request_id + 1
+            return shared_request_id
+        end
+
+        local function wait_for_shared_response(expected_type, request_id)
+            while true do
+                local frame = read_frame()
+                if not frame then
+                    return nil
+                end
+                if frame.type == SYS_EVENT then
+                    local parsed = json_decode(frame.payload)
+                    if type(parsed) == "table" then
+                        if parsed.type == expected_type and parsed.request_id == request_id then
+                            return parsed
+                        end
+                        handle_sys_event(frame.payload)
+                    end
+                end
+            end
+        end
+
         if frame.type == RES_INPUT then
             local value = json_extract_string_field(frame.payload, "value")
             if value == nil then
@@ -321,6 +532,29 @@ local function install_io_hooks()
     proxy_io.type = original_io.type
 
     shared_env.io = proxy_io
+
+    shared_env.zeri = {
+        get = function(key)
+            local request_id = next_shared_request_id()
+            write_frame(SYS_EVENT, '{"type":"shared_get","key":"' .. json_escape(tostring(key)) .. '","request_id":' .. tostring(request_id) .. '}')
+            local response = wait_for_shared_response("shared_value", request_id)
+            if response == nil then
+                return nil
+            end
+            return response.value
+        end,
+        set = function(key, value)
+            local request_id = next_shared_request_id()
+            write_frame(
+                SYS_EVENT,
+                '{"type":"shared_set","key":"' .. json_escape(tostring(key)) .. '","value":' .. json_encode_value(value) .. ',"request_id":' .. tostring(request_id) .. '}'
+            )
+            local response = wait_for_shared_response("shared_ack", request_id)
+            if response and type(response.error) == "string" and #response.error > 0 then
+                error(response.error)
+            end
+        end
+    }
 end
 
 local function execute_code(payload)

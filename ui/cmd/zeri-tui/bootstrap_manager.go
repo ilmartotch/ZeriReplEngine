@@ -29,12 +29,13 @@ type RuntimeManifest struct {
 type RuntimeDefinition struct {
 	Name string `json:"name"`
 	Check string `json:"check"`
- Required bool `json:"required"`
+	Required bool `json:"required"`
 	Candidates []string `json:"candidates"`
 	VersionArgs []string `json:"versionArgs"`
 	MinVersion string `json:"minVersion"`
 	InstallHint string `json:"installHint"`
 	Installers map[string][]RuntimeInstaller `json:"installers"`
+	FallbackCurl string `json:"fallback_curl"`
 }
 
 type RuntimeInstaller struct {
@@ -137,7 +138,7 @@ func RunBootstrapManager() []*PreflightError {
 			Code: "BOOTSTRAP_UNKNOWN_FAILURE",
 			Check: "Bootstrap Manager",
 			Message: "Bootstrap did not complete and no runtime diagnostics were produced.",
-			Hint:    "Inspect bootstrap manager logs and runtime manifest integrity.",
+			Hint: "Inspect bootstrap manager logs and runtime manifest integrity.",
 		})
 	}
 

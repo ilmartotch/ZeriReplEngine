@@ -12,6 +12,7 @@
 #include <atomic>
 #include <expected>
 #include <filesystem>
+#include <nlohmann/json.hpp>
 #include "ContextManager.h"
 
 namespace Zeri::Engines {
@@ -70,6 +71,16 @@ namespace Zeri::Core {
         [[nodiscard]] std::any GetPersistedVariable(const std::string& key) const;
         [[nodiscard]] bool HasPersistedVariable(const std::string& key) const;
 
+        [[nodiscard]] std::optional<AnyValue> GetShared(const std::string& key) const;
+        void SetShared(const std::string& key, const AnyValue& value);
+        [[nodiscard]] std::vector<std::pair<std::string, AnyValue>> ListShared() const;
+        void DeleteShared(const std::string& key);
+        void ClearShared();
+
+        [[nodiscard]] static std::optional<nlohmann::json> SerializeAnyValue(const AnyValue& value);
+        [[nodiscard]] static std::optional<AnyValue> DeserializeAnyValue(const nlohmann::json& value);
+        [[nodiscard]] static std::string DescribeAnyValueType(const AnyValue& value);
+
         bool SetFunction(VariableScope scope, const std::string& name, FunctionSignature function, OverwritePolicy policy = OverwritePolicy::Overwrite);
         [[nodiscard]] std::optional<FunctionSignature> GetFunction(VariableScope scope, const std::string& name) const;
         [[nodiscard]] std::optional<FunctionSignature> GetFunction(const std::string& name) const;
@@ -114,6 +125,9 @@ namespace Zeri::Core {
         std::map<std::string, std::any> m_globalVariables;
         std::map<std::string, std::any> m_persistedVariables;
         mutable std::shared_mutex m_varMutex;
+
+        std::map<std::string, AnyValue> m_sharedVariables;
+        mutable std::shared_mutex m_sharedMutex;
 
         std::vector<std::map<std::string, FunctionSignature>> m_localFunctions;
         std::map<std::string, FunctionSignature> m_sessionFunctions;

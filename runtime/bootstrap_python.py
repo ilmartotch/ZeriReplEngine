@@ -22,6 +22,7 @@ _stdout_fd = sys.stdout.fileno()
 _decoder = None
 
 _global_ns = {"__builtins__": builtins}
+_shared_request_id = 0
 
 
 def _write_all(fd, data):
@@ -72,6 +73,61 @@ def _zeri_input(prompt_msg=""):
 
 
 builtins.input = _zeri_input
+
+
+def _next_shared_request_id():
+    global _shared_request_id
+    _shared_request_id += 1
+    return _shared_request_id
+
+
+def _wait_shared_response(expected_type, expected_id):
+    while True:
+        chunk = os.read(_stdin_fd, 4096)
+        if not chunk:
+            return None
+        frames = _decoder.feed(chunk)
+        for msg_type, payload in frames:
+            if msg_type == SYS_EVENT:
+                try:
+                    parsed = json.loads(payload)
+                except (json.JSONDecodeError, ValueError):
+                    _handle_sys_event(payload)
+                    continue
+                if parsed.get("type") == expected_type and parsed.get("request_id") == expected_id:
+                    return parsed
+                _handle_sys_event(payload)
+
+
+class _ZeriScopeApi:
+    @staticmethod
+    def get(key):
+        req_id = _next_shared_request_id()
+        write_frame(SYS_EVENT, json.dumps({
+            "type": "shared_get",
+            "key": str(key),
+            "request_id": req_id
+        }))
+        response = _wait_shared_response("shared_value", req_id)
+        if not response:
+            return None
+        return response.get("value", None)
+
+    @staticmethod
+    def set(key, value):
+        req_id = _next_shared_request_id()
+        write_frame(SYS_EVENT, json.dumps({
+            "type": "shared_set",
+            "key": str(key),
+            "value": value,
+            "request_id": req_id
+        }))
+        response = _wait_shared_response("shared_ack", req_id)
+        if response and response.get("error"):
+            raise RuntimeError(response.get("error"))
+
+
+_global_ns["zeri"] = _ZeriScopeApi()
 
 
 class FrameDecoder:

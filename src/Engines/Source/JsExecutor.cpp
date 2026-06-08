@@ -39,10 +39,11 @@ namespace {
     [[nodiscard]] Zeri::Engines::ExecutionOutcome ExecuteViaSidecar(
         Zeri::Bridge::ZeriWireSidecarBridge& sidecar,
         const std::string& script,
+        Zeri::Core::RuntimeState& state,
         Zeri::Ui::ITerminal& terminal,
         const std::string& context
     ) {
-        auto result = sidecar.Execute(script, terminal);
+        auto result = sidecar.Execute(script, state, terminal);
         if (!result.has_value()) {
             return std::unexpected(Zeri::Engines::ExecutionError{
                 "JS_SIDECAR_EXEC_ERR",
@@ -151,11 +152,11 @@ namespace Zeri::Engines::Defaults {
         ExecutionOutcome result;
 
         if (m_sidecarBridge.IsAlive()) {
-            result = ExecuteViaSidecar(m_sidecarBridge, script, terminal, cmd.rawInput);
+            result = ExecuteViaSidecar(m_sidecarBridge, script, state, terminal, cmd.rawInput);
         } else {
             const bool launched = m_sidecarBridge.Launch(executable, {}, bootstrapPath.string());
             if (launched) {
-                result = ExecuteViaSidecar(m_sidecarBridge, script, terminal, cmd.rawInput);
+                result = ExecuteViaSidecar(m_sidecarBridge, script, state, terminal, cmd.rawInput);
             } else {
                 terminal.WriteError("[ZERI][RUNTIME-021] JS/TS sidecar launch failed, falling back to one-shot execution. Hint: verify Bun runtime installation and bootstrap scripts.");
                 result = m_bridge.Run(

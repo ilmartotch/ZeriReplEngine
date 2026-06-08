@@ -35,7 +35,9 @@
       { "command": "/clear", "synopsis": "Clear chat history" },
       { "command": "/exit", "synopsis": "Exit the REPL" },
       { "command": "/set", "synopsis": "Store a typed variable in the current scope (--number|--string|--bool)" },
-      { "command": "/get", "synopsis": "Read a variable from the current scope" }
+      { "command": "/get", "synopsis": "Read a variable from the current scope" },
+      { "command": "/shared list", "synopsis": "List all cross-language shared keys and values" },
+      { "command": "/shared clear", "synopsis": "Clear all cross-language shared keys" }
     ],
     "code": [
       { "command": "/search", "synopsis": "Search scripts across all supported languages" }

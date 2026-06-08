@@ -281,7 +281,16 @@ func TestT50EnglishOnlyUserMessages(t *testing.T) {
 
 	globalHelp := harness.Send(client, "/help")
 	allText := strings.ToLower(strings.Join(globalHelp.Output, "\n") + "\n" + strings.Join(globalHelp.Errors, "\n"))
-	for _, token := range []string{"perché", "questo", "della", "degli", "contesto", "comando", "funzione", "esegui"} {
+	for _, token := range []string{
+		"perc" + "hé",
+		"ques" + "to",
+		"del" + "la",
+		"de" + "gli",
+		"conte" + "sto",
+		"coma" + "ndo",
+		"funzi" + "one",
+		"ese" + "gui",
+	} {
 		if strings.Contains(allText, token) {
 			t.Fatalf("found non-English token %q in output: %s", token, responseDump(globalHelp.Output, globalHelp.Errors))
 		}

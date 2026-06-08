@@ -16,6 +16,7 @@ namespace Zeri::Link {
     public:
         using ResultCallback = std::function<void(const ZeriFrame&)>;
         using InputRequestCallback = std::function<void(const std::string&)>;
+        using SystemEventCallback = std::function<void(const std::string&)>;
 
         explicit SidecarProcessBridge(std::unique_ptr<IProcessHost> host);
         ~SidecarProcessBridge();
@@ -33,9 +34,11 @@ namespace Zeri::Link {
 
         void ExecuteCode(const std::string& jsonPayload, ResultCallback callback);
         void SendInputResponse(const std::string& jsonPayload);
+        void SendSystemEvent(const std::string& jsonPayload);
         void Shutdown();
 
         void SetInputRequestHandler(InputRequestCallback handler);
+        void SetSystemEventHandler(SystemEventCallback handler);
         void SetWatchdogTimeout(std::chrono::seconds timeout);
 
     private:
@@ -58,6 +61,7 @@ namespace Zeri::Link {
         std::mutex m_callbackMutex;
         ResultCallback m_resultCallback;
         InputRequestCallback m_inputHandler;
+        SystemEventCallback m_systemEventHandler;
 
         std::mutex m_readyMutex;
         std::condition_variable m_readyCv;

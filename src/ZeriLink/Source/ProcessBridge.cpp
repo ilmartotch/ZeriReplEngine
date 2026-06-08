@@ -75,6 +75,11 @@ namespace Zeri::Link {
         SendFrame({ MsgType::RES_INPUT, jsonPayload });
     }
 
+    void SidecarProcessBridge::SendSystemEvent(const std::string& jsonPayload) {
+        if (!m_active.load()) return;
+        SendFrame({ MsgType::SYS_EVENT, jsonPayload });
+    }
+
     void SidecarProcessBridge::Shutdown() {
         bool expected = true;
         if (!m_active.compare_exchange_strong(expected, false)) {
@@ -111,6 +116,11 @@ namespace Zeri::Link {
     void SidecarProcessBridge::SetInputRequestHandler(InputRequestCallback handler) {
         std::lock_guard lock(m_callbackMutex);
         m_inputHandler = std::move(handler);
+    }
+
+    void SidecarProcessBridge::SetSystemEventHandler(SystemEventCallback handler) {
+        std::lock_guard lock(m_callbackMutex);
+        m_systemEventHandler = std::move(handler);
     }
 
     void SidecarProcessBridge::SetWatchdogTimeout(std::chrono::seconds timeout) {
@@ -200,6 +210,14 @@ namespace Zeri::Link {
             if (frame.payload.find("\"READY\"") != std::string::npos) {
                 m_ready.store(true);
                 m_readyCv.notify_one();
+            }
+            SystemEventCallback handler;
+            {
+                std::lock_guard lock(m_callbackMutex);
+                handler = m_systemEventHandler;
+            }
+            if (handler) {
+                handler(frame.payload);
             }
             break;
         }

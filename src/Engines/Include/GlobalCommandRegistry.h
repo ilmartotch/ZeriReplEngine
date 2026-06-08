@@ -13,7 +13,8 @@ namespace Zeri::Engines {
         std::string_view{ "context" },
         std::string_view{ "status" },
         std::string_view{ "reset" },
-        std::string_view{ "bug" }
+        std::string_view{ "bug" },
+        std::string_view{ "shared" }
     };
 
     [[nodiscard]] inline bool IsGlobalCommand(std::string_view name) {
