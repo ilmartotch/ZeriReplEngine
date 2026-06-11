@@ -30,6 +30,10 @@ namespace Zeri::Engines {
             return false;
         }
 
+        [[nodiscard]] virtual bool IsInitialized() const {
+            return true;
+        }
+
         [[nodiscard]] virtual ExecutionOutcome HandleRawLine(
             const std::string& line,
             Zeri::Core::RuntimeState& state,
@@ -42,6 +46,10 @@ namespace Zeri::Engines {
         }
 
         [[nodiscard]] virtual bool IsGlobalCommand(const std::string& name) const = 0;
+
+        [[nodiscard]] virtual bool RequestCancel() {
+            return false;
+        }
     };
 
     using ContextPtr = std::unique_ptr<IContext>;

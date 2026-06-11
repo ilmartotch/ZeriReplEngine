@@ -13,11 +13,13 @@ import (
 	"time"
 	"yuumi/internal/aicontext"
 	"yuumi/internal/bridge"
+	"yuumi/internal/onboarding"
 	"yuumi/internal/scripthub"
 	"yuumi/internal/system"
 	"yuumi/internal/ui"
 	"yuumi/pkg/yuumi"
 
+	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
@@ -26,6 +28,8 @@ import (
 )
 
 type statusTickMsg struct{}
+type executionSpinnerDelayMsg struct{}
+type executionSpinnerTickMsg struct{}
 
 // AppMode represents the active interaction mode of the Zeri TUI.
 type AppMode int
@@ -34,6 +38,7 @@ const (
 	ModeREPL AppMode = iota
 	ModeScriptEditor
 	ModeScriptHub
+	ModeOnboarding
 )
 
 const (
@@ -153,6 +158,12 @@ func tickStatusCmd() tea.Cmd {
 	})
 }
 
+func executionSpinnerDelayCmd() tea.Cmd {
+	return tea.Tick(500*time.Millisecond, func(time.Time) tea.Msg {
+		return executionSpinnerDelayMsg{}
+	})
+}
+
 type AppModel struct {
 	width int
 	height int
@@ -224,7 +235,7 @@ type AppModel struct {
 	scriptHub scripthub.ScriptHubModel
 }
 
-func newAppModel(b bridge.YuumiClient, enginePath string, pipeName string) AppModel {
+func newAppModel(b bridge.YuumiClient, enginePath string, pipeName string, opts appOptions, profiler *startupProfiler) AppModel {
 	ta := textarea.New()
 	ta.Placeholder = "waiting for..."
 	ta.ShowLineNumbers = false
@@ -249,6 +260,19 @@ func newAppModel(b bridge.YuumiClient, enginePath string, pipeName string) AppMo
 
 	aiCfg, _ := loadAiContextConfig()
 	aiModel := aicontext.New(aiCfg.Endpoint, aiCfg.Model)
+	pythonDetected := false
+	if manifest, err := loadRuntimeManifest(); err == nil {
+		for _, runtimeEntry := range manifest.Runtimes {
+			if strings.EqualFold(strings.TrimSpace(runtimeEntry.Name), "python") {
+				pythonDetected = true
+				break
+			}
+		}
+	}
+	onboardingRequired := needsOnboarding(opts.noOnboarding)
+	onboardingModel := onboarding.New(pythonDetected)
+	execSpinner := spinner.New()
+	execSpinner.Spinner = spinner.Dot
 
 	return AppModel{
 		width: 80,
@@ -266,6 +290,13 @@ func newAppModel(b bridge.YuumiClient, enginePath string, pipeName string) AppMo
 		pipeName: strings.TrimSpace(pipeName),
 		startupInProgress: true,
 		startupStage: "Initializing workspace...",
+		aiContext: aiModel,
+		aiSharedScope: map[string]interface{}{},
+		onboardingModel: onboardingModel,
+		onboardingActive: onboardingRequired,
+		startupOptions: opts,
+		startupProfiler: profiler,
+		executionSpinner: execSpinner,
 	}
 }
 
@@ -389,6 +420,8 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateScriptEditor(msg)
 	case ModeScriptHub:
 		return m.updateScriptHub(msg)
+	case ModeOnboarding:
+		return m.updateOnboarding(msg)
 	default:
 		return m.updateREPL(msg)
 	}
@@ -428,6 +461,20 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.startupSpinnerIndex = (m.startupSpinnerIndex + 1) % 4
 		}
 		return m, tickStatusCmd()
+	case executionSpinnerDelayMsg:
+		if m.executionInFlight && m.executionSpinnerDelayPending {
+			m.executionSpinnerVisible = true
+			m.executionSpinnerDelayPending = false
+			return m, m.executionSpinner.Tick
+		}
+		return m, nil
+	case spinner.TickMsg:
+		if m.executionSpinnerVisible {
+			var cmd tea.Cmd
+			m.executionSpinner, cmd = m.executionSpinner.Update(msg)
+			return m, cmd
+		}
+		return m, nil
 
 	case aicontext.AiConnectedMsg, aicontext.AiErrorMsg, aicontext.TokenMsg, aicontext.StreamDoneMsg, aicontext.StreamCancelledMsg, aicontext.AiStreamStartedMsg:
 		cmd := m.aiContext.ApplyMsg(msg)
@@ -467,6 +514,7 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case bridge.DisconnectedMsg:
 		m.flushEngineBatch(false)
+		m.stopExecutionSpinner()
 		m.engineState = ConnectionDisconnected
 		m.bridgeConnected = false
 		m.sandboxProcessRunning = false
@@ -485,6 +533,7 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case engineConnectedMsg:
 		m.flushEngineBatch(false)
+		m.stopExecutionSpinner()
 		m.pendingInputPrompt = ""
 		m.clearSelectionMenu()
 		m.runner = msg.Runner
@@ -506,6 +555,7 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case engineReconnectFailedMsg:
 		m.flushEngineBatch(false)
+		m.stopExecutionSpinner()
 		m.engineState = ConnectionDisconnected
 		m.bridgeConnected = false
 		m.sandboxProcessRunning = false
@@ -527,6 +577,10 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case bridge.StreamBatchEndMsg:
 		m.flushEngineBatch(false)
+		if strings.EqualFold(strings.TrimSpace(msg.Reason), "execution_cancelled") {
+			m.addSystemMessage("^C  (execution cancelled)")
+		}
+		m.stopExecutionSpinner()
 		return m, nil
 
 	case bridge.ScriptActionResponseMsg:
@@ -608,6 +662,7 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case startupFailedMsg:
 		m.flushEngineBatch(false)
+		m.stopExecutionSpinner()
 		m.pendingInputPrompt = ""
 		m.clearSelectionMenu()
 		m.startupInProgress = false
@@ -622,6 +677,7 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case startupReadyMsg:
 		m.flushEngineBatch(false)
+		m.stopExecutionSpinner()
 		m.pendingInputPrompt = ""
 		m.clearSelectionMenu()
 		m.runner = msg.Runner
@@ -636,6 +692,18 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.startupLogPath = strings.TrimSpace(msg.LogPath)
 		m.engineState = ConnectionConnected
 		m.bridgeConnected = true
+		if m.onboardingActive {
+			m.mode = ModeOnboarding
+		}
+		if m.startupProfiler != nil {
+			m.startupProfiler.Mark("handshake → first prompt rendered")
+			if m.startupOptions.profileStartup {
+				m.startupProfiler.Print()
+			}
+		}
+		if m.startupOptions.profileStartup || m.startupOptions.exitAfterReady {
+			return m, tea.Quit
+		}
 		m.recalculateLayout()
 		m.refreshViewport()
 		if m.bridge != nil {
@@ -749,6 +817,10 @@ func (m AppModel) updateScriptEditor(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case bridge.StreamBatchEndMsg:
 		m.flushEngineBatch(false)
+		if strings.EqualFold(strings.TrimSpace(msg.Reason), "execution_cancelled") {
+			m.addSystemMessage("^C  (execution cancelled)")
+		}
+		m.stopExecutionSpinner()
 		return m, nil
 
 	case bridge.ScriptActionResponseMsg:
@@ -820,6 +892,11 @@ func (m AppModel) updateScriptHub(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case scripthub.CloseMsg:
+		if m.onboardingHubOpen {
+			m.onboardingHubOpen = false
+			m.mode = ModeOnboarding
+			return m, nil
+		}
 		m.mode = ModeREPL
 		return m, nil
 
@@ -828,11 +905,122 @@ func (m AppModel) updateScriptHub(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pendingScriptIntent = ScriptEditorIntentEdit
 		m.scriptEditor = ui.NewScriptEditorWithContent(msg.Entry.Lang, m.width, m.height, msg.Entry.Name, msg.Entry.Content)
 		return m, nil
+	case onboarding.TutorialHubAutoCloseMsg:
+		if m.onboardingHubOpen {
+			m.onboardingHubOpen = false
+			m.mode = ModeOnboarding
+			var action onboarding.TutorialAction
+			m.onboardingModel, action = m.onboardingModel.Update(onboarding.TutorialHubAutoCloseMsg{})
+			return m, m.applyOnboardingAction(action)
+		}
+		return m, nil
 	}
 
 	var cmd tea.Cmd
 	m.scriptHub, cmd = m.scriptHub.Update(msg)
 	return m, cmd
+}
+
+func (m AppModel) updateOnboarding(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch typed := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = typed.Width
+		m.height = typed.Height
+		m.recalculateLayout()
+		m.onboardingModel.SetSize(typed.Width, typed.Height)
+		return m, nil
+	case tea.PasteMsg:
+		return m, m.applyInputPaste(typed.Content)
+	case bridge.StreamBatchEndMsg:
+		if strings.EqualFold(strings.TrimSpace(typed.Reason), "execution_cancelled") {
+			m.addSystemMessage("^C  (execution cancelled)")
+		}
+		m.stopExecutionSpinner()
+		if m.onboardingModel.Step() == onboarding.StepRunCode {
+			var action onboarding.TutorialAction
+			m.onboardingModel, action = m.onboardingModel.Update(onboarding.TutorialRunCompletedMsg())
+			return m, m.applyOnboardingAction(action)
+		}
+		if m.onboardingModel.Step() == onboarding.StepSaveScript {
+			var action onboarding.TutorialAction
+			m.onboardingModel, action = m.onboardingModel.Update(onboarding.TutorialSaveCompletedMsg())
+			return m, m.applyOnboardingAction(action)
+		}
+		return m, nil
+	case executionSpinnerDelayMsg:
+		if m.executionInFlight && m.executionSpinnerDelayPending {
+			m.executionSpinnerVisible = true
+			m.executionSpinnerDelayPending = false
+			return m, m.executionSpinner.Tick
+		}
+		return m, nil
+	case spinner.TickMsg:
+		if m.executionSpinnerVisible {
+			var cmd tea.Cmd
+			m.executionSpinner, cmd = m.executionSpinner.Update(typed)
+			return m, cmd
+		}
+		return m, nil
+	case onboarding.TutorialCommandMsg:
+		var action onboarding.TutorialAction
+		m.onboardingModel, action = m.onboardingModel.Update(typed)
+		return m, m.applyOnboardingAction(action)
+	case tea.KeyPressMsg:
+		if normalisedKeyPress(typed) == "ctrl+h" || normalisedKeyPress(typed) == "ctrl+c" {
+			var action onboarding.TutorialAction
+			m.onboardingModel, action = m.onboardingModel.Update(typed)
+			return m, m.applyOnboardingAction(action)
+		}
+		if (typed.String() == "enter" || typed.String() == "return") && !typed.Mod.Contains(tea.ModShift) {
+			raw := strings.TrimSpace(m.input.Value())
+			if raw == "" {
+				return m, nil
+			}
+			m.input.Reset()
+			m.input.SetHeight(1)
+			var action onboarding.TutorialAction
+			m.onboardingModel, action = m.onboardingModel.Update(onboarding.TutorialCommandMsg{Input: raw})
+			return m, m.applyOnboardingAction(action)
+		}
+		var cmd tea.Cmd
+		m.input, cmd = m.input.Update(typed)
+		return m, cmd
+	case scripthub.CloseMsg:
+		if m.onboardingHubOpen {
+			m.onboardingHubOpen = false
+			m.mode = ModeOnboarding
+			return m, nil
+		}
+		return m, nil
+	}
+
+	return m, nil
+}
+
+func (m *AppModel) applyOnboardingAction(action onboarding.TutorialAction) tea.Cmd {
+	switch action.Kind {
+	case onboarding.TutorialActionSendCommand:
+		command := strings.TrimSpace(action.Payload)
+		if command == "" {
+			return nil
+		}
+		m.addUserMessage(command)
+		m.executionSubmitted()
+		return tea.Batch(m.bridge.SendDataCmd(command), executionSpinnerDelayCmd())
+	case onboarding.TutorialActionOpenScriptHub:
+		runtimes := availableScriptHubRuntimes()
+		m.scriptHub = scripthub.New(m.bridge, runtimes, m.width, m.height)
+		m.onboardingHubOpen = true
+		m.mode = ModeScriptHub
+		return tea.Batch(m.scriptHub.Init(), onboarding.TutorialHubAutoCloseCmd())
+	case onboarding.TutorialActionMarkCompleted:
+		_ = saveOnboardingCompleted()
+		m.onboardingActive = false
+		m.mode = ModeREPL
+		m.addSystemMessage("Onboarding completed. Welcome to Zeri.")
+		return nil
+	}
+	return nil
 }
 
 func (m AppModel) View() tea.View {
@@ -841,6 +1029,8 @@ func (m AppModel) View() tea.View {
 		return m.viewScriptEditor()
 	case ModeScriptHub:
 		return m.viewScriptHub()
+	case ModeOnboarding:
+		return m.viewOnboarding()
 	default:
 		return m.viewREPL()
 	}
@@ -889,6 +1079,31 @@ func (m AppModel) viewREPL() tea.View {
 
 func (m AppModel) viewScriptHub() tea.View {
 	v := tea.NewView(m.scriptHub.View())
+	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
+	return v
+}
+
+func (m AppModel) viewOnboarding() tea.View {
+	pad := lg.NewStyle().Padding(1, 2)
+	header := ui.RenderHeader(m.width, m.height)
+	statusBar := ui.RenderStatusBar(m.width, m.currentDisplayContextPath(), m.bridgeConnected, m.memoryMB, m.sandboxProcessRunning, "Interactive onboarding")
+	title := lg.NewStyle().Foreground(ui.ColourVolt).Bold(true).Render("Getting started")
+	instruction := lg.NewStyle().Foreground(ui.ColourWhite).Render(ui.NormaliseContent(m.onboardingModel.Instruction()))
+	feedback := ""
+	if strings.TrimSpace(m.onboardingModel.Feedback()) != "" {
+		feedback = lg.NewStyle().Foreground(ui.ColourAcidGreen).Render(ui.NormaliseContent(m.onboardingModel.Feedback()))
+	}
+	input := m.renderInputArea()
+	content := lg.JoinVertical(lg.Left, title, instruction, feedback, input)
+	panel := lg.NewStyle().
+		Border(lg.RoundedBorder()).
+		BorderForeground(ui.ColourElectricBlue).
+		Padding(1, 2).
+		Width(max(56, m.width-6)).
+		Render(content)
+	full := lg.JoinVertical(lg.Left, header, panel, statusBar)
+	v := tea.NewView(pad.Render(full))
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
 	return v
@@ -1241,6 +1456,9 @@ func (m AppModel) renderAiStreamingPanel() string {
 }
 
 func (m AppModel) statusActivityLabel() string {
+	if m.executionSpinnerVisible {
+		return m.executionSpinner.View() + " Running command..."
+	}
 	if m.aiContext.Checking() {
 		frames := []string{"⠋", "⠙", "⠹", "⠸"}
 		frame := frames[m.startupSpinnerIndex%len(frames)]
@@ -1252,6 +1470,18 @@ func (m AppModel) statusActivityLabel() string {
 		return frame + " AI generating"
 	}
 	return ""
+}
+
+func (m *AppModel) executionSubmitted() {
+	m.executionInFlight = true
+	m.executionSpinnerVisible = false
+	m.executionSpinnerDelayPending = true
+}
+
+func (m *AppModel) stopExecutionSpinner() {
+	m.executionInFlight = false
+	m.executionSpinnerVisible = false
+	m.executionSpinnerDelayPending = false
 }
 
 func (m AppModel) renderCodePreviewPanel() string {
@@ -1494,6 +1724,11 @@ func (m AppModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	if normalizedKey == "ctrl+c" {
+		if m.executionInFlight {
+			m.executionSpinnerDelayPending = false
+			m.executionSpinnerVisible = true
+			return m, m.bridge.SendCommandPayloadCmd(map[string]interface{}{"type": "cancel_execution"})
+		}
 		return m, tea.Quit
 	}
 
@@ -1749,7 +1984,8 @@ func (m AppModel) handleSubmit() (tea.Model, tea.Cmd) {
 			m.activeLanguage = ""
 			m.addSystemMessage("Session reset.")
 			m.refreshViewport()
-			return m, m.bridge.SendDataCmd("/reset")
+			m.executionSubmitted()
+			return m, tea.Batch(m.bridge.SendDataCmd("/reset"), executionSpinnerDelayCmd())
 		}
 		m.addSystemMessage("Reset cancelled.")
 		return m, nil
@@ -1769,7 +2005,8 @@ func (m AppModel) handleSubmit() (tea.Model, tea.Cmd) {
 			m.addUserMessage(trimmed)
 			m.exitAiContext()
 			m.queuePendingContextTitleIfSwitch(trimmed)
-			return m, m.bridge.SendDataCmd(trimmed)
+			m.executionSubmitted()
+			return m, tea.Batch(m.bridge.SendDataCmd(trimmed), executionSpinnerDelayCmd())
 		}
 	}
 
@@ -1790,11 +2027,13 @@ func (m AppModel) handleSubmit() (tea.Model, tea.Cmd) {
 		if m.bridge != nil {
 			m.pendingAiPrompt = trimmed
 			m.pendingAiPromptSystem = systemPrompt
-			return m, m.bridge.SendCommandPayloadCmd(map[string]interface{}{"type": "shared_scope_snapshot"})
+			m.executionSubmitted()
+			return m, tea.Batch(m.bridge.SendCommandPayloadCmd(map[string]interface{}{"type": "shared_scope_snapshot"}), executionSpinnerDelayCmd())
 		}
 		return m, m.aiContext.BeginRequest(trimmed, systemPrompt)
 	}
-	return m, m.bridge.SendDataCmd(trimmed)
+	m.executionSubmitted()
+	return m, tea.Batch(m.bridge.SendDataCmd(trimmed), executionSpinnerDelayCmd())
 }
 
 func (m AppModel) handleScriptSaveMenuConfirm() (tea.Model, tea.Cmd) {

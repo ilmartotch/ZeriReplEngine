@@ -58,19 +58,32 @@ namespace {
 
 namespace Zeri::Engines::Defaults {
 
-    RubyContext::RubyContext() {
-        const auto health = Zeri::Core::SystemGuard::CheckEnvironment();
-        if (const auto* runtime = health.GetRuntime("ruby"); runtime != nullptr && runtime->available) {
-            m_executor = std::make_shared<RubyExecutor>(*runtime);
-        } else {
-            Zeri::Core::ScriptRuntime missingRuntime;
-            missingRuntime.language = "ruby";
-            m_executor = std::make_shared<RubyExecutor>(missingRuntime);
-        }
-    }
+    RubyContext::RubyContext() = default;
 
     void RubyContext::OnEnter(Zeri::Ui::ITerminal& terminal) {
+        if (!m_initialized) {
+            const auto health = Zeri::Core::SystemGuard::CheckEnvironment();
+            if (const auto* runtime = health.GetRuntime("ruby"); runtime != nullptr && runtime->available) {
+                m_executor = std::make_shared<RubyExecutor>(*runtime);
+            } else {
+                Zeri::Core::ScriptRuntime missingRuntime;
+                missingRuntime.language = "ruby";
+                m_executor = std::make_shared<RubyExecutor>(missingRuntime);
+            }
+            m_initialized = true;
+        }
         terminal.WriteInfo("Ruby context active. Use /new <name>, /run, /list, /edit <name>, /show <name>, /delete <name>, /history <name>, /diff <name> <v1> <v2>, /rollback <name> <version>, /search <query>.");
+    }
+
+    bool RubyContext::RequestCancel() {
+        if (!m_executor) {
+            return false;
+        }
+        auto concrete = std::dynamic_pointer_cast<RubyExecutor>(m_executor);
+        if (!concrete) {
+            return false;
+        }
+        return concrete->CancelActiveExecution();
     }
 
     ExecutionOutcome RubyContext::HandleCommand(

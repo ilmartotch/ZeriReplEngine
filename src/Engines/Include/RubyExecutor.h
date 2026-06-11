@@ -19,6 +19,7 @@ namespace Zeri::Engines::Defaults {
             Zeri::Core::RuntimeState& state,
             Zeri::Ui::ITerminal& terminal
         ) override;
+        [[nodiscard]] bool CancelActiveExecution();
 
         [[nodiscard]] ExecutionType GetType() const override {
             return ExecutionType::RubyScript;

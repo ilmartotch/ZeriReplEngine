@@ -120,6 +120,12 @@ namespace Zeri::Engines::Defaults {
         m_sidecarBridge.Shutdown();
     }
 
+    bool RubyExecutor::CancelActiveExecution() {
+        m_sidecarBridge.Shutdown();
+        m_bridge.Terminate();
+        return true;
+    }
+
     ExecutionOutcome RubyExecutor::Execute(
         const Command& cmd,
         Zeri::Core::RuntimeState& state,

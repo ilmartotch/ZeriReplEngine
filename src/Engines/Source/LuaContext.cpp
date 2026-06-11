@@ -10,19 +10,32 @@
 
 namespace Zeri::Engines::Defaults {
 
-    LuaContext::LuaContext() {
-        const auto health = Zeri::Core::SystemGuard::CheckEnvironment();
-        if (const auto* runtime = health.GetRuntime("lua"); runtime != nullptr && runtime->available) {
-            m_executor = std::make_shared<LuaExecutor>(*runtime);
-        } else {
-            Zeri::Core::ScriptRuntime missingRuntime;
-            missingRuntime.language = "lua";
-            m_executor = std::make_shared<LuaExecutor>(missingRuntime);
-        }
-    }
+    LuaContext::LuaContext() = default;
 
     void LuaContext::OnEnter(Zeri::Ui::ITerminal& terminal) {
+        if (!m_initialized) {
+            const auto health = Zeri::Core::SystemGuard::CheckEnvironment();
+            if (const auto* runtime = health.GetRuntime("lua"); runtime != nullptr && runtime->available) {
+                m_executor = std::make_shared<LuaExecutor>(*runtime);
+            } else {
+                Zeri::Core::ScriptRuntime missingRuntime;
+                missingRuntime.language = "lua";
+                m_executor = std::make_shared<LuaExecutor>(missingRuntime);
+            }
+            m_initialized = true;
+        }
         terminal.WriteInfo("Lua context active. Use /new <name>, /run, /list, /edit <name>, /show <name>, /delete <name>, /history <name>, /diff <name> <v1> <v2>, /rollback <name> <version>, /search <query>.");
+    }
+
+    bool LuaContext::RequestCancel() {
+        if (!m_executor) {
+            return false;
+        }
+        auto concrete = std::dynamic_pointer_cast<LuaExecutor>(m_executor);
+        if (!concrete) {
+            return false;
+        }
+        return concrete->CancelActiveExecution();
     }
 
     ExecutionOutcome LuaContext::HandleCommand(

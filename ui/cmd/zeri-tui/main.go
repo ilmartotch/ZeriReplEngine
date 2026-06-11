@@ -22,14 +22,21 @@ func main() {
 		fmt.Println(formatVersionOutput())
 		os.Exit(0)
 	}
+	opts, err := parseAppOptions(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[ZERI][CLI-001] %v. Hint: run zeri --version or use supported options --no-onboarding --profile-startup --exit-after-ready.\n", err)
+		os.Exit(1)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	profiler := newStartupProfiler(opts.profileStartup)
 
 	if err := ensureZeriDirectories(); err != nil {
 		fmt.Fprintf(os.Stderr, "[ZERI][SESSION-010] Storage initialization failed: %v. Hint: verify write permissions for user data directories.\n", err)
 		os.Exit(1)
 	}
+	profiler.Mark("binary entry → preflight complete")
 
 	engineName := "zeri-engine"
 	if runtime.GOOS == "windows" {
@@ -57,12 +64,12 @@ func main() {
 	pipeName := resolvePipeName()
 
 	realBridge := bridge.NewRealYuumiClient(nil)
-	m := newAppModel(realBridge, enginePath, pipeName)
+	m := newAppModel(realBridge, enginePath, pipeName, opts, profiler)
 
 	p := tea.NewProgram(m)
 
 	realBridge.SetProgram(p)
-	runStartupFlowAsync(ctx, p, realBridge, enginePath, pipeName)
+	runStartupFlowAsync(ctx, p, realBridge, enginePath, pipeName, profiler)
 
 	finalModel, err := p.Run()
 	if err != nil {
@@ -74,7 +81,9 @@ func main() {
 		model.CloseRuntimeResources()
 	}
 
-	fmt.Println("Goodbye from Zeri.")
+	if !opts.profileStartup && !opts.exitAfterReady {
+		fmt.Println("Goodbye from Zeri.")
+	}
 	os.Exit(0)
 }
 

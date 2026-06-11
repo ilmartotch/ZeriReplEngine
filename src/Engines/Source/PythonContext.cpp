@@ -10,19 +10,32 @@
 
 namespace Zeri::Engines::Defaults {
 
-    PythonContext::PythonContext() {
-        const auto health = Zeri::Core::SystemGuard::CheckEnvironment();
-        if (const auto* runtime = health.GetRuntime("python"); runtime != nullptr && runtime->available) {
-            m_executor = std::make_shared<PythonExecutor>(*runtime);
-        } else {
-            Zeri::Core::ScriptRuntime missingRuntime;
-            missingRuntime.language = "python";
-            m_executor = std::make_shared<PythonExecutor>(missingRuntime);
-        }
-    }
+    PythonContext::PythonContext() = default;
 
     void PythonContext::OnEnter(Zeri::Ui::ITerminal& terminal) {
+        if (!m_initialized) {
+            const auto health = Zeri::Core::SystemGuard::CheckEnvironment();
+            if (const auto* runtime = health.GetRuntime("python"); runtime != nullptr && runtime->available) {
+                m_executor = std::make_shared<PythonExecutor>(*runtime);
+            } else {
+                Zeri::Core::ScriptRuntime missingRuntime;
+                missingRuntime.language = "python";
+                m_executor = std::make_shared<PythonExecutor>(missingRuntime);
+            }
+            m_initialized = true;
+        }
         terminal.WriteInfo("Python context active. Use /new <name>, /run, /list, /edit <name>, /show <name>, /delete <name>, /history <name>, /diff <name> <v1> <v2>, /rollback <name> <version>, /search <query>.");
+    }
+
+    bool PythonContext::RequestCancel() {
+        if (!m_executor) {
+            return false;
+        }
+        auto concrete = std::dynamic_pointer_cast<PythonExecutor>(m_executor);
+        if (!concrete) {
+            return false;
+        }
+        return concrete->CancelActiveExecution();
     }
 
     ExecutionOutcome PythonContext::HandleCommand(

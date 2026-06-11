@@ -128,6 +128,17 @@ namespace Zeri::Ui {
     }
 
     void BridgeTerminal::EnqueueCommand(const std::string& payload) {
+        if (payload == "__cancel_execution__") {
+            std::function<void()> cancelHandler;
+            {
+                std::lock_guard lock(m_mutex);
+                cancelHandler = m_cancelExecutionHandler;
+            }
+            if (cancelHandler) {
+                cancelHandler();
+            }
+            return;
+        }
         std::lock_guard lock(m_mutex);
         m_commandQueue.push(payload);
         m_cv.notify_one();
@@ -142,6 +153,11 @@ namespace Zeri::Ui {
     void BridgeTerminal::RequestShutdown() {
         m_shutdown.store(true, std::memory_order_release);
         m_cv.notify_all();
+    }
+
+    void BridgeTerminal::SetCancelExecutionHandler(std::function<void()> handler) {
+        std::lock_guard lock(m_mutex);
+        m_cancelExecutionHandler = std::move(handler);
     }
 
 }

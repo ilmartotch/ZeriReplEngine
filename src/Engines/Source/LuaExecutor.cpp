@@ -161,6 +161,12 @@ namespace Zeri::Engines::Defaults {
         m_sidecarBridge.Shutdown();
     }
 
+    bool LuaExecutor::CancelActiveExecution() {
+        m_sidecarBridge.Shutdown();
+        m_bridge.Terminate();
+        return true;
+    }
+
     ExecutionOutcome LuaExecutor::Execute(
         const Command& cmd,
         Zeri::Core::RuntimeState& state,

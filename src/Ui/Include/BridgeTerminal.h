@@ -8,6 +8,7 @@
 #include <atomic>
 #include <string>
 #include <optional>
+#include <functional>
 
 namespace Zeri::Ui {
 
@@ -33,6 +34,7 @@ namespace Zeri::Ui {
         void EnqueueInputResponse(const std::string& payload);
         void EmitBatchEnd(const std::string& reason);
         void RequestShutdown();
+        void SetCancelExecutionHandler(std::function<void()> handler);
 
         [[nodiscard]] OutputSink& GetSink() { return m_sink; }
 
@@ -47,6 +49,7 @@ namespace Zeri::Ui {
         std::condition_variable m_cv;
         std::atomic<bool> m_shutdown{ false };
         std::atomic<int> m_readDepth{ 0 };
+        std::function<void()> m_cancelExecutionHandler;
     };
 
 }

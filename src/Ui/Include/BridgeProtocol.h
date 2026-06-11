@@ -12,6 +12,7 @@ inline constexpr const char* kBatchEndBeforeInputRequest = "before_input_request
 inline constexpr const char* kBatchEndContextTransition = "context_transition";
 inline constexpr const char* kBatchEndRuntimeIdle = "runtime_idle";
 inline constexpr const char* kBatchEndEngineShutdown = "engine_shutdown";
+inline constexpr const char* kBatchEndExecutionCancelled = "execution_cancelled";
 
 }
 

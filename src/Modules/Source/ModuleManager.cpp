@@ -1,7 +1,6 @@
 #include "../Include/ModuleManager.h"
 #include "../../Core/Include/AppPaths.h"
 #include <fstream>
-#include <iostream>
 #include <nlohmann/json.hpp>
 
 namespace fs = std::filesystem;
@@ -81,8 +80,7 @@ namespace Zeri::Modules {
                     }
                 }
             }
-        } catch (const std::exception& e) {
-            std::cerr << "[ModuleManager] Exception during background scan: " << e.what() << "\n";
+        } catch (const std::exception&) {
         }
         m_isScanning.store(false, std::memory_order_release);
     }
@@ -111,8 +109,7 @@ namespace Zeri::Modules {
                         }
                     }
                 }
-            } catch (const std::exception& e) {
-                std::cerr << "[ModuleManager] Auto-detect failed for " << dirPath << ": " << e.what() << "\n";
+            } catch (const std::exception&) {
             }
             
             return manifest;
@@ -134,9 +131,7 @@ namespace Zeri::Modules {
             manifest.type = j.value("type", "");
             manifest.entryPoint = j.value("entry_point", "");
 
-        } catch (const nlohmann::json::exception& e) {
-            std::cerr << "[ModuleManager] Failed to parse manifest: "
-                      << manifestPath << " — " << e.what() << "\n";
+        } catch (const nlohmann::json::exception&) {
         }
 
         if (manifest.name.empty()) manifest.name = dirPath.filename().string();

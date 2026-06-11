@@ -31,7 +31,7 @@ type startupReadyMsg struct {
 	LogPath  string
 }
 
-func runStartupFlowAsync(ctx context.Context, p *tea.Program, bridgeClient *bridge.RealYuumiClient, enginePath string, pipeName string) {
+func runStartupFlowAsync(ctx context.Context, p *tea.Program, bridgeClient *bridge.RealYuumiClient, enginePath string, pipeName string, profiler *startupProfiler) {
 	go func() {
 		warnings := make([]string, 0)
 		sessionTempDir := resolveSessionTempDir()
@@ -71,6 +71,9 @@ func runStartupFlowAsync(ctx context.Context, p *tea.Program, bridgeClient *brid
 			p.Send(startupFailedMsg{Errors: []string{"Engine startup failed. Check required permissions and local dependencies."}, LogPath: logPath})
 			return
 		}
+		if profiler != nil {
+			profiler.Mark("engine spawn → IPC socket available")
+		}
 
 		p.Send(startupPhaseMsg{Title: "Connecting bridge..."})
 		client, err := yuumi.Connect(pipeName)
@@ -89,6 +92,9 @@ func runStartupFlowAsync(ctx context.Context, p *tea.Program, bridgeClient *brid
 			}
 			p.Send(startupFailedMsg{Errors: userErrors, LogPath: logPath})
 			return
+		}
+		if profiler != nil {
+			profiler.Mark("IPC connect → handshake validated")
 		}
 
 		runner.SetClient(client)

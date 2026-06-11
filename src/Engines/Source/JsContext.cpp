@@ -12,18 +12,32 @@ namespace Zeri::Engines::Defaults {
 
     JsContext::JsContext(bool typescript)
         : m_typescript(typescript) {
-        const auto health = Zeri::Core::SystemGuard::CheckEnvironment();
-        if (const auto* runtime = health.GetRuntime("js"); runtime != nullptr && runtime->available) {
-            m_executor = std::make_shared<JsExecutor>(*runtime, m_typescript);
-        } else {
-            Zeri::Core::ScriptRuntime missingRuntime;
-            missingRuntime.language = "js";
-            m_executor = std::make_shared<JsExecutor>(missingRuntime, m_typescript);
-        }
     }
 
     void JsContext::OnEnter(Zeri::Ui::ITerminal& terminal) {
+        if (!m_initialized) {
+            const auto health = Zeri::Core::SystemGuard::CheckEnvironment();
+            if (const auto* runtime = health.GetRuntime("js"); runtime != nullptr && runtime->available) {
+                m_executor = std::make_shared<JsExecutor>(*runtime, m_typescript);
+            } else {
+                Zeri::Core::ScriptRuntime missingRuntime;
+                missingRuntime.language = "js";
+                m_executor = std::make_shared<JsExecutor>(missingRuntime, m_typescript);
+            }
+            m_initialized = true;
+        }
         terminal.WriteInfo(DisplayName() + " context active. Use /new <name>, /run, /list, /edit <name>, /show <name>, /delete <name>, /history <name>, /diff <name> <v1> <v2>, /rollback <name> <version>, /search <query>.");
+    }
+
+    bool JsContext::RequestCancel() {
+        if (!m_executor) {
+            return false;
+        }
+        auto concrete = std::dynamic_pointer_cast<JsExecutor>(m_executor);
+        if (!concrete) {
+            return false;
+        }
+        return concrete->CancelActiveExecution();
     }
 
     ExecutionOutcome JsContext::HandleCommand(

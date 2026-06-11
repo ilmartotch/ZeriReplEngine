@@ -16,15 +16,18 @@ namespace Zeri::Engines::Defaults {
         [[nodiscard]] std::string GetPrompt() const override { return "zeri::lua>"; }
 
         void OnEnter(Zeri::Ui::ITerminal& terminal) override;
+        [[nodiscard]] bool IsInitialized() const override { return m_initialized; }
 
         [[nodiscard]] ExecutionOutcome HandleCommand(
             const Command& cmd,
             Zeri::Core::RuntimeState& state,
             Zeri::Ui::ITerminal& terminal
         ) override;
+        [[nodiscard]] bool RequestCancel() override;
 
     private:
         std::shared_ptr<IExecutor> m_executor;
+        bool m_initialized{ false };
     };
 
 }

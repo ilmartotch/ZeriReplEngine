@@ -103,6 +103,12 @@ namespace Zeri::Engines::Defaults {
         m_sidecarBridge.Shutdown();
     }
 
+    bool PythonExecutor::CancelActiveExecution() {
+        m_sidecarBridge.Shutdown();
+        m_bridge.Terminate();
+        return true;
+    }
+
     ExecutionOutcome PythonExecutor::Execute(
         const Command& cmd,
         Zeri::Core::RuntimeState& state,

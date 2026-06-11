@@ -17,6 +17,7 @@
 | SESSION-004 | Failed to save session on shutdown: `<error>`. | Automatic save during engine shutdown fails. | Ensure sessions path is writable (`/status`). |
 | SESSION-010 | Storage initialization failed: `<error>`. | Go TUI fails to create/resolve local storage directories at startup. | Verify write permissions for user data directories. |
 | SESSION-011 | Unable to resolve executable path: `<error>`. | Go TUI cannot resolve its own executable path. | Reinstall zeri or launch it from a valid installation directory. |
+| CLI-001 | Unknown option: `<option>`. | Unsupported CLI option passed to `zeri`. | Use supported options: `--no-onboarding`, `--profile-startup`, `--exit-after-ready`. |
 | PARSE-001 | Empty system command. | `!` is used without an actual shell command. | Use `!<command>` (example: `!echo hello`). |
 | PARSE-002 | `<parse message>`. | Meta parser rejects malformed input (for example unclosed quote). | Fix syntax and retry. |
 | PARSE-003 | Unknown command. | Pipe operator `|` or unsupported token pattern is detected in command path. | Run `/help` to see available commands. |

@@ -328,8 +328,6 @@ namespace Zeri::Core {
 
     RuntimeState::RuntimeState()
         : m_moduleManager(std::make_unique<Zeri::Modules::ModuleManager>()) {
-        m_moduleManager->StartBackgroundScan();
-
         auto sessionPath = Zeri::Core::ResolveSessionPath();
         auto loadResult = LoadSession(sessionPath);
         if (!loadResult.has_value()) {

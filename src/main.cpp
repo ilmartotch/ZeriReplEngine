@@ -40,6 +40,7 @@
 #include <exception>
 #include <sstream>
 #include <filesystem>
+#include <atomic>
 
 #ifndef ZERI_ENGINE_VERSION
 #define ZERI_ENGINE_VERSION "unknown"
@@ -1131,6 +1132,8 @@ int RunMain(int argc, char* argv[]) {
             type == "run_script"
         ) {
             bridgeTerminal->EnqueueCommand(std::string(kBridgeRequestPrefix) + msg.dump());
+        } else if (type == "cancel_execution") {
+            bridgeTerminal->EnqueueCommand("__cancel_execution__");
         }
     });
 
@@ -1178,8 +1181,19 @@ int RunMain(int argc, char* argv[]) {
     Zeri::Engines::Defaults::PluginLoader pluginLoader(runtimeState, terminal);
     Zeri::Engines::Defaults::LuaPluginLoader luaPluginLoader(runtimeState, terminal);
     const auto pluginDirectory = Zeri::Engines::Defaults::PluginLoader::ResolveDefaultPluginDirectory();
-    pluginLoader.LoadAll(pluginDirectory);
-    luaPluginLoader.LoadAll(pluginDirectory);
+    bool deferredBackgroundStarted = false;
+    std::atomic<bool> executionInProgress{ false };
+    std::atomic<Zeri::Engines::IContext*> activeExecutionContext{ nullptr };
+    std::atomic<bool> executionCancelAcknowledged{ false };
+    bridgeTerminal->SetCancelExecutionHandler([&executionInProgress, &activeExecutionContext, &executionCancelAcknowledged] {
+        if (!executionInProgress.load(std::memory_order_acquire)) {
+            return;
+        }
+        auto* context = activeExecutionContext.load(std::memory_order_acquire);
+        if (context != nullptr && context->RequestCancel()) {
+            executionCancelAcknowledged.store(true, std::memory_order_release);
+        }
+    });
 
     if (!Zeri::Core::HelpCatalog::Instance().IsLoaded()) {
         const auto& error = Zeri::Core::HelpCatalog::Instance().LastError();
@@ -1208,6 +1222,15 @@ int RunMain(int argc, char* argv[]) {
         if (!inputOpt.has_value()) break;
 
         std::string input = *inputOpt;
+        if (!deferredBackgroundStarted) {
+            deferredBackgroundStarted = true;
+            std::thread([&runtimeState] {
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                runtimeState.GetModuleManager().StartBackgroundScan();
+            }).detach();
+            pluginLoader.LoadAll(pluginDirectory);
+            luaPluginLoader.LoadAll(pluginDirectory);
+        }
 
         if (HandleBridgeRequest(
             input,
@@ -1227,10 +1250,18 @@ int RunMain(int argc, char* argv[]) {
 
         auto* activeContext = runtimeState.GetCurrentContext();
         if (activeContext != nullptr && activeContext->WantsRawInput()) {
+            executionInProgress.store(true, std::memory_order_release);
+            activeExecutionContext.store(activeContext, std::memory_order_release);
             auto outcome = activeContext->HandleRawLine(input, runtimeState, terminal);
+            executionInProgress.store(false, std::memory_order_release);
+            activeExecutionContext.store(nullptr, std::memory_order_release);
             HandleOutcome(outcome, terminal);
             AppendCommandHistory(commandHistory, input, outcome.has_value(), outcome.has_value() ? "OK" : outcome.error().code);
-            bridgeTerminal->EmitBatchEnd(Zeri::Ui::kBatchEndExecutionComplete);
+            if (executionCancelAcknowledged.exchange(false, std::memory_order_acq_rel)) {
+                bridgeTerminal->EmitBatchEnd(Zeri::Ui::kBatchEndExecutionCancelled);
+            } else {
+                bridgeTerminal->EmitBatchEnd(Zeri::Ui::kBatchEndExecutionComplete);
+            }
             continue;
         }
 
@@ -1248,6 +1279,8 @@ int RunMain(int argc, char* argv[]) {
             continue;
         }
 
+        executionInProgress.store(true, std::memory_order_release);
+        activeExecutionContext.store(runtimeState.GetCurrentContext(), std::memory_order_release);
         bool ok = ExecuteStage(
             input,
             dispatcher,
@@ -1259,8 +1292,14 @@ int RunMain(int argc, char* argv[]) {
             &pluginLoader,
             &luaPluginLoader
         );
+        executionInProgress.store(false, std::memory_order_release);
+        activeExecutionContext.store(nullptr, std::memory_order_release);
         AppendCommandHistory(commandHistory, input, ok, ok ? "OK" : "FAILED");
-        bridgeTerminal->EmitBatchEnd(Zeri::Ui::kBatchEndExecutionComplete);
+        if (executionCancelAcknowledged.exchange(false, std::memory_order_acq_rel)) {
+            bridgeTerminal->EmitBatchEnd(Zeri::Ui::kBatchEndExecutionCancelled);
+        } else {
+            bridgeTerminal->EmitBatchEnd(Zeri::Ui::kBatchEndExecutionComplete);
+        }
 
         if (!ok) {
             continue;
