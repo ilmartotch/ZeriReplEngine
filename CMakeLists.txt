@@ -98,13 +98,11 @@ set(ENGINE_SOURCES
     src/Engines/Source/DefaultDispatcher.cpp
     src/Engines/Source/CachedDispatcher.cpp
     src/Engines/Source/CompletionEngine.cpp
+    src/Engines/Source/LuaPluginLoader.cpp
+    src/Engines/Source/PluginLoader.cpp
     src/Engines/Source/ScriptEditorContext.cpp
     src/Engines/Source/ScriptHubContext.cpp
     src/Engines/Source/CustomCommandContext.cpp
-)
-
-set(EXTENSION_SOURCES
-    src/Extensions/Source/ExtensionManager.cpp
 )
 
 set(ZERILINK_SOURCES
@@ -136,7 +134,6 @@ add_executable(ZeriEngine
     ${CORE_SOURCES}
     ${MODULE_SOURCES}
     ${ENGINE_SOURCES}
-    ${EXTENSION_SOURCES}
     ${ZERILINK_SOURCES}
     ${BRIDGE_SOURCES}
     ${UI_SOURCES}
@@ -149,7 +146,6 @@ target_include_directories(ZeriEngine PRIVATE
     src/Core/Include
     src/Modules/Include
     src/Engines/Include
-    src/Extensions/Include
     src/ZeriLink/Include
     src/Ui/Include
     "${CMAKE_CURRENT_BINARY_DIR}/generated"
@@ -163,6 +159,9 @@ target_link_libraries(ZeriEngine PRIVATE
     ${LUA_LIBRARIES}
     yuumi::yuumi
 )
+if(UNIX AND NOT APPLE)
+    target_link_libraries(ZeriEngine PRIVATE dl)
+endif()
 target_compile_definitions(ZeriEngine PRIVATE ZERI_ENGINE_VERSION="${CMAKE_PROJECT_VERSION}")
 
 if(MSVC)

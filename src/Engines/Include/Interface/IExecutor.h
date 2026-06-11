@@ -29,6 +29,5 @@ namespace Zeri::Engines {
 Contract for any "Black Box" capable of executing code.
 The `Execute` method receives the `RuntimeState` reference, allowing the executor to modify the application's
 memory or context side-effects, and the active `ITerminal` reference to emit output during execution without
-constructor-level terminal coupling. `GetType` is used by the ExtensionManager to register the executor against
-a specific `ExecutionType`.
+constructor-level terminal coupling. `GetType` identifies the executor's execution category.
 */

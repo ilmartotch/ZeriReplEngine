@@ -9,7 +9,9 @@
 #include "Engines/Include/CustomCommandContext.h"
 #include "Engines/Include/JsContext.h"
 #include "Engines/Include/LuaContext.h"
+#include "Engines/Include/LuaPluginLoader.h"
 #include "Engines/Include/MathContext.h"
+#include "Engines/Include/PluginLoader.h"
 #include "Engines/Include/PythonContext.h"
 #include "Engines/Include/ScriptEditorContext.h"
 #include "Engines/Include/ScriptHubContext.h"
@@ -249,7 +251,10 @@ namespace {
         return serialized->dump();
     }
 
-    [[nodiscard]] std::unique_ptr<Zeri::Engines::IContext> BuildContext(const std::string& name) {
+    [[nodiscard]] std::unique_ptr<Zeri::Engines::IContext> BuildContext(
+        const std::string& name,
+        Zeri::Engines::Defaults::PluginLoader* pluginLoader = nullptr
+    ) {
         const std::string normalized = ToLower(name);
         if (normalized == "code") return std::make_unique<Zeri::Engines::Defaults::ScriptHubContext>();
         if (normalized == "customcommand") return std::make_unique<Zeri::Engines::Defaults::CustomCommandContext>();
@@ -261,6 +266,12 @@ namespace {
         if (normalized == "math") return std::make_unique<Zeri::Engines::Defaults::MathContext>();
         if (normalized == "sandbox") return std::make_unique<Zeri::Engines::Defaults::SandboxContext>();
         if (normalized == "setup") return std::make_unique<Zeri::Engines::Defaults::SetupContext>();
+        if (pluginLoader != nullptr) {
+            auto pluginContext = pluginLoader->CreateContext(normalized);
+            if (pluginContext != nullptr) {
+                return pluginContext;
+            }
+        }
         return nullptr;
     }
 
@@ -348,7 +359,8 @@ namespace {
         const std::string& ctxName,
         Zeri::Core::RuntimeState& runtimeState,
         Zeri::Ui::ITerminal& terminal,
-        Zeri::Ui::OutputSink* sink = nullptr
+        Zeri::Ui::OutputSink* sink = nullptr,
+        Zeri::Engines::Defaults::PluginLoader* pluginLoader = nullptr
     ) {
         const std::string normalized = ToLower(ctxName);
 
@@ -373,7 +385,8 @@ namespace {
 
         const auto* current = runtimeState.GetCurrentContext();
         const std::string currentName = current ? ToLower(current->GetName()) : std::string{ "global" };
-        if (!CanReachContext(currentName, normalized)) {
+        const bool pluginContextTarget = pluginLoader != nullptr && pluginLoader->HasContext(normalized);
+        if (!CanReachContext(currentName, normalized) && !pluginContextTarget) {
             terminal.WriteError(
                 "[ZERI][CONTEXT-002] Context switch is not allowed from $" + currentName + " to $" + normalized +
                 ". Hint: run /context to list reachable targets."
@@ -381,7 +394,7 @@ namespace {
             return false;
         }
 
-        auto nextContext = BuildContext(normalized);
+        auto nextContext = BuildContext(normalized, pluginLoader);
         if (!nextContext) {
             terminal.WriteError("[ZERI][CONTEXT-003] Unknown context: " + ctxName + ". Hint: run /context and use one listed target.");
             return false;
@@ -400,7 +413,9 @@ namespace {
         Zeri::Ui::ITerminal& terminal,
         Zeri::Ui::OutputSink* sink = nullptr,
         const Zeri::Core::StartupDiagnosticsReport* startupDiagnostics = nullptr,
-        const std::vector<Zeri::Core::BugSnapshotCommandRecord>* commandHistory = nullptr
+        const std::vector<Zeri::Core::BugSnapshotCommandRecord>* commandHistory = nullptr,
+        Zeri::Engines::Defaults::PluginLoader* pluginLoader = nullptr,
+        Zeri::Engines::Defaults::LuaPluginLoader* luaPluginLoader = nullptr
     ) {
         if (!Zeri::Engines::IsGlobalCommand(cmd.commandName)) {
             return false;
@@ -425,6 +440,19 @@ namespace {
                     result += " [active]";
                 }
                 result += '\n';
+            }
+
+            if (pluginLoader != nullptr) {
+                for (const auto& plugin : pluginLoader->LoadedPlugins()) {
+                    if (!plugin.hasContext || plugin.contextName.empty()) {
+                        continue;
+                    }
+                    result += "  $";
+                    result += plugin.contextName;
+                    result += " — Plugin context from ";
+                    result += plugin.name;
+                    result += "\n";
+                }
             }
 
             result += "\nUse $<context> to switch to a reachable context.";
@@ -470,6 +498,74 @@ namespace {
                 result += "    Unavailable: unable to resolve user data directory from environment.";
             }
             terminal.WriteLine(result);
+            return true;
+        }
+
+        if (cmd.commandName == "plugins") {
+            const auto nativePlugins = pluginLoader == nullptr
+                ? std::vector<Zeri::Engines::Defaults::NativePluginInfo>{}
+                : pluginLoader->LoadedPlugins();
+            const auto luaPlugins = luaPluginLoader == nullptr
+                ? std::vector<Zeri::Engines::Defaults::LuaPluginInfo>{}
+                : luaPluginLoader->LoadedPlugins();
+
+            const std::filesystem::path pluginDirectory = pluginLoader == nullptr
+                ? Zeri::Engines::Defaults::PluginLoader::ResolveDefaultPluginDirectory()
+                : pluginLoader->PluginDirectory();
+
+            const std::size_t totalCount = nativePlugins.size() + luaPlugins.size();
+            if (totalCount == 0) {
+                terminal.WriteLine(
+                    "No plugins loaded. Plugin directory: " + pluginDirectory.string() +
+                    "\nRegistry: https://github.com/ilmartotch/zeri-plugins"
+                );
+                return true;
+            }
+
+            std::string output = "Loaded plugins (" + std::to_string(totalCount) + "):\n";
+            for (const auto& plugin : nativePlugins) {
+                std::string kinds;
+                if (plugin.hasExecutor) {
+                    kinds += "executor";
+                }
+                if (plugin.hasContext) {
+                    if (!kinds.empty()) {
+                        kinds += " + ";
+                    }
+                    kinds += "context";
+                }
+                if (kinds.empty()) {
+                    kinds = "metadata";
+                }
+
+                output += "  " + plugin.name + "  v" + plugin.version + "  [" + kinds + "]";
+                if (!plugin.description.empty()) {
+                    output += "  " + plugin.description;
+                }
+                output += "\n";
+            }
+
+            for (const auto& plugin : luaPlugins) {
+                std::string commandList;
+                for (std::size_t i = 0; i < plugin.commands.size(); ++i) {
+                    if (i > 0) {
+                        commandList += ", ";
+                    }
+                    commandList += "/" + plugin.commands[i];
+                }
+                output += "  " + plugin.name + "  v" + plugin.version + "  [lua commands]";
+                if (!commandList.empty()) {
+                    output += "  " + commandList;
+                }
+                if (!plugin.description.empty()) {
+                    output += "  " + plugin.description;
+                }
+                output += "\n";
+            }
+
+            output += "Plugin directory: " + pluginDirectory.string();
+            output += "\nRegistry: https://github.com/ilmartotch/zeri-plugins";
+            terminal.WriteLine(output);
             return true;
         }
 
@@ -660,7 +756,9 @@ namespace {
         Zeri::Ui::ITerminal& terminal,
         Zeri::Ui::OutputSink* sink = nullptr,
         const Zeri::Core::StartupDiagnosticsReport* startupDiagnostics = nullptr,
-        const std::vector<Zeri::Core::BugSnapshotCommandRecord>* commandHistory = nullptr
+        const std::vector<Zeri::Core::BugSnapshotCommandRecord>* commandHistory = nullptr,
+        Zeri::Engines::Defaults::PluginLoader* pluginLoader = nullptr,
+        Zeri::Engines::Defaults::LuaPluginLoader* luaPluginLoader = nullptr
     ) {
         auto dispatchResult = dispatcher.Dispatch(stageInput);
         if (!dispatchResult.has_value()) {
@@ -703,22 +801,36 @@ namespace {
                 terminal.WriteError("[ZERI][PARSE-004] Invalid context switch syntax. Hint: use $<context> without flags or extra arguments.");
                 return false;
             }
-            return SwitchContext(cmd.commandName, runtimeState, terminal, sink);
+            return SwitchContext(cmd.commandName, runtimeState, terminal, sink, pluginLoader);
 
         case Zeri::Engines::InputType::SystemOp:
             return ExecuteSystemOp(cmd, terminal);
 
         case Zeri::Engines::InputType::Expression:
         case Zeri::Engines::InputType::Command: {
+            if (cmd.type == Zeri::Engines::InputType::Command && luaPluginLoader != nullptr) {
+                if (luaPluginLoader->ExecuteCommand(cmd, terminal)) {
+                    return true;
+                }
+            }
+
             auto* currentCtx = runtimeState.GetCurrentContext();
             if (!currentCtx) {
                 terminal.WriteError("[ZERI][CONTEXT-004] No active context is available. Hint: run /reset to restore the global context.");
                 return false;
             }
 
-            if (cmd.type == Zeri::Engines::InputType::Command &&
-                currentCtx->IsGlobalCommand(cmd.commandName)) {
-                if (HandleGlobalCommand(cmd, runtimeState, terminal, sink, startupDiagnostics, commandHistory)) {
+            if (cmd.type == Zeri::Engines::InputType::Command) {
+                if (HandleGlobalCommand(
+                    cmd,
+                    runtimeState,
+                    terminal,
+                    sink,
+                    startupDiagnostics,
+                    commandHistory,
+                    pluginLoader,
+                    luaPluginLoader
+                )) {
                     return true;
                 }
             }
@@ -786,7 +898,9 @@ namespace {
         Zeri::Ui::ITerminal& terminal,
         Zeri::Ui::OutputSink& sink,
         const Zeri::Core::StartupDiagnosticsReport* startupDiagnostics,
-        const std::vector<Zeri::Core::BugSnapshotCommandRecord>* commandHistory
+        const std::vector<Zeri::Core::BugSnapshotCommandRecord>* commandHistory,
+        Zeri::Engines::Defaults::PluginLoader* pluginLoader,
+        Zeri::Engines::Defaults::LuaPluginLoader* luaPluginLoader
     ) {
         if (!encodedInput.starts_with(kBridgeRequestPrefix)) {
             return false;
@@ -872,20 +986,50 @@ namespace {
             }
 
             const std::string switchCmd = "$" + lang;
-            if (!ExecuteStage(switchCmd, dispatcher, runtimeState, terminal, &sink, startupDiagnostics, commandHistory)) {
+            if (!ExecuteStage(
+                switchCmd,
+                dispatcher,
+                runtimeState,
+                terminal,
+                &sink,
+                startupDiagnostics,
+                commandHistory,
+                pluginLoader,
+                luaPluginLoader
+            )) {
                 SendScriptActionResponse(sink, "run_script", false, BridgeRequestError("run_script", "context switch failed."));
                 return true;
             }
 
             const std::string runCmd = "/run \"" + name + "\"";
-            if (!ExecuteStage(runCmd, dispatcher, runtimeState, terminal, &sink, startupDiagnostics, commandHistory)) {
+            if (!ExecuteStage(
+                runCmd,
+                dispatcher,
+                runtimeState,
+                terminal,
+                &sink,
+                startupDiagnostics,
+                commandHistory,
+                pluginLoader,
+                luaPluginLoader
+            )) {
                 SendScriptActionResponse(sink, "run_script", false, BridgeRequestError("run_script", "execution failed."));
                 return true;
             }
 
             if (!previousContext.empty() && previousContext != lang) {
                 const std::string restoreCmd = "$" + previousContext;
-                (void)ExecuteStage(restoreCmd, dispatcher, runtimeState, terminal, &sink, startupDiagnostics, commandHistory);
+                (void)ExecuteStage(
+                    restoreCmd,
+                    dispatcher,
+                    runtimeState,
+                    terminal,
+                    &sink,
+                    startupDiagnostics,
+                    commandHistory,
+                    pluginLoader,
+                    luaPluginLoader
+                );
             }
 
             SendScriptActionResponse(sink, "run_script", true);
@@ -1031,6 +1175,12 @@ int RunMain(int argc, char* argv[]) {
     Zeri::Ui::ITerminal& terminal = *terminalOwner;
     EmitStartupDiagnostics(startupDiagnostics, &terminal);
 
+    Zeri::Engines::Defaults::PluginLoader pluginLoader(runtimeState, terminal);
+    Zeri::Engines::Defaults::LuaPluginLoader luaPluginLoader(runtimeState, terminal);
+    const auto pluginDirectory = Zeri::Engines::Defaults::PluginLoader::ResolveDefaultPluginDirectory();
+    pluginLoader.LoadAll(pluginDirectory);
+    luaPluginLoader.LoadAll(pluginDirectory);
+
     if (!Zeri::Core::HelpCatalog::Instance().IsLoaded()) {
         const auto& error = Zeri::Core::HelpCatalog::Instance().LastError();
         const std::string details = error.empty() ? "No additional diagnostics available." : error;
@@ -1066,7 +1216,9 @@ int RunMain(int argc, char* argv[]) {
             terminal,
             *sinkOwner,
             &startupDiagnostics,
-            &commandHistory
+            &commandHistory,
+            &pluginLoader,
+            &luaPluginLoader
         )) {
             bridgeTerminal->EmitBatchEnd(Zeri::Ui::kBatchEndExecutionComplete);
             continue;
@@ -1084,19 +1236,29 @@ int RunMain(int argc, char* argv[]) {
 
         const std::string lowered = ToLower(input);
         if (lowered == "$code") {
-            (void)SwitchContext("code", runtimeState, terminal, sinkOwner.get());
+            (void)SwitchContext("code", runtimeState, terminal, sinkOwner.get(), &pluginLoader);
             AppendCommandHistory(commandHistory, input, true, "CONTEXT_SWITCH");
             bridgeTerminal->EmitBatchEnd(Zeri::Ui::kBatchEndExecutionComplete);
             continue;
         }
         if (lowered == "$customcommand") {
-            (void)SwitchContext("customcommand", runtimeState, terminal, sinkOwner.get());
+            (void)SwitchContext("customcommand", runtimeState, terminal, sinkOwner.get(), &pluginLoader);
             AppendCommandHistory(commandHistory, input, true, "CONTEXT_SWITCH");
             bridgeTerminal->EmitBatchEnd(Zeri::Ui::kBatchEndExecutionComplete);
             continue;
         }
 
-        bool ok = ExecuteStage(input, dispatcher, runtimeState, terminal, sinkOwner.get(), &startupDiagnostics, &commandHistory);
+        bool ok = ExecuteStage(
+            input,
+            dispatcher,
+            runtimeState,
+            terminal,
+            sinkOwner.get(),
+            &startupDiagnostics,
+            &commandHistory,
+            &pluginLoader,
+            &luaPluginLoader
+        );
         AppendCommandHistory(commandHistory, input, ok, ok ? "OK" : "FAILED");
         bridgeTerminal->EmitBatchEnd(Zeri::Ui::kBatchEndExecutionComplete);
 

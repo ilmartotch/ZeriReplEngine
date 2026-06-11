@@ -1,0 +1,8 @@
+{
+  "name": "hello-context",
+  "version": "1.0.0",
+  "description": "Adds $hello context",
+  "author": "Zeri SDK",
+  "abi_version": 1,
+  "entry": "plugin-hello.dll"
+}

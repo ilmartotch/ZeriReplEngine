@@ -34,6 +34,14 @@ See `docs/user-guide/` for the complete user guide:
 - `docs/user-guide/sandbox.md`
 - `docs/cross-language.md`
 
+Plugin SDK documentation:
+
+- `docs/plugin-sdk.md`
+
+## Plugin registry
+
+Official curated plugin registry: https://github.com/ilmartotch/zeri-plugins
+
 ## License
 
 MIT — see [LICENSE](LICENSE)

@@ -7,6 +7,8 @@ vcpkg_installed
 docs/*
 !docs/manual-test-checklist.md
 !docs/error-codes.md
+!docs/plugin-sdk.md
+!docs/plugin-manifest-schema.json
 !docs/user-guide/
 !docs/user-guide/*.md
 vcpkg/buildtrees/

@@ -30,6 +30,7 @@
       { "command": "/save", "synopsis": "Save session state to disk" },
       { "command": "/load", "synopsis": "Load a saved session from disk" },
       { "command": "/status", "synopsis": "Show engine diagnostics and persistence paths" },
+      { "command": "/plugins", "synopsis": "List loaded native and Lua plugins with status" },
       { "command": "/reset", "synopsis": "Reset the current session" },
       { "command": "/bug report", "synopsis": "Show bug-report instructions" },
       { "command": "/bug snapshot", "synopsis": "Create a diagnostic snapshot file for issue attachments" },
