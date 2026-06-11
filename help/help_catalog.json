@@ -8,12 +8,13 @@
     { "name": "lua", "description": "Lua scripting editor and executor" },
     { "name": "python", "description": "Python scripting editor and executor" },
     { "name": "ruby", "description": "Ruby scripting editor and executor" },
+    { "name": "ai", "description": "AI-assisted code generation context" },
     { "name": "math", "description": "Mathematical expression engine" },
     { "name": "sandbox", "description": "Module development environment" },
     { "name": "setup", "description": "Configuration wizard" }
   ],
   "reachable": {
-    "global": ["global", "code", "customcommand", "math", "sandbox", "setup"],
+    "global": ["global", "code", "customcommand", "ai", "math", "sandbox", "setup"],
     "code": ["global", "lua", "python", "js", "ts", "ruby"],
     "default": ["global"]
   },

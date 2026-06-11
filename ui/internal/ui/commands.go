@@ -14,31 +14,31 @@ type CompletionEntry struct {
 }
 
 type helpCatalogContextEntry struct {
-	Name        string `json:"name"`
+	Name string `json:"name"`
 	Description string `json:"description"`
 }
 
 type helpCatalogCommandEntry struct {
-	Command  string `json:"command"`
+	Command string `json:"command"`
 	Synopsis string `json:"synopsis"`
 }
 
 type helpCatalogData struct {
-	Contexts  []helpCatalogContextEntry            `json:"contexts"`
+	Contexts []helpCatalogContextEntry            `json:"contexts"`
 	Reachable map[string][]string                  `json:"reachable"`
-	Commands  map[string][]helpCatalogCommandEntry `json:"commands"`
+	Commands map[string][]helpCatalogCommandEntry `json:"commands"`
 }
 
 type CommandScopeValidation struct {
-	Allowed       bool
-	Command       string
+	Allowed bool
+	Command string
 	CurrentGroup  string
 	AllowedGroups []string
 }
 
 var (
 	helpCatalogOnce sync.Once
-	helpCatalog     helpCatalogData
+	helpCatalog helpCatalogData
 )
 
 func defaultHelpCatalog() helpCatalogData {
@@ -52,12 +52,13 @@ func defaultHelpCatalog() helpCatalogData {
 			{Name: "lua", Description: "Lua scripting editor and executor"},
 			{Name: "python", Description: "Python scripting editor and executor"},
 			{Name: "ruby", Description: "Ruby scripting editor and executor"},
+			{Name: "ai", Description: "AI-assisted code generation context"},
 			{Name: "math", Description: "Mathematical expression engine"},
 			{Name: "sandbox", Description: "Module development environment"},
 			{Name: "setup", Description: "Configuration wizard"},
 		},
 		Reachable: map[string][]string{
-			"global":  {"global", "code", "customcommand", "math", "sandbox", "setup"},
+			"global":  {"global", "code", "customcommand", "ai", "math", "sandbox", "setup"},
 			"code":    {"global", "lua", "python", "js", "ts", "ruby"},
 			"default": {"global"},
 		},

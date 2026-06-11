@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"yuumi/internal/aicontext"
 	"yuumi/internal/bridge"
 	"yuumi/internal/scripthub"
 	"yuumi/internal/system"
@@ -246,6 +247,9 @@ func newAppModel(b bridge.YuumiClient, enginePath string, pipeName string) AppMo
 	vp.SetWidth(72)
 	vp.SetHeight(10)
 
+	aiCfg, _ := loadAiContextConfig()
+	aiModel := aicontext.New(aiCfg.Endpoint, aiCfg.Model)
+
 	return AppModel{
 		width: 80,
 		height: 24,
@@ -350,6 +354,14 @@ func (m *AppModel) recalculateLayout() {
 
 func (m *AppModel) refreshViewport() {
 	content := ui.RenderAllMessages(m.messages, m.width-4)
+	if m.aiModeActive && m.aiContext.IsStreaming() {
+		panel := m.renderAiStreamingPanel()
+		if content == "" {
+			content = panel
+		} else {
+			content = content + "\n\n" + panel
+		}
+	}
 	if m.codePreview.Visible {
 		panel := m.renderCodePreviewPanel()
 		if content == "" {
@@ -416,6 +428,32 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.startupSpinnerIndex = (m.startupSpinnerIndex + 1) % 4
 		}
 		return m, tickStatusCmd()
+
+	case aicontext.AiConnectedMsg, aicontext.AiErrorMsg, aicontext.TokenMsg, aicontext.StreamDoneMsg, aicontext.StreamCancelledMsg, aicontext.AiStreamStartedMsg:
+		cmd := m.aiContext.ApplyMsg(msg)
+		switch typed := msg.(type) {
+		case aicontext.AiConnectedMsg:
+			m.addSystemMessage("AI context ready.")
+		case aicontext.AiErrorMsg:
+			m.addErrorMessage(strings.TrimSpace(typed.Err))
+		case aicontext.TokenMsg:
+			m.refreshViewport()
+		case aicontext.StreamDoneMsg:
+			content := strings.TrimSpace(m.aiContext.CurrentResponse())
+			if content != "" {
+				if m.aiContext.ShowActions() {
+					lang := m.aiActionLanguage()
+					content += "\n\n[R] Run in $" + lang + "  [E] Edit in Script Editor  [S] Save to Hub"
+				}
+				m.addZeriMessage(content, m.currentMessageContextTitle())
+			}
+		case aicontext.StreamCancelledMsg:
+			content := strings.TrimSpace(m.aiContext.CurrentResponse())
+			if content != "" {
+				m.addZeriMessage(content, m.currentMessageContextTitle())
+			}
+		}
+		return m, cmd
 
 	case bridge.ConnectedMsg:
 		m.engineState = ConnectionConnected
@@ -497,6 +535,20 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case bridge.SharedScopeSnapshotMsg:
+		m.aiSharedScope = map[string]interface{}{}
+		for key, value := range msg.Entries {
+			m.aiSharedScope[key] = value
+		}
+		if strings.TrimSpace(m.pendingAiPrompt) != "" {
+			prompt := m.pendingAiPrompt
+			systemPrompt := m.pendingAiPromptSystem
+			m.pendingAiPrompt = ""
+			m.pendingAiPromptSystem = ""
+			return m, m.aiContext.BeginRequest(prompt, systemPrompt)
+		}
+		return m, nil
+
 	case bridge.InputRequestMsg:
 		m.flushEngineBatch(false)
 		m.clearSelectionMenu()
@@ -525,6 +577,9 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.flushEngineBatch(false)
 		m.pendingInputPrompt = ""
 		m.clearSelectionMenu()
+		if m.aiModeActive {
+			return m, nil
+		}
 		if msg.Active {
 			normalizedContext := normaliseContextName(msg.ContextName)
 			m.activeContext = leafContextFromPath(normalizedContext)
@@ -797,7 +852,7 @@ func (m AppModel) viewREPL() tea.View {
 
 	header := ui.RenderHeader(m.width, m.height)
 	if m.startupInProgress || m.startupFailed {
-		statusBar := ui.RenderStatusBar(m.width, displayContextPath, m.bridgeConnected, m.memoryMB, m.sandboxProcessRunning)
+		statusBar := ui.RenderStatusBar(m.width, displayContextPath, m.bridgeConnected, m.memoryMB, m.sandboxProcessRunning, m.statusActivityLabel())
 		startupPanel := m.renderStartupPanel()
 		full := lg.JoinVertical(lg.Left, header, startupPanel, statusBar)
 		v := tea.NewView(pad.Render(full))
@@ -807,7 +862,7 @@ func (m AppModel) viewREPL() tea.View {
 	}
 
 	if m.runtimeCenterVisible {
-		statusBar := ui.RenderStatusBar(m.width, displayContextPath, m.bridgeConnected, m.memoryMB, m.sandboxProcessRunning)
+		statusBar := ui.RenderStatusBar(m.width, displayContextPath, m.bridgeConnected, m.memoryMB, m.sandboxProcessRunning, m.statusActivityLabel())
 		runtimePanel := m.renderRuntimeCenterModal()
 		full := lg.JoinVertical(lg.Left, header, runtimePanel, statusBar)
 		v := tea.NewView(pad.Render(full))
@@ -817,7 +872,7 @@ func (m AppModel) viewREPL() tea.View {
 	}
 
 	chatArea := m.viewport.View()
-	statusBar := ui.RenderStatusBar(m.width, displayContextPath, m.bridgeConnected, m.memoryMB, m.sandboxProcessRunning)
+	statusBar := ui.RenderStatusBar(m.width, displayContextPath, m.bridgeConnected, m.memoryMB, m.sandboxProcessRunning, m.statusActivityLabel())
 	inputSection := m.renderInputArea()
 
 	sections := []string{header, chatArea, inputSection}
@@ -1166,6 +1221,39 @@ func (m *AppModel) applyScriptEditorPaste(content string) tea.Cmd {
 	return cmd
 }
 
+func (m AppModel) renderAiStreamingPanel() string {
+	frames := []string{"⠋", "⠙", "⠹", "⠸"}
+	frame := frames[m.startupSpinnerIndex%len(frames)]
+	header := lg.NewStyle().
+		Foreground(ui.ColourWhite).
+		Background(ui.ColourElectricBlue).
+		Bold(true).
+		Padding(0, 1).
+		Render(frame + " AI generating...")
+	body := lg.NewStyle().
+		Foreground(ui.ColourWhite).
+		Padding(0, 1).
+		Render(ui.NormaliseContent(m.aiContext.CurrentResponse()))
+	return lg.NewStyle().
+		Border(lg.RoundedBorder()).
+		BorderForeground(ui.ColourElectricBlue).
+		Render(lg.JoinVertical(lg.Left, header, body))
+}
+
+func (m AppModel) statusActivityLabel() string {
+	if m.aiContext.Checking() {
+		frames := []string{"⠋", "⠙", "⠹", "⠸"}
+		frame := frames[m.startupSpinnerIndex%len(frames)]
+		return frame + " AI endpoint check"
+	}
+	if m.aiContext.IsStreaming() {
+		frames := []string{"⠋", "⠙", "⠹", "⠸"}
+		frame := frames[m.startupSpinnerIndex%len(frames)]
+		return frame + " AI generating"
+	}
+	return ""
+}
+
 func (m AppModel) renderCodePreviewPanel() string {
 	title := "CODE VIEW"
 	if m.codePreview.ScriptName != "" {
@@ -1384,6 +1472,24 @@ func (m AppModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		default:
 			return m, nil
+		}
+	}
+
+	if m.aiModeActive && m.aiContext.IsStreaming() && normalizedKey == "ctrl+c" {
+		m.aiContext.CancelStreaming()
+		m.addSystemMessage("AI generation cancelled. Partial output preserved.")
+		return m, nil
+	}
+
+	if m.aiModeActive && m.aiContext.ShowActions() && strings.TrimSpace(m.input.Value()) == "" {
+		switch normalizedKey {
+		case "r":
+			return m, m.runAiCodeBlock()
+		case "e":
+			m.editAiCodeBlock()
+			return m, nil
+		case "s":
+			return m, m.saveAiCodeBlock()
 		}
 	}
 
@@ -1653,6 +1759,20 @@ func (m AppModel) handleSubmit() (tea.Model, tea.Cmd) {
 	m.historyIndex = -1
 	m.draftBuffer = ""
 
+	if strings.EqualFold(trimmed, "$ai") {
+		m.addUserMessage(trimmed)
+		return m.enterAiContext()
+	}
+
+	if m.aiModeActive {
+		if target, ok := parseDirectContextSwitchCommand(trimmed); ok && target != "ai" {
+			m.addUserMessage(trimmed)
+			m.exitAiContext()
+			m.queuePendingContextTitleIfSwitch(trimmed)
+			return m, m.bridge.SendDataCmd(trimmed)
+		}
+	}
+
 	if strings.HasPrefix(trimmed, "/") {
 		return m.handleSlashCommand(trimmed)
 	}
@@ -1665,6 +1785,15 @@ func (m AppModel) handleSubmit() (tea.Model, tea.Cmd) {
 	m.queuePendingContextTitleIfSwitch(trimmed)
 
 	m.addUserMessage(trimmed)
+	if m.aiModeActive {
+		systemPrompt := aicontext.BuildSystemPrompt(m.aiPromptLanguage(), m.aiSharedScope, m.aiContext.SystemPromptOverride())
+		if m.bridge != nil {
+			m.pendingAiPrompt = trimmed
+			m.pendingAiPromptSystem = systemPrompt
+			return m, m.bridge.SendCommandPayloadCmd(map[string]interface{}{"type": "shared_scope_snapshot"})
+		}
+		return m, m.aiContext.BeginRequest(trimmed, systemPrompt)
+	}
 	return m, m.bridge.SendDataCmd(trimmed)
 }
 
@@ -1932,6 +2061,9 @@ func (m AppModel) submitScript(name string, code string, runAfterSave bool) tea.
 }
 
 func (m *AppModel) consumeEngineOutput(content string) {
+	if shared := aicontext.ParseSharedScopeTable(content); shared != nil {
+		m.aiSharedScope = shared
+	}
 	if m.updateSandboxProcessStatusFromContent(content) {
 		return
 	}
@@ -2613,11 +2745,21 @@ func (m AppModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 	}
 
 	if strings.EqualFold(strings.TrimSpace(cmd), "/back") {
+		if m.aiModeActive {
+			m.addUserMessage(cmd)
+			m.exitAiContext()
+			return m, nil
+		}
 		if previous, ok := previousContextPath(m.activeContextPath); ok {
 			m.pendingContextPath = previous
 			m.activeLanguage = m.resolveActiveLanguage(previous)
 			m.autocomplete.ActiveContext = leafContextFromPath(previous)
 		}
+	}
+
+	if m.aiModeActive && strings.HasPrefix(strings.ToLower(strings.TrimSpace(cmd)), "/set ") {
+		m.addUserMessage(cmd)
+		return m.handleAiSetCommand(cmd)
 	}
 
 	scope := ui.ValidateSlashCommandForContext(m.activeContext, cmd)
@@ -2957,6 +3099,189 @@ func (m AppModel) handleHistoryDown() (tea.Model, tea.Cmd) {
 		m.input.SetValue(m.inputHistory[m.historyIndex])
 	}
 	return m, nil
+}
+
+func (m *AppModel) enterAiContext() (tea.Model, tea.Cmd) {
+	if !m.aiModeActive {
+		m.aiPreviousContext = m.activeContext
+		m.aiPreviousContextPath = m.activeContextPath
+		m.aiPreviousLanguage = m.activeLanguage
+		m.aiActiveLanguageHint = m.scriptLanguageFromContext()
+	}
+	m.aiModeActive = true
+	m.activeContext = "ai"
+	m.activeContextPath = "ai"
+	m.activeLanguage = ""
+	m.autocomplete.ActiveContext = "ai"
+	return *m, m.aiContext.StartConnectivityCheck()
+}
+
+func (m *AppModel) exitAiContext() {
+	if !m.aiModeActive {
+		return
+	}
+	m.aiModeActive = false
+	m.aiContext.CancelStreaming()
+	restoredPath := strings.TrimSpace(m.aiPreviousContextPath)
+	if restoredPath == "" {
+		restoredPath = "global"
+	}
+	m.activeContextPath = restoredPath
+	restoredContext := strings.TrimSpace(m.aiPreviousContext)
+	if restoredContext == "" {
+		restoredContext = leafContextFromPath(restoredPath)
+	}
+	if restoredContext == "" {
+		restoredContext = "global"
+	}
+	m.activeContext = restoredContext
+	m.activeLanguage = strings.TrimSpace(m.aiPreviousLanguage)
+	m.pendingContextPath = ""
+	m.autocomplete.ActiveContext = m.activeContext
+	m.aiContext.ClearActions()
+	m.pendingAiPrompt = ""
+	m.pendingAiPromptSystem = ""
+}
+
+func (m AppModel) aiPromptLanguage() string {
+	if lang := strings.TrimSpace(m.aiActiveLanguageHint); lang != "" {
+		return lang
+	}
+	if lang := strings.TrimSpace(m.aiPreviousLanguage); lang != "" {
+		return lang
+	}
+	return "python"
+}
+
+func (m AppModel) aiActionLanguage() string {
+	blocks := m.aiContext.CodeBlocks()
+	if len(blocks) == 0 {
+		return aicontext.NormalizeCodeLang("", m.aiPromptLanguage())
+	}
+	return aicontext.NormalizeCodeLang(blocks[0].Lang, m.aiPromptLanguage())
+}
+
+func (m AppModel) aiPrimaryCodeBlock() (aicontext.CodeBlock, bool) {
+	blocks := m.aiContext.CodeBlocks()
+	if len(blocks) == 0 {
+		return aicontext.CodeBlock{}, false
+	}
+	return blocks[0], true
+}
+
+func (m AppModel) aiScriptName() string {
+	return "ai-" + time.Now().Format("20060102-150405")
+}
+
+func (m *AppModel) handleAiSetCommand(cmd string) (tea.Model, tea.Cmd) {
+	trimmed := strings.TrimSpace(cmd)
+	lower := strings.ToLower(trimmed)
+	switch {
+	case strings.HasPrefix(lower, "/set endpoint "):
+		value := strings.TrimSpace(trimmed[len("/set endpoint "):])
+		if value == "" {
+			m.addErrorMessage("Usage: /set endpoint <url>")
+			return *m, nil
+		}
+		m.aiContext.SetEndpoint(value)
+		_ = saveAiContextConfig(AiContextConfig{
+			Endpoint: m.aiContext.Endpoint(),
+			Model: m.aiContext.ModelName(),
+		})
+		if m.bridge != nil {
+			return *m, tea.Sequence(
+				m.bridge.SendDataCmd("/set zeri.ai.endpoint = "+m.aiContext.Endpoint()+" --string"),
+				m.aiContext.StartConnectivityCheck(),
+			)
+		}
+		return *m, m.aiContext.StartConnectivityCheck()
+	case strings.HasPrefix(lower, "/set model "):
+		value := strings.TrimSpace(trimmed[len("/set model "):])
+		if value == "" {
+			m.addErrorMessage("Usage: /set model <name>")
+			return *m, nil
+		}
+		m.aiContext.SetModelName(value)
+		_ = saveAiContextConfig(AiContextConfig{
+			Endpoint: m.aiContext.Endpoint(),
+			Model: m.aiContext.ModelName(),
+		})
+		if m.bridge != nil {
+			return *m, m.bridge.SendDataCmd("/set zeri.ai.model = " + m.aiContext.ModelName() + " --string")
+		}
+		return *m, nil
+	case strings.HasPrefix(lower, "/set system-prompt "):
+		value := strings.TrimSpace(trimmed[len("/set system-prompt "):])
+		if value == "" {
+			m.addErrorMessage("Usage: /set system-prompt <text>")
+			return *m, nil
+		}
+		m.aiContext.SetSystemPromptOverride(value)
+		m.addSystemMessage("AI system prompt override updated for this session.")
+		return *m, nil
+	default:
+		m.addErrorMessage("In $ai use /set endpoint <url>, /set model <name>, or /set system-prompt <text>.")
+		return *m, nil
+	}
+}
+
+func (m *AppModel) runAiCodeBlock() tea.Cmd {
+	block, ok := m.aiPrimaryCodeBlock()
+	if !ok {
+		m.addErrorMessage("No AI code block available to run.")
+		return nil
+	}
+	lang := aicontext.NormalizeCodeLang(block.Lang, m.aiPromptLanguage())
+	name := m.aiScriptName()
+	m.aiContext.ClearActions()
+	saveCmd := m.bridge.SendCommandPayloadCmd(map[string]interface{}{
+		"type": "save_script",
+		"name": name,
+		"lang": lang,
+		"content": block.Content,
+	})
+	runCmd := m.bridge.SendCommandPayloadCmd(map[string]interface{}{
+		"type": "run_script",
+		"name": name,
+		"lang": lang,
+	})
+	m.addSystemMessage("Running AI-generated code in $" + lang + ".")
+	if saveCmd == nil {
+		return runCmd
+	}
+	if runCmd == nil {
+		return saveCmd
+	}
+	return tea.Sequence(saveCmd, runCmd)
+}
+
+func (m *AppModel) editAiCodeBlock() {
+	block, ok := m.aiPrimaryCodeBlock()
+	if !ok {
+		m.addErrorMessage("No AI code block available to edit.")
+		return
+	}
+	lang := aicontext.NormalizeCodeLang(block.Lang, m.aiPromptLanguage())
+	m.aiContext.ClearActions()
+	m.openScriptEditor(lang, m.aiScriptName(), block.Content, ScriptEditorIntentNew)
+}
+
+func (m *AppModel) saveAiCodeBlock() tea.Cmd {
+	block, ok := m.aiPrimaryCodeBlock()
+	if !ok {
+		m.addErrorMessage("No AI code block available to save.")
+		return nil
+	}
+	lang := aicontext.NormalizeCodeLang(block.Lang, m.aiPromptLanguage())
+	name := m.aiScriptName()
+	m.aiContext.ClearActions()
+	m.addSystemMessage("Saving AI-generated script as " + name + ".")
+	return m.bridge.SendCommandPayloadCmd(map[string]interface{}{
+		"type": "save_script",
+		"name": name,
+		"lang": lang,
+		"content": block.Content,
+	})
 }
 
 /*

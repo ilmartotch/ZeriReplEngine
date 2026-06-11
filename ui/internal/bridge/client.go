@@ -40,6 +40,10 @@ type ScriptActionResponseMsg struct {
 	Error string
 }
 
+type SharedScopeSnapshotMsg struct {
+	Entries map[string]interface{}
+}
+
 type YuumiClient interface {
 	ConnectCmd() tea.Cmd
 	SendDataCmd(s string) tea.Cmd

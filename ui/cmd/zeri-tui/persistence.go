@@ -23,6 +23,11 @@ func (e ErrSessionExists) Error() string {
 
 type SessionSnapshot = persistence.SessionSnapshot
 
+type AiContextConfig struct {
+	Endpoint string `json:"endpoint"`
+	Model string `json:"model"`
+}
+
 func ZeriBaseDir() (string, error) {
 	return persistence.ZeriBaseDir()
 }
@@ -43,6 +48,22 @@ func ZeriSessionsDir() (string, error) {
 	return filepath.Join(base, "sessions"), nil
 }
 
+func ZeriConfigDir() (string, error) {
+	base, err := ZeriBaseDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(base, "config"), nil
+}
+
+func ZeriAiConfigPath() (string, error) {
+	dir, err := ZeriConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "ai.json"), nil
+}
+
 func ensureZeriDirectories() error {
 	base, err := ZeriBaseDir()
 	if err != nil {
@@ -52,6 +73,7 @@ func ensureZeriDirectories() error {
 	dirs := []string{
 		filepath.Join(base, "scripts"),
 		filepath.Join(base, "sessions"),
+		filepath.Join(base, "config"),
 	}
 
 	for _, dir := range dirs {
@@ -61,6 +83,40 @@ func ensureZeriDirectories() error {
 	}
 
 	return nil
+}
+
+func loadAiContextConfig() (AiContextConfig, error) {
+	path, err := ZeriAiConfigPath()
+	if err != nil {
+		return AiContextConfig{}, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return AiContextConfig{}, nil
+		}
+		return AiContextConfig{}, err
+	}
+	var cfg AiContextConfig
+	if err = json.Unmarshal(data, &cfg); err != nil {
+		return AiContextConfig{}, err
+	}
+	return cfg, nil
+}
+
+func saveAiContextConfig(cfg AiContextConfig) error {
+	path, err := ZeriAiConfigPath()
+	if err != nil {
+		return err
+	}
+	if err = os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
 }
 
 func scriptFolderName(language string) string {

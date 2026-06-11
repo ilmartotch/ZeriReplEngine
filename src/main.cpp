@@ -807,6 +807,21 @@ namespace {
             return true;
         }
 
+        if (type == "shared_scope_snapshot") {
+            nlohmann::json response;
+            response["type"] = "shared_scope_snapshot_response";
+            response["entries"] = nlohmann::json::object();
+            for (const auto& [key, value] : runtimeState.ListShared()) {
+                const auto serialized = Zeri::Core::RuntimeState::SerializeAnyValue(value);
+                if (!serialized.has_value()) {
+                    continue;
+                }
+                response["entries"][key] = *serialized;
+            }
+            sink.Send(response);
+            return true;
+        }
+
         if (type == "save_script") {
             const std::string name = request.value("name", "");
             const std::string lang = request.value("lang", "");
@@ -966,6 +981,7 @@ int RunMain(int argc, char* argv[]) {
             bridgeTerminal->EnqueueInputResponse(payload);
         } else if (
             type == "list_scripts_with_content" ||
+            type == "shared_scope_snapshot" ||
             type == "save_script" ||
             type == "delete_script" ||
             type == "run_script"

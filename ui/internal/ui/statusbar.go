@@ -7,7 +7,7 @@ import (
 	lg "charm.land/lipgloss/v2"
 )
 
-func RenderStatusBar(termWidth int, context string, connected bool, memMB uint64, sandboxRunning bool) string {
+func RenderStatusBar(termWidth int, context string, connected bool, memMB uint64, sandboxRunning bool, activity string) string {
 	_ = sandboxRunning
 	volt := lg.NewStyle().Foreground(ColourVolt)
 	grey := lg.NewStyle().Foreground(ColourIndustrialGrey)
@@ -41,6 +41,10 @@ func RenderStatusBar(termWidth int, context string, connected bool, memMB uint64
 		connStr := lg.NewStyle().Foreground(ColourErrorRed).Render("✕") +
 			grey.Render(" disconnected")
 		parts = append(parts, connStr)
+	}
+
+	if strings.TrimSpace(activity) != "" {
+		parts = append(parts, grey.Render(strings.TrimSpace(activity)))
 	}
 
 	parts = append(parts, grey.Render("Use /help for commands and shortcuts"))

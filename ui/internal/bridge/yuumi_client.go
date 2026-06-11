@@ -232,6 +232,14 @@ func (r *RealYuumiClient) RegisterMessageHandler() {
 				Ok: ok,
 				Error: errText,
 			})
+		case "shared_scope_snapshot_response":
+			entries := map[string]interface{}{}
+			if raw, ok := data["entries"].(map[string]interface{}); ok {
+				for key, value := range raw {
+					entries[key] = value
+				}
+			}
+			program.Send(SharedScopeSnapshotMsg{Entries: entries})
 		case "":
 			return
 		default:
