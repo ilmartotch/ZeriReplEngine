@@ -136,7 +136,7 @@ namespace {
         const Zeri::Core::RuntimeState& runtimeState,
         const Zeri::Core::StartupDiagnosticsReport* startupDiagnostics
     ) {
-        const std::string baseUrl = "https://github.com/ilmartotch/ReplZeriEmgine/issues/new";
+        const std::string baseUrl = "https://github.com/ilmartotch/ZeriReplEngine/issues/new";
         const std::string title = "Bug report: describe the failure here";
         const std::string body = BuildIssueReportBody(runtimeState, startupDiagnostics);
         return baseUrl + "?title=" + UrlEncode(title) + "&body=" + UrlEncode(body);
@@ -639,7 +639,7 @@ namespace {
 
         if (cmd.commandName == "bug") {
             if (cmd.args.empty() || (cmd.args.size() == 1 && ToLower(cmd.args[0]) == "report")) {
-                const std::string trackerUrl = "https://github.com/ilmartotch/ReplZeriEmgine/issues";
+                const std::string trackerUrl = "https://github.com/ilmartotch/ZeriReplEngine/issues";
                 const std::string prefilledUrl = BuildPrefilledIssueUrl(runtimeState, startupDiagnostics);
 
                 std::string message = "Bug Report Guide\n";
@@ -1062,7 +1062,7 @@ namespace {
     }
 
     void LogStartupLine(const std::string& text) {
-        std::fprintf(stderr, "[ZERI_ENGINE][STARTUP] %s\n", text.c_str());
+        std::fprintf(stderr, "[ZERI][RUNTIME-003] Startup diagnostic: %s. Hint: fix the reported runtime or startup dependency.\n", text.c_str());
         std::fflush(stderr);
     }
 
@@ -1094,7 +1094,7 @@ int RunMain(int argc, char* argv[]) {
 
     auto pipeArg = ParsePipeArg(argc, argv);
     if (!pipeArg.has_value()) {
-        std::fprintf(stderr, "[ZERI_ENGINE] Missing required --yuumi-pipe <name> argument. Local C++ UI is disabled.\n");
+        std::fprintf(stderr, "[ZERI][CLI-002] Missing required --yuumi-pipe <name> argument. Hint: launch through zeri (TUI) or provide --yuumi-pipe explicitly.\n");
         std::fflush(stderr);
         return 1;
     }
@@ -1142,7 +1142,7 @@ int RunMain(int argc, char* argv[]) {
     });
 
     if (auto res = bridge.start(*pipeArg, 0); !res) {
-        std::fprintf(stderr, "[ZERI_ENGINE] bridge.start() failed: %s\n",
+        std::fprintf(stderr, "[ZERI][IPC-012] bridge.start() failed: %s. Hint: ensure the pipe name is valid and not already in use, then retry.\n",
             std::string(yuumi::to_string(res.error())).c_str());
         std::fflush(stderr);
         return 1;
@@ -1320,11 +1320,11 @@ int main(int argc, char* argv[]) {
     try {
         return RunMain(argc, argv);
     } catch (const std::exception& ex) {
-        std::fprintf(stderr, "[ZERI_ENGINE][FATAL] Unhandled exception: %s\n", ex.what());
+        std::fprintf(stderr, "[ZERI][RUNTIME-006] Unhandled exception: %s. Hint: inspect engine logs and rerun the same command to reproduce.\n", ex.what());
         std::fflush(stderr);
         return 1;
     } catch (...) {
-        std::fprintf(stderr, "[ZERI_ENGINE][FATAL] Unhandled non-standard exception.\n");
+        std::fprintf(stderr, "[ZERI][RUNTIME-007] Unhandled non-standard exception. Hint: inspect engine logs and report the crash signature.\n");
         std::fflush(stderr);
         return 1;
     }

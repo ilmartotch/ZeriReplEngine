@@ -79,13 +79,13 @@ namespace {
         std::atomic<int> validReads{ 0 };
         std::atomic<bool> corrupted{ false };
 
-        std::jthread writer([&]() {
+        std::thread writer([&]() {
             for (int i = 0; i < 1000; ++i) {
                 state.SetShared("x", static_cast<std::int64_t>(42));
             }
         });
 
-        std::jthread reader([&]() {
+        std::thread reader([&]() {
             for (int i = 0; i < 1000; ++i) {
                 const auto value = state.GetShared("x");
                 reads.fetch_add(1, std::memory_order_relaxed);

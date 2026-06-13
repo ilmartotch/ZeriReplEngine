@@ -233,6 +233,24 @@ type AppModel struct {
 	engineBatchTitle string
 	engineBatchChunks []EngineBatchChunk
 	scriptHub scripthub.ScriptHubModel
+	aiContext aicontext.AiContextModel
+	aiSharedScope map[string]interface{}
+	aiModeActive bool
+	aiPreviousContext string
+	aiPreviousContextPath string
+	aiPreviousLanguage string
+	aiActiveLanguageHint string
+	pendingAiPrompt string
+	pendingAiPromptSystem string
+	executionSpinner spinner.Model
+	executionInFlight bool
+	executionSpinnerVisible bool
+	executionSpinnerDelayPending bool
+	onboardingModel onboarding.TutorialModel
+	onboardingActive bool
+	onboardingHubOpen bool
+	startupOptions appOptions
+	startupProfiler *startupProfiler
 }
 
 func newAppModel(b bridge.YuumiClient, enginePath string, pipeName string, opts appOptions, profiler *startupProfiler) AppModel {

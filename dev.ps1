@@ -10,14 +10,14 @@ $vsPath = $null
 # --- Pre-flight checks ---
 function Assert-Command($name, $hint) {
     if (-not (Get-Command $name -ErrorAction SilentlyContinue)) {
-        Write-Host "ERRORE: '$name' non trovato in PATH." -ForegroundColor Red
+        Write-Host "ERROR: '$name' not found in PATH." -ForegroundColor Red
         Write-Host "        $hint" -ForegroundColor Yellow
         exit 1
     }
 }
-Assert-Command "cmake"  "Installa CMake da https://cmake.org/download/ e aggiungilo al PATH."
-Assert-Command "go"     "Installa Go da https://go.dev/dl/ e aggiungilo al PATH."
-Assert-Command "git"    "Installa Git da https://git-scm.com/ (richiesto da vcpkg)."
+Assert-Command "cmake"  "Install CMake from https://cmake.org/download/ and add it to PATH."
+Assert-Command "go"     "Install Go from https://go.dev/dl/ and add it to PATH."
+Assert-Command "git"    "Install Git from https://git-scm.com/ (required by vcpkg)."
 
 function Resolve-VcpkgToolchain([string]$root, [string]$vsInstallPath) {
     $candidates = @()
@@ -31,7 +31,7 @@ function Resolve-VcpkgToolchain([string]$root, [string]$vsInstallPath) {
     foreach ($candidate in $candidates) {
         if (Test-Path $candidate) { return $candidate }
     }
-    throw "Toolchain vcpkg non trovata. Imposta VCPKG_ROOT o clona vcpkg in $root\vcpkg."
+    throw "vcpkg toolchain not found. Set VCPKG_ROOT or clone vcpkg into $root\vcpkg."
 }
 
 # --- VS Environment Setup ---
@@ -45,7 +45,7 @@ if (Test-Path $vsWhere) {
     if (Test-Path $devShellDll) {
         Import-Module $devShellDll -ErrorAction SilentlyContinue
         Enter-VsDevShell -VsInstallPath $vsPath -SkipAutomaticLocation -Arch x64 | Out-Null
-        Write-Host "[0/4] VS environment attivo: $vsPath"
+        Write-Host "[0/4] VS environment active: $vsPath"
     }
 }
 # ---

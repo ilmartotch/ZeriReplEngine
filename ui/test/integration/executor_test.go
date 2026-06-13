@@ -80,9 +80,27 @@ func runLanguageHelloTest(t *testing.T, langContext string, code string, expecte
 
 	response := harness.Send(client, code)
 	if len(response.Errors) > 0 {
+		if codeToken := runtimeUnavailableCode(langContext); codeToken != "" && responseContains(response.Errors, codeToken) {
+			t.Skipf("%s runtime unavailable in this environment: %s", langContext, responseDump(response.Output, response.Errors))
+		}
 		t.Fatalf("unexpected executor errors in %s: %s", langContext, responseDump(response.Output, response.Errors))
 	}
 	if !responseContains(response.Output, expected) {
 		t.Fatalf("expected %q in output for %s, got %s", expected, langContext, responseDump(response.Output, response.Errors))
+	}
+}
+
+func runtimeUnavailableCode(langContext string) string {
+	switch langContext {
+	case "$lua":
+		return "RUNTIME-026"
+	case "$python":
+		return "RUNTIME-029"
+	case "$js":
+		return "RUNTIME-021"
+	case "$ruby":
+		return "RUNTIME-033"
+	default:
+		return ""
 	}
 }

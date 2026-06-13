@@ -5,8 +5,8 @@
 This quick start builds the reference native plugin and loads it into Zeri.
 
 ```bash
-git clone https://github.com/ilmartotch/ReplZeriEmgine.git
-cd ReplZeriEmgine/examples/plugin-hello
+git clone https://github.com/ilmartotch/ZeriReplEngine.git
+cd ZeriReplEngine/examples/plugin-hello
 cmake -S . -B build
 cmake --build build --config Release
 ```

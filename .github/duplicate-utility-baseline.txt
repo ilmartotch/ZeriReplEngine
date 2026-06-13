@@ -1,0 +1,17 @@
+# Accepted baseline for the "duplicate utility signatures" CI guard.
+# One source-file path per line (relative to repo root).
+# A redefinition of a canonical utility (Trim/ToLower/JoinArgs/
+# ResolveExecutable/ResolveBootstrapPath) is tolerated only in the files
+# listed here. To accept a new occurrence, add its path below.
+# Lines starting with '#' and blank lines are ignored.
+src/main.cpp
+src/Core/Source/BugSnapshot.cpp
+src/Core/Source/HelpCatalog.cpp
+src/Core/Source/SystemGuard.cpp
+src/Engines/Source/ExpressionExecutor.cpp
+src/Engines/Source/LuaExecutor.cpp
+src/Engines/Source/LuaPluginLoader.cpp
+src/Engines/Source/MathContext.cpp
+src/Engines/Source/PluginLoader.cpp
+src/Engines/Source/RubyContext.cpp
+src/Engines/Source/ScriptEditorContext.cpp

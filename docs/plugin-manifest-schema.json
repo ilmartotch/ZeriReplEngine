@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/ilmartotch/ReplZeriEmgine/docs/plugin-manifest-schema.json",
+  "$id": "https://github.com/ilmartotch/ZeriReplEngine/docs/plugin-manifest-schema.json",
   "title": "Zeri Plugin Manifest",
   "type": "object",
   "required": [

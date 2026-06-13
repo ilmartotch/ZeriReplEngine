@@ -7,26 +7,26 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="$SCRIPT_DIR/build"
 YUUMI_UI_DIR="$SCRIPT_DIR/ui"
 
-# --- Pre-flight checks ---
+# --- Preflight checks ---
 check_cmd() {
     if ! command -v "$1" &>/dev/null; then
-        echo "ERRORE: '$1' non trovato in PATH."
+        echo "ERROR: '$1' not found in PATH."
         echo "        $2"
         exit 1
     fi
 }
-check_cmd cmake "Installa CMake: https://cmake.org/download/"
-check_cmd go    "Installa Go: https://go.dev/dl/"
-check_cmd git   "Installa Git: https://git-scm.com/ (richiesto da vcpkg)"
-check_cmd cc    "Installa un compilatore C++: 'sudo apt install build-essential' oppure 'xcode-select --install' su macOS"
+check_cmd cmake "Install CMake: https://cmake.org/download/"
+check_cmd go    "Install Go: https://go.dev/dl/"
+check_cmd git   "Install Git: https://git-scm.com/ (required by vcpkg)"
+check_cmd cc    "Install a C++ compiler: 'sudo apt install build-essential' or 'xcode-select --install' on macOS"
 
-# Verifica vcpkg disponibile (locale o tramite VCPKG_ROOT)
+# Ensure vcpkg is available (local clone or VCPKG_ROOT)
 if [ -z "${VCPKG_ROOT:-}" ]; then
     if [ -d "$SCRIPT_DIR/vcpkg" ]; then
         export VCPKG_ROOT="$SCRIPT_DIR/vcpkg"
     else
-        echo "ERRORE: VCPKG_ROOT non impostato e vcpkg locale non trovato."
-        echo "        Esegui: export VCPKG_ROOT=/path/to/vcpkg"
+        echo "ERROR: VCPKG_ROOT is not set and local vcpkg was not found."
+        echo "        Run: export VCPKG_ROOT=/path/to/vcpkg"
         exit 1
     fi
 fi
@@ -48,7 +48,7 @@ cmake --build "$BUILD_DIR" --config Debug
 
 ENGINE_PATH="$BUILD_DIR/ZeriEngine"
 if [ ! -f "$ENGINE_PATH" ]; then
-    echo "ERRORE: ZeriEngine non trovato in $ENGINE_PATH"
+    echo "ERROR: ZeriEngine not found at $ENGINE_PATH"
     exit 1
 fi
 

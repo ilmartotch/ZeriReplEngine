@@ -115,6 +115,19 @@ func TestSessionCrashDuringSaveDoesNotCorruptStateFile(t *testing.T) {
 	}
 	_ = harness.Send(client, "x = 7")
 	_ = harness.Send(client, "/promote x persisted")
+	initialSave := harness.Send(client, "/save")
+	if len(initialSave.Errors) > 0 {
+		t.Fatalf("failed initial save before crash test: %s", responseDump(initialSave.Output, initialSave.Errors))
+	}
+
+	statePath := expectedSessionStatePath(base)
+	initialData, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatalf("expected baseline state file before crash save test: %v", err)
+	}
+	if !json.Valid(initialData) {
+		t.Fatalf("baseline session state file is not valid JSON before crash: %s", string(initialData))
+	}
 
 	if err := harness.SendFireAndForget(client, "/save"); err != nil {
 		t.Fatalf("failed to send /save: %v", err)
@@ -123,7 +136,6 @@ func TestSessionCrashDuringSaveDoesNotCorruptStateFile(t *testing.T) {
 	harness.KillProcess(t, ep)
 	harness.Cleanup(t, ep)
 
-	statePath := expectedSessionStatePath(base)
 	data, err := os.ReadFile(statePath)
 	if err != nil {
 		t.Fatalf("expected state file after crash save test: %v", err)

@@ -133,7 +133,7 @@ namespace {
         std::atomic<int> reads{ 0 };
         std::atomic<int> writes{ 0 };
 
-        std::vector<std::jthread> readers;
+        std::vector<std::thread> readers;
         readers.reserve(4);
         for (int i = 0; i < 4; ++i) {
             readers.emplace_back([&]() {
@@ -155,7 +155,7 @@ namespace {
             });
         }
 
-        std::jthread writer([&]() {
+        std::thread writer([&]() {
             std::int64_t v = 0;
             while (!stop.load(std::memory_order_relaxed)) {
                 scope.Set("counter", v, ScopeLevel::Session);
@@ -166,6 +166,11 @@ namespace {
 
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         stop.store(true, std::memory_order_relaxed);
+
+        for (auto& reader : readers) {
+            reader.join();
+        }
+        writer.join();
 
         Expect(!inconsistent.load(std::memory_order_relaxed), "concurrent access detected inconsistent values");
         Expect(reads.load(std::memory_order_relaxed) > 0, "reader threads should perform reads");

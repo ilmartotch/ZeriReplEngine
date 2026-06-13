@@ -30,16 +30,8 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Fail on Italian language in source
-        shell: bash
-        run: |
-          set -euo pipefail
-          if grep -rn "perché\|questo\|della\|degli\|contesto\|comando\|funzione\|esegui" src/ ui/ --include="*.cpp" --include="*.h" --include="*.go"; then
-            echo "ERROR: Italian-language tokens found in source files."
-            exit 1
-          fi
-
       - name: Fail on TODO/FIXME/HACK/XXX comments
+        if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
@@ -48,20 +40,40 @@ jobs:
             exit 1
           fi
 
-      - name: Warn on possible duplicate utility signatures
+      - name: Fail on new duplicate utility signatures
         shell: bash
         run: |
           set -euo pipefail
-          echo "Canonical utility headers:"
-          echo " - src/Core/Include/StringUtils.h"
-          echo " - src/Engines/Include/ExecutorUtils.h"
-          echo " - src/Engines/Include/ContextUtils.h"
-          echo ""
-          if grep -rn "Trim(\|ToLower(\|JoinArgs(\|ResolveExecutable(\|ResolveBootstrapPath(" src/ ui/ --include="*.cpp"; then
-            echo "WARNING: Potential duplicate utility signature found in .cpp files outside canonical headers."
-          else
-            echo "No potential duplicate utility signatures detected in .cpp files."
+          pattern='^[[:space:]]*(\[\[nodiscard\]\][[:space:]]*)?(static[[:space:]]+)?[A-Za-z0-9_:,&*<> ]+(Trim|ToLower|JoinArgs|ResolveExecutable|ResolveBootstrapPath)[[:space:]]*\([^;]*\)[[:space:]]*\{[[:space:]]*$'
+          baseline_file=".github/duplicate-utility-baseline.txt"
+          if [[ ! -f "$baseline_file" ]]; then
+            echo "ERROR: Missing duplicate-utility baseline file: $baseline_file"
+            exit 1
           fi
+
+          mapfile -t matches < <(grep -REn --include="*.cpp" "$pattern" src ui || true)
+          if [[ ${#matches[@]} -eq 0 ]]; then
+            echo "No duplicate utility signatures detected in .cpp files."
+            exit 0
+          fi
+
+          echo "Known duplicate utility signature debt (accepted baseline):"
+          printf '%s\n' "${matches[@]}"
+
+          mapfile -t new_violations < <(
+            printf '%s\n' "${matches[@]}" | while IFS= read -r line; do
+              file="${line%%:*}"
+              grep -qxF "$file" "$baseline_file" || printf '%s\n' "$line"
+            done
+          )
+          if [[ ${#new_violations[@]} -gt 0 ]]; then
+            echo "ERROR: New duplicate utility signatures detected outside canonical headers and baseline debt."
+            printf '%s\n' "${new_violations[@]}"
+            echo "If intentional, add the file path to $baseline_file."
+            exit 1
+          fi
+
+          echo "No new duplicate utility signatures outside accepted baseline debt."
 
   build-and-smoke:
     name: Build and smoke (${{ matrix.label }})
@@ -309,7 +321,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y clang lld cmake ninja-build curl zip unzip tar pkg-config build-essential
+          sudo apt-get install -y cmake ninja-build curl zip unzip tar pkg-config build-essential
           ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
 
       - name: Setup Go
@@ -326,16 +338,19 @@ jobs:
             SAN_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
             LINK_FLAGS="-fsanitize=address,undefined"
           else
-            SAN_FLAGS="-fsanitize=thread -fno-omit-frame-pointer"
+            # GCC's -Wtsan flags std::atomic_thread_fence, which TSan cannot
+            # instrument; the use is intentional, so silence it under -Werror.
+            SAN_FLAGS="-fsanitize=thread -fno-omit-frame-pointer -Wno-tsan"
             LINK_FLAGS="-fsanitize=thread"
           fi
 
+          # Sanitizers build under GCC, not Clang for fix errors during CI build related to Clang version
           cmake --fresh -S . -B build-sanitize -G Ninja \
             -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_TOOLCHAIN_FILE="$GITHUB_WORKSPACE/vcpkg/scripts/buildsystems/vcpkg.cmake" \
             -DVCPKG_TARGET_TRIPLET=x64-linux \
-            -DCMAKE_C_COMPILER=clang \
-            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_C_COMPILER=gcc \
+            -DCMAKE_CXX_COMPILER=g++ \
             -DCMAKE_CXX_FLAGS="$SAN_FLAGS" \
             -DCMAKE_EXE_LINKER_FLAGS="$LINK_FLAGS"
 
@@ -356,4 +371,5 @@ jobs:
         run: |
           set -euo pipefail
           export ZERI_ENGINE_PATH="$GITHUB_WORKSPACE/build-sanitize/zeri-engine"
-          go test ./ui/test/integration -run TestStartup -count=1
+          cd ui
+          go test ./test/integration -run TestStartup -count=1

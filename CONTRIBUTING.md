@@ -9,7 +9,9 @@ Every pull request must follow this guide.
 
 1. Go 1.25 or newer
 2. CMake 3.28 or newer
-3. C++ toolchain (MSVC 2022, GCC 14+, or Clang 17+)
+3. C++ toolchain: MSVC 2022, GCC 13+, or Apple Clang. On Linux, Clang with
+   libstdc++ requires version 19+ — older Clang reports `__cpp_concepts = 201907L`
+   and cannot see C++23 `std::expected` (see "Continuous integration").
 4. Git
 5. vcpkg (set `VCPKG_ROOT` or clone it in repository root)
 
@@ -34,6 +36,30 @@ cd ui
 go test ./...
 go vet ./...
 ```
+
+## Continuous integration
+
+CI (`.github/workflows/ci.yml`) runs on every push to `main`/`dev` and on pull
+requests to `main`:
+
+- **Quality checks** — fast static gates (see "Hard rules" below). The marker
+  check (`TODO/FIXME/HACK/XXX`) is blocking on `main` and pull requests only.
+- **Build and smoke** — full build plus startup smoke tests on the release
+  matrix: Windows (MSVC), Linux (GCC), macOS (Apple Clang).
+- **Static analysis** — `cppcheck` on Linux.
+- **Sanitizers** — ASan/UBSan and TSan on Linux, built with **GCC**.
+
+### Why the sanitizer job uses GCC, not Clang
+
+The codebase uses C++23 `std::expected`. With libstdc++, the `<expected>`
+header only defines `std::expected` when `__cpp_concepts >= 202002L`. The Clang
+shipped with Ubuntu 24.04 (Clang 18) reports `__cpp_concepts = 201907L`, so
+`std::expected` is silently excluded and the build fails — independent of the
+libstdc++ version. GCC reports `202002L` and compiles the C++23 sources. Since
+Clang + libstdc++ on Linux is not a release target, the sanitizer job uses GCC,
+whose ASan/UBSan/TSan are equivalent for the memory and threading issues these
+tests target. Clang on Linux with libstdc++ would require Clang 19+; Apple Clang
+(libc++) and MSVC are unaffected.
 
 ## Hard rules (blocking)
 

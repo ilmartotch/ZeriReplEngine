@@ -347,7 +347,7 @@ namespace Zeri::Engines::Defaults {
 
                 return std::unexpected(ExecutionError{
                     "ExpressionParseError",
-                    "Errore di compilazione ExprTk",
+                    "ExprTk compilation error",
                     expressionText,
                     std::move(hints)
                 });
