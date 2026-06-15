@@ -297,36 +297,45 @@ jobs:
           fi
           echo "$version_output"
 
-      - name: Verify Homebrew install version
+      - name: Download macOS artifact
+        if: runner.os == 'macOS'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: zeri-macos-arm64
+          path: artifact-macos
+
+      - name: Verify macOS archive binary version
         if: runner.os == 'macOS'
         shell: bash
         run: |
           set -euo pipefail
-          brew install ilmartotch/zeri/zeri
-          version_output="$(zeri --version)"
+          mkdir -p extracted
+          tar -xzf artifact-macos/zeri-macos-arm64.tar.gz -C extracted
+          chmod +x extracted/zeri
+          version_output="$(./extracted/zeri --version)"
           if [ -z "${version_output// }" ]; then
-            echo "::error::zeri --version returned empty output after Homebrew install."
+            echo "::error::zeri --version returned empty output on macOS."
             exit 1
           fi
           echo "$version_output"
 
-      - name: Verify Scoop install version
+      - name: Download Windows artifact
+        if: runner.os == 'Windows'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: zeri-windows-amd64
+          path: artifact-windows
+
+      - name: Verify Windows archive binary version
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          if (-not (Get-Command scoop -ErrorAction SilentlyContinue)) {
-            Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
-            Invoke-RestMethod -Uri "https://get.scoop.sh" | Invoke-Expression
-          }
-          if (scoop bucket list | Select-String -SimpleMatch "zeri") {
-            scoop bucket rm zeri
-          }
-          scoop bucket add zeri https://github.com/ilmartotch/scoop-zeri
-          scoop install zeri
-          $versionOutput = (& zeri --version).Trim()
+          New-Item -ItemType Directory -Path extracted -Force | Out-Null
+          Expand-Archive -Path artifact-windows\zeri-windows-amd64.zip -DestinationPath extracted -Force
+          $versionOutput = (& extracted\zeri.exe --version | Out-String).Trim()
           if ([string]::IsNullOrWhiteSpace($versionOutput)) {
-            throw "zeri --version returned empty output after Scoop install."
+            throw "zeri --version returned empty output on Windows."
           }
           Write-Host $versionOutput
 
