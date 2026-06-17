@@ -48,3 +48,10 @@
 | IPC-010 | TUI runtime error: `<error>`. | Bubble Tea runtime exits with error in `main.go`. | Restart zeri and inspect `/runtime-status`. |
 | IPC-011 | IPC connection lost: `<error>`. | Yuumi client read loop loses transport connection. | Restart zeri and verify engine process health. |
 | IPC-012 | bridge.start() failed: `<error>`. | Engine bridge cannot bind or initialize the requested pipe transport. | Ensure the pipe name is valid and not already in use, then retry. |
+| AI-001 | AI endpoint unreachable at `<url>`. | The `$ai` connectivity check or a request cannot reach the configured endpoint. | Run `/setup` in `$ai`, start Ollama with `ollama serve`, or set `/set endpoint <url>`. |
+| AI-002 | Failed to encode AI request payload. | The chat request body cannot be serialized to JSON. | Retry; if it persists, report the issue with the prompt used. |
+| AI-003 | Failed to create AI request. | The HTTP request to the AI endpoint cannot be constructed. | Verify the endpoint URL with `/setup`, then retry. |
+| AI-004 | AI request failed with status `<code>`. | The endpoint responds with a non-2xx status (auth, model, or quota issue). | Check the model name and API key with `/setup`; a 401/403 means the key is wrong or missing. |
+| AI-005 | AI stream interrupted unexpectedly. | The streaming response is cut off before completion. | Check endpoint stability and retry; reduce prompt size if it recurs. |
+
+In-app, run `/errors` to browse this catalog, or `/errors <family>` (for example `/errors ai`) to filter by prefix.

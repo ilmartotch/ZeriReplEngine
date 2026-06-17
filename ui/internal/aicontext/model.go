@@ -24,6 +24,7 @@ const (
 type AiContextModel struct {
 	endpoint string
 	modelName string
+	apiKey string
 	history []ChatMessage
 	inputBuf string
 	streaming bool
@@ -96,6 +97,14 @@ func (m *AiContextModel) ModelName() string {
 	return strings.TrimSpace(m.modelName)
 }
 
+func (m *AiContextModel) ApiKey() string {
+	return strings.TrimSpace(m.apiKey)
+}
+
+func (m *AiContextModel) HasApiKey() bool {
+	return strings.TrimSpace(m.apiKey) != ""
+}
+
 func (m *AiContextModel) Connected() bool {
 	return m.connected
 }
@@ -139,6 +148,10 @@ func (m *AiContextModel) SetModelName(value string) {
 	}
 }
 
+func (m *AiContextModel) SetApiKey(value string) {
+	m.apiKey = strings.TrimSpace(value)
+}
+
 func (m *AiContextModel) SetSystemPromptOverride(value string) {
 	m.systemPromptOverride = strings.TrimSpace(value)
 }
@@ -151,7 +164,7 @@ func (m *AiContextModel) Init() tea.Cmd {
 	m.checking = true
 	m.connected = false
 	m.lastError = ""
-	return ConnectivityCheckCmd(m.endpoint)
+	return ConnectivityCheckCmd(m.endpoint, m.apiKey)
 }
 
 func (m *AiContextModel) StartConnectivityCheck() tea.Cmd {
@@ -217,7 +230,7 @@ func (m *AiContextModel) BeginRequest(userInput string, systemPrompt string) tea
 	m.history = append(m.history, ChatMessage{Role: "user", Content: trimmed})
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancel = cancel
-	return StreamCompletionCmd(ctx, m.endpoint, m.modelName, append([]ChatMessage{{Role: "system", Content: strings.TrimSpace(systemPrompt)}}, m.history...))
+	return StreamCompletionCmd(ctx, m.endpoint, m.apiKey, m.modelName, append([]ChatMessage{{Role: "system", Content: strings.TrimSpace(systemPrompt)}}, m.history...))
 }
 
 func (m *AiContextModel) CancelStreaming() {
@@ -241,27 +254,36 @@ func (m *AiContextModel) ClearActions() {
 	m.showActions = false
 }
 
-func ConnectivityCheckCmd(endpoint string) tea.Cmd {
+func ConnectivityCheckCmd(endpoint string, apiKey string) tea.Cmd {
 	target := strings.TrimRight(strings.TrimSpace(endpoint), "/")
+	token := strings.TrimSpace(apiKey)
 	return func() tea.Msg {
 		if target == "" {
-			return AiErrorMsg{Err: "[ZERI][AI-001] AI endpoint unreachable at <empty>. Hint: start Ollama with 'ollama serve' or configure with '/set endpoint <url>'"}
+			return AiErrorMsg{Err: "[ZERI][AI-001] AI endpoint unreachable at <empty>. Hint: run /setup in $ai, or start Ollama with 'ollama serve' and set '/set endpoint <url>'"}
 		}
 		client := &http.Client{Timeout: 4 * time.Second}
-		resp, err := client.Get(target + "/v1/models")
+		req, err := http.NewRequest(http.MethodGet, target+"/v1/models", nil)
 		if err != nil {
-			return AiErrorMsg{Err: fmt.Sprintf("[ZERI][AI-001] AI endpoint unreachable at %s. Hint: start Ollama with 'ollama serve' or configure with '/set endpoint <url>'", target)}
+			return AiErrorMsg{Err: "[ZERI][AI-003] Failed to create AI request."}
+		}
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			return AiErrorMsg{Err: fmt.Sprintf("[ZERI][AI-001] AI endpoint unreachable at %s. Hint: run /setup in $ai, or start Ollama with 'ollama serve' and set '/set endpoint <url>'", target)}
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			return AiErrorMsg{Err: fmt.Sprintf("[ZERI][AI-001] AI endpoint unreachable at %s. Hint: start Ollama with 'ollama serve' or configure with '/set endpoint <url>'", target)}
+			return AiErrorMsg{Err: fmt.Sprintf("[ZERI][AI-001] AI endpoint unreachable at %s. Hint: run /setup in $ai, or start Ollama with 'ollama serve' and set '/set endpoint <url>'", target)}
 		}
 		return AiConnectedMsg{}
 	}
 }
 
-func StreamCompletionCmd(ctx context.Context, endpoint string, modelName string, messages []ChatMessage) tea.Cmd {
+func StreamCompletionCmd(ctx context.Context, endpoint string, apiKey string, modelName string, messages []ChatMessage) tea.Cmd {
 	target := strings.TrimRight(strings.TrimSpace(endpoint), "/")
+	token := strings.TrimSpace(apiKey)
 	normalizedModel := strings.TrimSpace(modelName)
 	if normalizedModel == "" {
 		normalizedModel = DefaultModel
@@ -295,6 +317,9 @@ func StreamCompletionCmd(ctx context.Context, endpoint string, modelName string,
 				return
 			}
 			req.Header.Set("Content-Type", "application/json")
+			if token != "" {
+				req.Header.Set("Authorization", "Bearer "+token)
+			}
 			resp, err := (&http.Client{Timeout: 0}).Do(req)
 			if err != nil {
 				if ctx.Err() != nil {

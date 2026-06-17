@@ -38,8 +38,16 @@
       { "command": "/exit", "synopsis": "Exit the REPL" },
       { "command": "/set", "synopsis": "Store a typed variable in the current scope (--number|--string|--bool)" },
       { "command": "/get", "synopsis": "Read a variable from the current scope" },
+      { "command": "/errors", "synopsis": "Show the error code catalog (filter with /errors <family>)" },
       { "command": "/shared list", "synopsis": "List all cross-language shared keys and values" },
       { "command": "/shared clear", "synopsis": "Clear all cross-language shared keys" }
+    ],
+    "ai": [
+      { "command": "/setup", "synopsis": "Guided setup for the AI endpoint, model, and API key" },
+      { "command": "/set endpoint", "synopsis": "Set the AI endpoint URL (example: /set endpoint http://localhost:11434)" },
+      { "command": "/set model", "synopsis": "Set the AI model name (example: /set model codellama:latest)" },
+      { "command": "/set apikey", "synopsis": "Set the API key for remote endpoints (example: /set apikey sk-...)" },
+      { "command": "/set system-prompt", "synopsis": "Override the system prompt for this session" }
     ],
     "code": [
       { "command": "/search", "synopsis": "Search scripts across all supported languages" }

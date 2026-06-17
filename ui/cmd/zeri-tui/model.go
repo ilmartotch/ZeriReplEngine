@@ -240,6 +240,8 @@ type AppModel struct {
 	aiPreviousContextPath string
 	aiPreviousLanguage string
 	aiActiveLanguageHint string
+	aiConfigured bool
+	aiWelcomeShown bool
 	pendingAiPrompt string
 	pendingAiPromptSystem string
 	executionSpinner spinner.Model
@@ -278,6 +280,7 @@ func newAppModel(b bridge.YuumiClient, enginePath string, pipeName string, opts 
 
 	aiCfg, _ := loadAiContextConfig()
 	aiModel := aicontext.New(aiCfg.Endpoint, aiCfg.Model)
+	aiModel.SetApiKey(aiCfg.ApiKey)
 	pythonDetected := false
 	if manifest, err := loadRuntimeManifest(); err == nil {
 		for _, runtimeEntry := range manifest.Runtimes {
@@ -309,6 +312,7 @@ func newAppModel(b bridge.YuumiClient, enginePath string, pipeName string, opts 
 		startupInProgress: true,
 		startupStage: "Initializing workspace...",
 		aiContext: aiModel,
+		aiConfigured: aiCfg.IsConfigured(),
 		aiSharedScope: map[string]interface{}{},
 		onboardingModel: onboardingModel,
 		onboardingActive: onboardingRequired,
@@ -2183,6 +2187,18 @@ func (m *AppModel) applySessionSnapshot(snapshot SessionSnapshot) {
 	m.refreshViewport()
 }
 
+func slashCommandBase(input string) string {
+	trimmed := strings.TrimSpace(input)
+	if !strings.HasPrefix(trimmed, "/") {
+		return ""
+	}
+	fields := strings.Fields(trimmed)
+	if len(fields) == 0 {
+		return ""
+	}
+	return strings.ToLower(fields[0])
+}
+
 func parseCommandArgument(input string, command string) (string, bool) {
 	remainder := strings.TrimSpace(strings.TrimPrefix(input, command))
 	if remainder == "" {
@@ -3014,9 +3030,28 @@ func (m AppModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	if m.aiModeActive && strings.HasPrefix(strings.ToLower(strings.TrimSpace(cmd)), "/set ") {
+	baseCmd := slashCommandBase(cmd)
+
+	if m.aiModeActive {
+		switch baseCmd {
+		case "/set":
+			m.addUserMessage(cmd)
+			return m.handleAiSetCommand(cmd)
+		case "/help":
+			m.addUserMessage(cmd)
+			m.addSystemMessage(m.aiHelpText())
+			return m, nil
+		case "/setup":
+			m.addUserMessage(cmd)
+			return m.handleAiSetupCommand()
+		}
+	}
+
+	if baseCmd == "/errors" {
 		m.addUserMessage(cmd)
-		return m.handleAiSetCommand(cmd)
+		filter := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(cmd), "/errors"))
+		m.addSystemMessage(ui.RenderErrorCatalog(filter))
+		return m, nil
 	}
 
 	scope := ui.ValidateSlashCommandForContext(m.activeContext, cmd)
@@ -3370,6 +3405,90 @@ func (m *AppModel) enterAiContext() (tea.Model, tea.Cmd) {
 	m.activeContextPath = "ai"
 	m.activeLanguage = ""
 	m.autocomplete.ActiveContext = "ai"
+
+	if !m.aiWelcomeShown {
+		m.aiWelcomeShown = true
+		if m.aiConfigured {
+			m.addSystemMessage(m.aiWelcomeText())
+		} else {
+			m.addSystemMessage(m.aiOnboardingText())
+		}
+	}
+	return *m, m.aiContext.StartConnectivityCheck()
+}
+
+func (m AppModel) aiStatusSummary() string {
+	endpoint := m.aiContext.Endpoint()
+	if endpoint == "" {
+		endpoint = aicontext.DefaultEndpoint + " (default)"
+	}
+	model := m.aiContext.ModelName()
+	if model == "" {
+		model = aicontext.DefaultModel + " (default)"
+	}
+	apiKey := "not set (fine for local Ollama)"
+	if m.aiContext.HasApiKey() {
+		apiKey = "set"
+	}
+	connection := "not checked yet"
+	switch {
+	case m.aiContext.Checking():
+		connection = "checking..."
+	case m.aiContext.Connected():
+		connection = "connected"
+	case m.aiContext.LastError() != "":
+		connection = "unreachable"
+	}
+	return "Current AI configuration:\n" +
+		"endpoint: " + endpoint + "\n" +
+		"model: " + model + "\n" +
+		"API key: " + apiKey + "\n" +
+		"connection: " + connection
+}
+
+func (m AppModel) aiWelcomeText() string {
+	return "Welcome to $ai — the AI-assisted code generation context.\n\n" +
+		m.aiStatusSummary() + "\n\n" +
+		"Type a request in plain language to generate code, or run /help for the $ai commands.\n" +
+		"Reconfigure anytime with /setup."
+}
+
+func (m AppModel) aiOnboardingText() string {
+	return "Welcome to $ai. This context generates code with an AI model, but it isn't set up yet.\n\n" +
+		"Pick one of the two paths:\n\n" +
+		"A) Local model with Ollama (no API key, runs on your machine):\n" +
+		"1. Install Ollama and run: ollama serve\n" +
+		"2. Pull a model, e.g.: ollama pull codellama\n" +
+		"3. Here, run: /set model codellama:latest\n" +
+		"(Default endpoint " + aicontext.DefaultEndpoint + " is used automatically.)\n\n" +
+		"B) Remote, OpenAI-compatible endpoint (needs an API key):\n" +
+		"1. /set endpoint <url> (the base URL exposing)\n" +
+		"2. /set apikey <key>\n" +
+		"3. /set model <name>\n\n" +
+		"Run /setup anytime to see this again with your current status, or /help for all $ai commands."
+}
+
+func (m AppModel) aiHelpText() string {
+	return "$ai — AI-assisted code generation.\n\n" +
+		m.aiStatusSummary() + "\n\n" +
+		"Commands:\n" +
+		"<plain text> — send a prompt and stream generated code\n" +
+		"/setup — guided setup (endpoint, model, API key)\n" +
+		"/set endpoint <url> — set the AI endpoint URL\n" +
+		"/set model <name> — set the model name\n" +
+		"/set apikey <key> — set the API key (/set apikey clear to remove)\n" +
+		"/set system-prompt <text> — override the system prompt for this session\n" +
+		"/errors [family] — show the error code catalog\n" +
+		"/back — return to the previous context\n\n" +
+		"Note: in $ai, /set configures the assistant — it does not store typed variables."
+}
+
+func (m *AppModel) handleAiSetupCommand() (tea.Model, tea.Cmd) {
+	if m.aiConfigured {
+		m.addSystemMessage(m.aiWelcomeText())
+	} else {
+		m.addSystemMessage(m.aiOnboardingText())
+	}
 	return *m, m.aiContext.StartConnectivityCheck()
 }
 
@@ -3441,9 +3560,11 @@ func (m *AppModel) handleAiSetCommand(cmd string) (tea.Model, tea.Cmd) {
 			return *m, nil
 		}
 		m.aiContext.SetEndpoint(value)
+		m.aiConfigured = true
 		_ = saveAiContextConfig(AiContextConfig{
 			Endpoint: m.aiContext.Endpoint(),
 			Model: m.aiContext.ModelName(),
+			ApiKey: m.aiContext.ApiKey(),
 		})
 		if m.bridge != nil {
 			return *m, tea.Sequence(
@@ -3459,14 +3580,43 @@ func (m *AppModel) handleAiSetCommand(cmd string) (tea.Model, tea.Cmd) {
 			return *m, nil
 		}
 		m.aiContext.SetModelName(value)
+		m.aiConfigured = true
 		_ = saveAiContextConfig(AiContextConfig{
 			Endpoint: m.aiContext.Endpoint(),
 			Model: m.aiContext.ModelName(),
+			ApiKey: m.aiContext.ApiKey(),
 		})
 		if m.bridge != nil {
 			return *m, m.bridge.SendDataCmd("/set zeri.ai.model = " + m.aiContext.ModelName() + " --string")
 		}
+		m.addSystemMessage("AI model set to " + m.aiContext.ModelName() + ".")
 		return *m, nil
+	case strings.HasPrefix(lower, "/set apikey ") || strings.HasPrefix(lower, "/set api-key "):
+		prefixLen := len("/set apikey ")
+		if strings.HasPrefix(lower, "/set api-key ") {
+			prefixLen = len("/set api-key ")
+		}
+		value := strings.TrimSpace(trimmed[prefixLen:])
+		if value == "" {
+			m.addErrorMessage("Usage: /set apikey <key>  (use /set apikey clear to remove it)")
+			return *m, nil
+		}
+		if strings.EqualFold(value, "clear") || strings.EqualFold(value, "none") {
+			value = ""
+		}
+		m.aiContext.SetApiKey(value)
+		m.aiConfigured = true
+		_ = saveAiContextConfig(AiContextConfig{
+			Endpoint: m.aiContext.Endpoint(),
+			Model: m.aiContext.ModelName(),
+			ApiKey: m.aiContext.ApiKey(),
+		})
+		if value == "" {
+			m.addSystemMessage("AI API key cleared.")
+		} else {
+			m.addSystemMessage("AI API key saved (hidden). Re-checking endpoint...")
+		}
+		return *m, m.aiContext.StartConnectivityCheck()
 	case strings.HasPrefix(lower, "/set system-prompt "):
 		value := strings.TrimSpace(trimmed[len("/set system-prompt "):])
 		if value == "" {
@@ -3477,7 +3627,13 @@ func (m *AppModel) handleAiSetCommand(cmd string) (tea.Model, tea.Cmd) {
 		m.addSystemMessage("AI system prompt override updated for this session.")
 		return *m, nil
 	default:
-		m.addErrorMessage("In $ai use /set endpoint <url>, /set model <name>, or /set system-prompt <text>.")
+		m.addErrorMessage(
+			"In $ai, /set configures the assistant — not typed variables.\n" +
+			"Use one of:\n" +
+			" /set endpoint <url> (example: /set endpoint http://localhost:11434)\n" +
+			" /set model <name> (example: /set model codellama:latest)\n" +
+			" /set apikey <key> (for remote endpoints; /set apikey clear to remove)\n" +				" /set system-prompt <text> (override the system prompt for this session)\n" +
+			"Or run /setup for a guided walkthrough.")
 		return *m, nil
 	}
 }
@@ -3594,4 +3750,9 @@ func (m *AppModel) saveAiCodeBlock() tea.Cmd {
  *   - ui/internal/ui/scripteditor.go is used for named editor sessions.
  *   - ui/internal/ui/message.go and messages.go render new history block types.
  *   - ui/cmd/zeri-tui/persistence.go provides deleteScript.
+ *
+ * First-run onboarding: if the $ai context has never been configured, guide
+ * the user through setup instead of dropping them into a bare AI-001 error.
+ * Otherwise show a one-time welcome with the current configuration.
+ *
  */

@@ -26,6 +26,13 @@ type SessionSnapshot = persistence.SessionSnapshot
 type AiContextConfig struct {
 	Endpoint string `json:"endpoint"`
 	Model string `json:"model"`
+	ApiKey string `json:"apiKey,omitempty"`
+}
+
+func (c AiContextConfig) IsConfigured() bool {
+	return strings.TrimSpace(c.Endpoint) != "" ||
+		strings.TrimSpace(c.Model) != "" ||
+		strings.TrimSpace(c.ApiKey) != ""
 }
 
 func ZeriBaseDir() (string, error) {

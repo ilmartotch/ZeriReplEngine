@@ -82,6 +82,14 @@ func defaultHelpCatalog() helpCatalogData {
 				{Command: "/load", Synopsis: "Load a saved session from disk"},
 				{Command: "/set", Synopsis: "Store a typed variable in the current scope (--number|--string|--bool)"},
 				{Command: "/get", Synopsis: "Read a variable from the current scope"},
+				{Command: "/errors", Synopsis: "Show the error code catalog (filter with /errors <family>)"},
+			},
+			"ai": {
+				{Command: "/setup", Synopsis: "Guided setup for the AI endpoint, model, and API key"},
+				{Command: "/set endpoint", Synopsis: "Set the AI endpoint URL (example: /set endpoint http://localhost:11434)"},
+				{Command: "/set model", Synopsis: "Set the AI model name (example: /set model codellama:latest)"},
+				{Command: "/set apikey", Synopsis: "Set the API key for remote endpoints (example: /set apikey sk-...)"},
+				{Command: "/set system-prompt", Synopsis: "Override the system prompt for this session"},
 			},
 			"sandbox": {
 				{Command: "/open", Synopsis: "Open a file in the configured IDE"},
@@ -300,6 +308,7 @@ var globalSlashCommands = map[string]struct{}{
 	"/runtime-status": {},
 	"/set": {},
 	"/get": {},
+	"/errors": {},
 }
 
 var scopedSlashCommands = map[string][]string{
@@ -322,6 +331,7 @@ var scopedSlashCommands = map[string][]string{
 	"/calc": {"math"},
 	"/logic": {"math"},
 	"/start": {"setup"},
+	"/setup": {"ai"},
 }
 
 func contextGroupFromActiveContext(activeContext string) string {
