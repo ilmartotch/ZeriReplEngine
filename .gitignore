@@ -19,4 +19,10 @@ vcpkg/installed/
 .zeri/
 ui/vendor/
 
+# Build artifacts
+ui/zeri-tui.exe
+*.exe
+
+# AI assistant instruction files
 copilot-instructions.md
+.github/copilot-instructions.md
