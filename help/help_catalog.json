@@ -23,6 +23,7 @@
       { "command": "/help", "synopsis": "Show help for the active context" },
       { "command": "restart", "synopsis": "Restart and reconnect the engine after a disconnection" },
       { "command": "/runtime-status", "synopsis": "Open Runtime Center with runtime diagnostics" },
+      { "command": "/settings", "synopsis": "Review data root and onboarding settings; change with /settings path <parent>" },
       { "command": "/copy last", "synopsis": "Copy the latest non-user output message" },
       { "command": "/copy all", "synopsis": "Copy the full visible message history" },
       { "command": "/context", "synopsis": "List reachable contexts" },

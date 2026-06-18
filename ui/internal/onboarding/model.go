@@ -36,6 +36,7 @@ const (
 
 type DataRootCompletedMsg struct {
 	Path string
+	Notice string
 }
 
 type DataRootFailedMsg struct {
@@ -60,6 +61,7 @@ type TutorialModel struct {
 	waitingRunResult bool
 	waitingSaveAck bool
 	waitingHubClose bool
+	confirmingExit bool
 }
 
 func New(pythonAvailable bool, defaultDataParent string) TutorialModel {
@@ -119,9 +121,27 @@ func TutorialSaveCompletedMsg() tea.Msg {
 func (m TutorialModel) Update(msg tea.Msg) (TutorialModel, TutorialAction) {
 	switch typed := msg.(type) {
 	case tea.KeyPressMsg:
-		if normaliseKey(typed) == "ctrl+c" {
-			m.done = true
-			return m, TutorialAction{Kind: TutorialActionMarkCompleted}
+		key := normaliseKey(typed)
+		if key == "esc" || key == "escape" || key == "ctrl+c" {
+			if m.confirmingExit {
+				m.confirmingExit = false
+				m.done = true
+				return m, TutorialAction{Kind: TutorialActionExitToRepl}
+			}
+			m.confirmingExit = true
+			m.feedback = "Press Esc again to exit onboarding, or Enter/Left to go back."
+			return m, TutorialAction{}
+		}
+		if m.confirmingExit {
+			if key == "left" || key == "ctrl+b" || keyIsEnter(typed) {
+				m.confirmingExit = false
+				m.syncFeedbackForStep()
+				return m, TutorialAction{}
+			}
+		}
+		if key == "left" || key == "ctrl+b" {
+			m.goBack()
+			return m, TutorialAction{}
 		}
 		if m.step == StepWelcome && keyIsEnter(typed) {
 			m.step = StepChoosePath
@@ -181,7 +201,11 @@ func (m TutorialModel) Update(msg tea.Msg) (TutorialModel, TutorialAction) {
 	case DataRootCompletedMsg:
 		if m.step == StepChoosePath && m.waitingDataRoot {
 			m.waitingDataRoot = false
-			m.feedback = "Data folder ready: " + strings.TrimSpace(typed.Path)
+			feedback := "Data folder ready: " + strings.TrimSpace(typed.Path)
+			if notice := strings.TrimSpace(typed.Notice); notice != "" {
+				feedback = notice + "\n" + feedback
+			}
+			m.feedback = feedback
 			m.step = StepSwitchContext
 			m.syncInstruction()
 		}
@@ -227,6 +251,44 @@ func keyIsEnter(msg tea.KeyPressMsg) bool {
 
 func normaliseKey(msg tea.KeyPressMsg) string {
 	return strings.ToLower(strings.ReplaceAll(strings.TrimSpace(msg.String()), " ", ""))
+}
+
+func (m TutorialModel) ConfirmingExit() bool {
+	return m.confirmingExit
+}
+
+func (m *TutorialModel) goBack() {
+	if m.waitingDataRoot || m.waitingRunResult || m.waitingSaveAck || m.waitingHubClose {
+		return
+	}
+	if m.step <= StepWelcome {
+		return
+	}
+	m.step--
+	m.syncInstruction()
+	m.syncFeedbackForStep()
+}
+
+func (m *TutorialModel) syncFeedbackForStep() {
+	m.feedback = ""
+}
+
+func (m TutorialModel) Legend() string {
+	if m.confirmingExit {
+		return "Esc exit · Enter/← back"
+	}
+	switch m.step {
+	case StepWelcome:
+		return "Enter start · Esc exit"
+	case StepChoosePath:
+		return "← back · Esc exit · Enter continue"
+	case StepScriptHub:
+		return "← back · Esc exit · Ctrl+H open hub"
+	case StepComplete:
+		return "Esc exit"
+	default:
+		return "← back · Esc exit · Enter continue"
+	}
 }
 
 func (m *TutorialModel) syncInstruction() {

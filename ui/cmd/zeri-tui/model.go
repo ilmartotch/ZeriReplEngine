@@ -14,6 +14,7 @@ import (
 	"yuumi/internal/aicontext"
 	"yuumi/internal/bridge"
 	"yuumi/internal/onboarding"
+	persistence "yuumi/internal/persistence"
 	"yuumi/internal/scripthub"
 	"yuumi/internal/system"
 	"yuumi/internal/ui"
@@ -56,6 +57,8 @@ const (
 	runCommandPrefix = "/run"
 	deleteCommandPrefix = "/delete"
 	runtimeStatusCommand = "/runtime-status"
+	settingsCommand = "/settings"
+	settingsPathSubcommand = "path"
 	restartCoreCommand = "/restart core"
 	restartCommand = "restart"
 )
@@ -164,6 +167,8 @@ func executionSpinnerDelayCmd() tea.Cmd {
 	})
 }
 
+const escClearWindow = 700 * time.Millisecond
+
 type AppModel struct {
 	width int
 	height int
@@ -253,6 +258,9 @@ type AppModel struct {
 	onboardingHubOpen bool
 	startupOptions appOptions
 	startupProfiler *startupProfiler
+	lastEscAt time.Time
+	settingsVisible bool
+	settingsCenter SettingsCenterState
 }
 
 func newAppModel(b bridge.YuumiClient, enginePath string, pipeName string, opts appOptions, profiler *startupProfiler) AppModel {
@@ -437,6 +445,19 @@ func (m AppModel) renderInputArea() string {
 		Render(inner)
 }
 
+func (m AppModel) renderOnboardingInput(width int) string {
+	inner := width - 2
+	if m.width < 62 {
+		inner = m.width - 4
+	}
+	if inner < 10 {
+		inner = 10
+	}
+	m.input.SetWidth(inner)
+	prompt := lg.NewStyle().Foreground(ui.ColourVolt).Render("›")
+	return lg.JoinHorizontal(lg.Top, prompt+" ", m.input.View())
+}
+
 func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.mode {
 	case ModeScriptEditor:
@@ -461,6 +482,17 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyPressMsg:
+		if m.settingsVisible {
+			key := msg.String()
+			if key == "esc" || key == "escape" {
+				m.settingsVisible = false
+				return m, nil
+			}
+			if key == "ctrl+c" {
+				return m, tea.Quit
+			}
+			return m, nil
+		}
 		return m.handleKeyPress(msg)
 
 	case tea.PasteMsg:
@@ -993,7 +1025,9 @@ func (m AppModel) updateOnboarding(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.onboardingModel, action = m.onboardingModel.Update(typed)
 		return m, m.applyOnboardingAction(action)
 	case tea.KeyPressMsg:
-		if normalisedKeyPress(typed) == "ctrl+h" || normalisedKeyPress(typed) == "ctrl+c" {
+		key := normalisedKeyPress(typed)
+		switch key {
+		case "ctrl+h", "ctrl+c", "esc", "escape", "ctrl+b", "left":
 			var action onboarding.TutorialAction
 			m.onboardingModel, action = m.onboardingModel.Update(typed)
 			return m, m.applyOnboardingAction(action)
@@ -1048,6 +1082,12 @@ func (m *AppModel) applyOnboardingAction(action onboarding.TutorialAction) tea.C
 	case onboarding.TutorialActionSetDataRoot:
 		parent := strings.TrimSpace(action.Payload)
 		return func() tea.Msg {
+			notice := ""
+			if _, alreadyHasData, alreadyChosen, inspectErr := persistence.InspectDataParent(parent); inspectErr != nil {
+				return onboarding.DataRootFailedMsg{Reason: inspectErr.Error()}
+			} else if alreadyHasData || alreadyChosen {
+				notice = "That folder already contains a Zeri data directory; it will be reused."
+			}
 			dataRoot, err := SetDataRootUnderParent(parent)
 			if err != nil {
 				return onboarding.DataRootFailedMsg{Reason: err.Error()}
@@ -1055,7 +1095,7 @@ func (m *AppModel) applyOnboardingAction(action onboarding.TutorialAction) tea.C
 			if err := ensureZeriDirectories(); err != nil {
 				return onboarding.DataRootFailedMsg{Reason: err.Error()}
 			}
-			return onboarding.DataRootCompletedMsg{Path: dataRoot}
+			return onboarding.DataRootCompletedMsg{Path: dataRoot, Notice: notice}
 		}
 	case onboarding.TutorialActionMarkCompleted:
 		if _, ok, _ := ResolveDataRoot(); !ok {
@@ -1068,6 +1108,11 @@ func (m *AppModel) applyOnboardingAction(action onboarding.TutorialAction) tea.C
 		m.onboardingActive = false
 		m.mode = ModeREPL
 		m.addSystemMessage("Onboarding completed. Welcome to Zeri.")
+		return nil
+	case onboarding.TutorialActionExitToRepl:
+		m.onboardingActive = false
+		m.mode = ModeREPL
+		m.addSystemMessage("Onboarding skipped. Data location not configured yet — run /settings to set it later.")
 		return nil
 	}
 	return nil
@@ -1111,6 +1156,16 @@ func (m AppModel) viewREPL() tea.View {
 		return v
 	}
 
+	if m.settingsVisible {
+		statusBar := ui.RenderStatusBar(m.width, displayContextPath, m.bridgeConnected, m.memoryMB, m.sandboxProcessRunning, m.statusActivityLabel())
+		settingsPanel := m.renderSettingsModal()
+		full := lg.JoinVertical(lg.Left, header, settingsPanel, statusBar)
+		v := tea.NewView(pad.Render(full))
+		v.AltScreen = true
+		v.MouseMode = tea.MouseModeCellMotion
+		return v
+	}
+
 	chatArea := m.viewport.View()
 	statusBar := ui.RenderStatusBar(m.width, displayContextPath, m.bridgeConnected, m.memoryMB, m.sandboxProcessRunning, m.statusActivityLabel())
 	inputSection := m.renderInputArea()
@@ -1137,20 +1192,30 @@ func (m AppModel) viewScriptHub() tea.View {
 func (m AppModel) viewOnboarding() tea.View {
 	pad := lg.NewStyle().Padding(1, 2)
 	header := ui.RenderHeader(m.width, m.height)
-	statusBar := ui.RenderStatusBar(m.width, m.currentDisplayContextPath(), m.bridgeConnected, m.memoryMB, m.sandboxProcessRunning, "Interactive onboarding")
+	statusBar := ui.RenderOnboardingStatusBar(m.width, m.onboardingModel.Legend())
+	panelWidth := max(56, m.width-6)
+	innerWidth := panelWidth - 6
+	if innerWidth < 10 {
+		innerWidth = 10
+	}
 	title := lg.NewStyle().Foreground(ui.ColourVolt).Bold(true).Render("Getting started")
 	instruction := lg.NewStyle().Foreground(ui.ColourWhite).Render(ui.NormaliseContent(m.onboardingModel.Instruction()))
+	feedbackStyle := ui.ColourAcidGreen
+	if m.onboardingModel.ConfirmingExit() {
+		feedbackStyle = ui.ColourVolt
+	}
 	feedback := ""
 	if strings.TrimSpace(m.onboardingModel.Feedback()) != "" {
-		feedback = lg.NewStyle().Foreground(ui.ColourAcidGreen).Render(ui.NormaliseContent(m.onboardingModel.Feedback()))
+		feedback = lg.NewStyle().Foreground(feedbackStyle).Render(ui.NormaliseContent(m.onboardingModel.Feedback()))
 	}
-	input := m.renderInputArea()
-	content := lg.JoinVertical(lg.Left, title, instruction, feedback, input)
+	input := m.renderOnboardingInput(innerWidth)
+	legend := lg.NewStyle().Foreground(ui.ColourIndustrialGrey).Render(ui.NormaliseContent(m.onboardingModel.Legend()))
+	content := lg.JoinVertical(lg.Left, title, instruction, feedback, input, legend)
 	panel := lg.NewStyle().
 		Border(lg.RoundedBorder()).
 		BorderForeground(ui.ColourElectricBlue).
 		Padding(1, 2).
-		Width(max(56, m.width-6)).
+		Width(panelWidth).
 		Render(content)
 	full := lg.JoinVertical(lg.Left, header, panel, statusBar)
 	v := tea.NewView(pad.Render(full))
@@ -1837,7 +1902,7 @@ func (m AppModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.handleSubmit()
 	}
 
-	if key == "escape" {
+	if normalizedKey == "esc" || normalizedKey == "escape" {
 		if m.pendingSessionPrompt != SessionPromptNone {
 			m.pendingSessionPrompt = SessionPromptNone
 			m.autocomplete.Dismiss()
@@ -1852,6 +1917,20 @@ func (m AppModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if m.autocomplete.Visible {
 			m.autocomplete.Dismiss()
 			m.recalculateLayout()
+			return m, nil
+		}
+		if strings.TrimSpace(m.input.Value()) != "" {
+			now := time.Now()
+			if !m.lastEscAt.IsZero() && now.Sub(m.lastEscAt) <= escClearWindow {
+				m.input.SetValue("")
+				m.input.SetHeight(1)
+				m.recalculateLayout()
+				m.updateAutocompleteForInput("")
+				m.lastEscAt = time.Time{}
+				return m, nil
+			}
+			m.lastEscAt = now
+			m.addSystemMessage("Press Esc again to clear input.")
 			return m, nil
 		}
 	}
@@ -3119,6 +3198,22 @@ func (m AppModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 		m.addUserMessage(cmd)
 		m.runtimeCenter = buildRuntimeCenterState(m.startupLogPath)
 		m.runtimeCenterVisible = true
+		return m, nil
+	case cmd == settingsCommand || strings.HasPrefix(cmd, settingsCommand+" "):
+		m.addUserMessage(cmd)
+		remainder := strings.TrimSpace(strings.TrimPrefix(cmd, settingsCommand))
+		if remainder == "" {
+			m.settingsCenter = buildSettingsCenterState()
+			m.settingsVisible = true
+			return m, nil
+		}
+		if parent, ok := parseCommandArgument(remainder, settingsPathSubcommand); ok {
+			return m.handleSettingsPathChange(parent)
+		}
+		if strings.EqualFold(remainder, settingsPathSubcommand) {
+			return m.handleSettingsPathChange("")
+		}
+		m.addSystemMessage("Unknown /settings option. Usage: /settings or /settings path <parent-folder>.")
 		return m, nil
 	case strings.EqualFold(strings.TrimSpace(cmd), restartCoreCommand):
 		m.addUserMessage(cmd)

@@ -8,9 +8,10 @@ import (
 )
 
 type appOptions struct {
-	noOnboarding   bool
+	noOnboarding bool
 	profileStartup bool
 	exitAfterReady bool
+	resetOnboarding bool
 }
 
 type startupProfiler struct {
@@ -30,6 +31,8 @@ func parseAppOptions(args []string) (appOptions, error) {
 			opts.profileStartup = true
 		case "--exit-after-ready":
 			opts.exitAfterReady = true
+		case "--reset-onboarding":
+			opts.resetOnboarding = true
 		case "--version", "-v":
 		default:
 			if strings.HasPrefix(arg, "-") {

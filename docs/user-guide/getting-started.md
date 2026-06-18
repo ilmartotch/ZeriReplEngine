@@ -119,3 +119,26 @@ Expected output:
 ```text
 hello from file
 ```
+
+## 7. Where Zeri keeps its state
+
+Zeri records first-run state in a single canonical file, `location.json`, inside
+the per-user config home:
+
+```text
+Windows: %APPDATA%\Zeri\location.json
+macOS: ~/Library/Application Support/zeri/location.json
+Linux: $XDG_CONFIG_HOME/zeri/location.json (or ~/.config/zeri/location.json)
+```
+
+That file holds both the chosen data root (`data_root`) and whether onboarding
+has been completed (`onboarding_completed`). Your scripts and sessions live under
+the data root and are never stored in `location.json`.
+
+To replay onboarding from scratch, run:
+
+```text
+zeri --reset-onboarding
+```
+
+This clears only the `onboarding_completed` flag and leaves your data untouched.

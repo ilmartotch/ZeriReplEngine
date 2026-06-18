@@ -13,15 +13,16 @@ import (
 )
 
 type SessionSnapshot struct {
-	Name          string            `json:"name"`
-	SavedAt       time.Time         `json:"saved_at"`
-	ActiveContext string            `json:"active_context"`
-	History       []ui.ChatMessage  `json:"history"`
-	SessionVars   map[string]string `json:"session_vars"`
+	Name string `json:"name"`
+	SavedAt time.Time `json:"saved_at"`
+	ActiveContext string `json:"active_context"`
+	History []ui.ChatMessage `json:"history"`
+	SessionVars map[string]string `json:"session_vars"`
 }
 
 type locationPointer struct {
 	DataRoot string `json:"data_root"`
+	OnboardingCompleted bool `json:"onboarding_completed"`
 }
 
 func ConfigHomeDir() (string, error) {
@@ -69,21 +70,29 @@ func locationPointerPath() (string, error) {
 	return filepath.Join(home, "location.json"), nil
 }
 
-func ResolveBaseDir() (string, bool, error) {
+func readLocationPointer() (locationPointer, bool, error) {
 	path, err := locationPointerPath()
 	if err != nil {
-		return "", false, err
+		return locationPointer{}, false, err
 	}
 	payload, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return "", false, nil
+			return locationPointer{}, false, nil
 		}
-		return "", false, err
+		return locationPointer{}, false, err
 	}
 	var pointer locationPointer
 	if err := json.Unmarshal(payload, &pointer); err != nil {
-		return "", false, fmt.Errorf("corrupted location pointer %s: %w", path, err)
+		return locationPointer{}, false, fmt.Errorf("corrupted location pointer %s: %w", path, err)
+	}
+	return pointer, true, nil
+}
+
+func ResolveBaseDir() (string, bool, error) {
+	pointer, present, err := readLocationPointer()
+	if err != nil || !present {
+		return "", false, err
 	}
 	dataRoot := strings.TrimSpace(pointer.DataRoot)
 	if dataRoot == "" {
@@ -103,7 +112,7 @@ func ZeriBaseDir() (string, error) {
 	return ConfigHomeDir()
 }
 
-func writeLocationPointer(dataRoot string) error {
+func saveLocationPointer(pointer locationPointer) error {
 	path, err := locationPointerPath()
 	if err != nil {
 		return err
@@ -111,11 +120,49 @@ func writeLocationPointer(dataRoot string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	payload, err := json.MarshalIndent(locationPointer{DataRoot: dataRoot}, "", "  ")
+	payload, err := json.MarshalIndent(pointer, "", "  ")
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(path, payload, 0o644)
+}
+
+func writeLocationPointer(dataRoot string) error {
+	current, _, err := readLocationPointer()
+	if err != nil {
+		return err
+	}
+	current.DataRoot = dataRoot
+	return saveLocationPointer(current)
+}
+
+func OnboardingCompleted() (bool, error) {
+	pointer, present, err := readLocationPointer()
+	if err != nil || !present {
+		return false, err
+	}
+	return pointer.OnboardingCompleted, nil
+}
+
+func SetOnboardingCompleted(completed bool) error {
+	pointer, _, err := readLocationPointer()
+	if err != nil {
+		return err
+	}
+	pointer.OnboardingCompleted = completed
+	return saveLocationPointer(pointer)
+}
+
+func ResetOnboarding() error {
+	pointer, present, err := readLocationPointer()
+	if err != nil {
+		return err
+	}
+	if !present {
+		return nil
+	}
+	pointer.OnboardingCompleted = false
+	return saveLocationPointer(pointer)
 }
 
 func AdoptDataRoot(dataRoot string) error {
@@ -149,6 +196,41 @@ func SetDataRootUnderParent(parent string) (string, error) {
 		return "", err
 	}
 	return dataRoot, nil
+}
+
+func InspectDataParent(parent string) (resolved string, alreadyHasData bool, alreadyChosen bool, err error) {
+	expanded, err := expandUserPath(strings.TrimSpace(parent))
+	if err != nil {
+		return "", false, false, err
+	}
+	if expanded == "" {
+		return "", false, false, fmt.Errorf("path cannot be empty")
+	}
+	absParent, err := filepath.Abs(expanded)
+	if err != nil {
+		return "", false, false, fmt.Errorf("invalid path %q: %w", parent, err)
+	}
+	dataRoot := filepath.Join(absParent, "zeri")
+
+	entries, readErr := os.ReadDir(dataRoot)
+	if readErr != nil {
+		if errors.Is(readErr, os.ErrPermission) {
+			return dataRoot, false, false, fmt.Errorf("permission denied reading %s: %w", dataRoot, readErr)
+		}
+		if !errors.Is(readErr, os.ErrNotExist) {
+			return dataRoot, false, false, readErr
+		}
+	} else if len(entries) > 0 {
+		alreadyHasData = true
+	}
+
+	if current, ok, resolveErr := ResolveBaseDir(); resolveErr == nil && ok {
+		if filepath.Clean(current) == filepath.Clean(dataRoot) {
+			alreadyChosen = true
+		}
+	}
+
+	return dataRoot, alreadyHasData, alreadyChosen, nil
 }
 
 func expandUserPath(p string) (string, error) {
@@ -185,4 +267,14 @@ across sessions.
   root without nesting and is used for silent default/legacy adoption.
 - expandUserPath resolves a leading "~" cross-platform; absolute resolution is
   delegated to filepath.Abs so Windows, Linux and macOS behave consistently.
+- location.json is the single canonical first-run state file. Besides data_root
+  it carries onboarding_completed, so the completion flag no longer depends on
+  any marker stored inside the data root. OnboardingCompleted/SetOnboardingCompleted/
+  ResetOnboarding read and merge that flag without disturbing data_root, and
+  writeLocationPointer preserves the flag when only the data root changes.
+- InspectDataParent is a read-only probe used by the path-selection step: it
+  computes <parent>/zeri the same way SetDataRootUnderParent does, reports
+  whether that directory already holds data and whether location.json already
+  points there, and distinguishes a permission error from a missing directory
+  without producing any side effect.
 */

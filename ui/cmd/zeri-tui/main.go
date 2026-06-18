@@ -26,8 +26,15 @@ func main() {
 	}
 	opts, err := parseAppOptions(os.Args[1:])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[ZERI][CLI-001] %v. Hint: run zeri --version or use supported options --no-onboarding --profile-startup --exit-after-ready.\n", err)
+		fmt.Fprintf(os.Stderr, "[ZERI][CLI-001] %v. Hint: run zeri --version or use supported options --no-onboarding --reset-onboarding --profile-startup --exit-after-ready.\n", err)
 		os.Exit(1)
+	}
+
+	if opts.resetOnboarding {
+		if err := ResetOnboarding(); err != nil {
+			fmt.Fprintf(os.Stderr, "[ZERI][SESSION-012] Unable to reset onboarding state: %v. Hint: verify write permissions for the Zeri config home.\n", err)
+			os.Exit(1)
+		}
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

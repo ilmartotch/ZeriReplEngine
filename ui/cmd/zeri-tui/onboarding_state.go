@@ -2,17 +2,15 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 type onboardingConfig struct {
 	OnboardingCompleted bool `json:"onboarding_completed"`
 }
 
-func onboardingConfigPath() (string, error) {
+func legacyOnboardingConfigPath() (string, error) {
 	configDir, err := ZeriConfigDir()
 	if err != nil {
 		return "", err
@@ -20,66 +18,24 @@ func onboardingConfigPath() (string, error) {
 	return filepath.Join(configDir, "config.json"), nil
 }
 
-func loadOnboardingConfig() (onboardingConfig, error) {
-	path, err := onboardingConfigPath()
+func legacyOnboardingCompleted() bool {
+	path, err := legacyOnboardingConfigPath()
 	if err != nil {
-		return onboardingConfig{}, err
+		return false
 	}
 	payload, err := os.ReadFile(path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return onboardingConfig{}, nil
-		}
-		return onboardingConfig{}, err
+		return false
 	}
 	var cfg onboardingConfig
 	if err = json.Unmarshal(payload, &cfg); err != nil {
-		return onboardingConfig{}, err
+		return false
 	}
-	return cfg, nil
+	return cfg.OnboardingCompleted
 }
 
 func saveOnboardingCompleted() error {
-	path, err := onboardingConfigPath()
-	if err != nil {
-		return err
-	}
-	if err = os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	payload, err := json.MarshalIndent(onboardingConfig{OnboardingCompleted: true}, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, payload, 0o644)
-}
-
-func scriptRegistryIsEmpty() bool {
-	scriptsDir, dirErr := ZeriScriptsDir("python")
-	if dirErr != nil {
-		return true
-	}
-	entries, readErr := os.ReadDir(filepath.Dir(scriptsDir))
-	if readErr != nil {
-		return true
-	}
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		name := strings.TrimSpace(entry.Name())
-		if name == "" {
-			continue
-		}
-		dirEntries, nestedErr := os.ReadDir(filepath.Join(filepath.Dir(scriptsDir), name))
-		if nestedErr != nil {
-			continue
-		}
-		if len(dirEntries) > 0 {
-			return false
-		}
-	}
-	return true
+	return SetOnboardingCompleted(true)
 }
 
 func initializeDataLocation(noOnboarding bool) error {
@@ -117,6 +73,21 @@ func legacyInstallPresent() bool {
 	return false
 }
 
+func migrateLegacyOnboardingFlag() bool {
+	completed, err := OnboardingCompleted()
+	if err == nil && completed {
+		return true
+	}
+	if _, ok, resolveErr := ResolveDataRoot(); resolveErr != nil || !ok {
+		return false
+	}
+	if !legacyOnboardingCompleted() {
+		return false
+	}
+	_ = SetOnboardingCompleted(true)
+	return true
+}
+
 func needsOnboarding(skip bool) bool {
 	if skip {
 		return false
@@ -124,12 +95,31 @@ func needsOnboarding(skip bool) bool {
 	if _, ok, err := ResolveDataRoot(); err == nil && !ok {
 		return true
 	}
-	cfg, err := loadOnboardingConfig()
+	completed, err := OnboardingCompleted()
 	if err != nil {
 		return false
 	}
-	if cfg.OnboardingCompleted {
+	if completed {
 		return false
 	}
-	return scriptRegistryIsEmpty()
+	if migrateLegacyOnboardingFlag() {
+		return false
+	}
+	return true
 }
+
+/*
+onboarding_state.go
+
+First-run completion state is consolidated into the single canonical
+location.json pointer (ConfigHomeDir) through the persistence helpers
+OnboardingCompleted / SetOnboardingCompleted. The legacy marker that used to
+live at <dataRoot>/config/config.json is read once, only as a migration source:
+when an existing install already recorded OnboardingCompleted=true there,
+migrateLegacyOnboardingFlag copies the flag into location.json so upgrading
+users are not forced back through onboarding.
+
+needsOnboarding is deterministic and isolated: first run is true when the
+pointer is absent, or when onboarding_completed is false and no legacy
+completion marker can be migrated. It no longer inspects the script registry.
+*/

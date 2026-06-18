@@ -58,6 +58,23 @@ func RenderStatusBar(termWidth int, context string, connected bool, memMB uint64
 	return bar
 }
 
+func RenderOnboardingStatusBar(termWidth int, legend string) string {
+	volt := lg.NewStyle().Foreground(ColourVolt)
+	grey := lg.NewStyle().Foreground(ColourIndustrialGrey)
+	sep := grey.Render(" │ ")
+
+	parts := []string{volt.Render("◆ Zeri"), grey.Render("Onboarding")}
+	if trimmed := strings.TrimSpace(legend); trimmed != "" {
+		parts = append(parts, grey.Render(trimmed))
+	}
+
+	content := " " + strings.Join(parts, sep) + " "
+
+	return lg.NewStyle().
+		Width(termWidth).
+		Render(content)
+}
+
 func contextLabel(context string) string {
 	normalized := strings.ToLower(strings.TrimSpace(context))
 	if normalized == "" {
@@ -91,4 +108,7 @@ func contextLabel(context string) string {
  * Future maintenance notes:
  *   - To re-add a background, set Background() on the bar style.
  *   - To add more indicators, append to the parts slice before the hint.
+ *   - RenderOnboardingStatusBar renders a context-specific legend during the
+ *     onboarding flow; it reuses the same volt/grey styling but replaces the
+ *     /help hint with the step-aware key legend supplied by the caller.
  */

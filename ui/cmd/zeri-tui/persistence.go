@@ -59,6 +59,22 @@ func SetDataRootUnderParent(parent string) (string, error) {
 	return persistence.SetDataRootUnderParent(parent)
 }
 
+func InspectDataParent(parent string) (string, bool, bool, error) {
+	return persistence.InspectDataParent(parent)
+}
+
+func OnboardingCompleted() (bool, error) {
+	return persistence.OnboardingCompleted()
+}
+
+func SetOnboardingCompleted(completed bool) error {
+	return persistence.SetOnboardingCompleted(completed)
+}
+
+func ResetOnboarding() error {
+	return persistence.ResetOnboarding()
+}
+
 func ZeriScriptsDir(language string) (string, error) {
 	base, err := ZeriBaseDir()
 	if err != nil {
