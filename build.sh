@@ -86,7 +86,13 @@ fi
 
 echo "Building zeri TUI"
 cd "$YUUMI_UI_DIR"
-GO_BUILD_VERSION="${ZERI_VERSION:-$VERSION}"
+GO_BUILD_VERSION="$ZERI_VERSION"
+if [ -z "$GO_BUILD_VERSION" ]; then
+    GO_BUILD_VERSION="$(git -C "$SCRIPT_DIR" describe --tags --always 2>/dev/null || true)"
+fi
+if [ -z "$GO_BUILD_VERSION" ]; then
+    GO_BUILD_VERSION="$VERSION"
+fi
 GO_BUILD_VERSION="${GO_BUILD_VERSION#v}"
 if [ -z "$GO_BUILD_VERSION" ]; then
     GO_BUILD_VERSION="unknown"

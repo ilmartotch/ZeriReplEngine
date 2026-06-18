@@ -82,9 +82,47 @@ func scriptRegistryIsEmpty() bool {
 	return true
 }
 
+func initializeDataLocation(noOnboarding bool) error {
+	_, ok, err := ResolveDataRoot()
+	if err != nil {
+		return err
+	}
+	if ok {
+		return ensureZeriDirectories()
+	}
+	if legacyInstallPresent() || noOnboarding {
+		home, homeErr := ConfigHomeDir()
+		if homeErr != nil {
+			return homeErr
+		}
+		if err := AdoptDataRoot(home); err != nil {
+			return err
+		}
+		return ensureZeriDirectories()
+	}
+	return nil
+}
+
+func legacyInstallPresent() bool {
+	home, err := ConfigHomeDir()
+	if err != nil {
+		return false
+	}
+	for _, sub := range []string{"config", "scripts", "sessions"} {
+		entries, readErr := os.ReadDir(filepath.Join(home, sub))
+		if readErr == nil && len(entries) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func needsOnboarding(skip bool) bool {
 	if skip {
 		return false
+	}
+	if _, ok, err := ResolveDataRoot(); err == nil && !ok {
+		return true
 	}
 	cfg, err := loadOnboardingConfig()
 	if err != nil {

@@ -39,6 +39,26 @@ func ZeriBaseDir() (string, error) {
 	return persistence.ZeriBaseDir()
 }
 
+func ResolveDataRoot() (string, bool, error) {
+	return persistence.ResolveBaseDir()
+}
+
+func ConfigHomeDir() (string, error) {
+	return persistence.ConfigHomeDir()
+}
+
+func DefaultDataParent() (string, error) {
+	return persistence.DefaultDataParent()
+}
+
+func AdoptDataRoot(dataRoot string) error {
+	return persistence.AdoptDataRoot(dataRoot)
+}
+
+func SetDataRootUnderParent(parent string) (string, error) {
+	return persistence.SetDataRootUnderParent(parent)
+}
+
 func ZeriScriptsDir(language string) (string, error) {
 	base, err := ZeriBaseDir()
 	if err != nil {

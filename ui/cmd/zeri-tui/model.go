@@ -291,7 +291,8 @@ func newAppModel(b bridge.YuumiClient, enginePath string, pipeName string, opts 
 		}
 	}
 	onboardingRequired := needsOnboarding(opts.noOnboarding)
-	onboardingModel := onboarding.New(pythonDetected)
+	defaultDataParent, _ := DefaultDataParent()
+	onboardingModel := onboarding.New(pythonDetected, defaultDataParent)
 	execSpinner := spinner.New()
 	execSpinner.Spinner = spinner.Dot
 
@@ -987,6 +988,10 @@ func (m AppModel) updateOnboarding(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var action onboarding.TutorialAction
 		m.onboardingModel, action = m.onboardingModel.Update(typed)
 		return m, m.applyOnboardingAction(action)
+	case onboarding.DataRootCompletedMsg, onboarding.DataRootFailedMsg:
+		var action onboarding.TutorialAction
+		m.onboardingModel, action = m.onboardingModel.Update(typed)
+		return m, m.applyOnboardingAction(action)
 	case tea.KeyPressMsg:
 		if normalisedKeyPress(typed) == "ctrl+h" || normalisedKeyPress(typed) == "ctrl+c" {
 			var action onboarding.TutorialAction
@@ -994,8 +999,13 @@ func (m AppModel) updateOnboarding(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.applyOnboardingAction(action)
 		}
 		if (typed.String() == "enter" || typed.String() == "return") && !typed.Mod.Contains(tea.ModShift) {
+			if m.onboardingModel.Step() == onboarding.StepWelcome {
+				var action onboarding.TutorialAction
+				m.onboardingModel, action = m.onboardingModel.Update(typed)
+				return m, m.applyOnboardingAction(action)
+			}
 			raw := strings.TrimSpace(m.input.Value())
-			if raw == "" {
+			if raw == "" && m.onboardingModel.Step() != onboarding.StepChoosePath {
 				return m, nil
 			}
 			m.input.Reset()
@@ -1035,7 +1045,25 @@ func (m *AppModel) applyOnboardingAction(action onboarding.TutorialAction) tea.C
 		m.onboardingHubOpen = true
 		m.mode = ModeScriptHub
 		return tea.Batch(m.scriptHub.Init(), onboarding.TutorialHubAutoCloseCmd())
+	case onboarding.TutorialActionSetDataRoot:
+		parent := strings.TrimSpace(action.Payload)
+		return func() tea.Msg {
+			dataRoot, err := SetDataRootUnderParent(parent)
+			if err != nil {
+				return onboarding.DataRootFailedMsg{Reason: err.Error()}
+			}
+			if err := ensureZeriDirectories(); err != nil {
+				return onboarding.DataRootFailedMsg{Reason: err.Error()}
+			}
+			return onboarding.DataRootCompletedMsg{Path: dataRoot}
+		}
 	case onboarding.TutorialActionMarkCompleted:
+		if _, ok, _ := ResolveDataRoot(); !ok {
+			if home, err := ConfigHomeDir(); err == nil {
+				_ = AdoptDataRoot(home)
+				_ = ensureZeriDirectories()
+			}
+		}
 		_ = saveOnboardingCompleted()
 		m.onboardingActive = false
 		m.mode = ModeREPL
@@ -3629,11 +3657,11 @@ func (m *AppModel) handleAiSetCommand(cmd string) (tea.Model, tea.Cmd) {
 	default:
 		m.addErrorMessage(
 			"In $ai, /set configures the assistant — not typed variables.\n" +
-			"Use one of:\n" +
-			" /set endpoint <url> (example: /set endpoint http://localhost:11434)\n" +
-			" /set model <name> (example: /set model codellama:latest)\n" +
-			" /set apikey <key> (for remote endpoints; /set apikey clear to remove)\n" +				" /set system-prompt <text> (override the system prompt for this session)\n" +
-			"Or run /setup for a guided walkthrough.")
+				"Use one of:\n" +
+				" /set endpoint <url> (example: /set endpoint http://localhost:11434)\n" +
+				" /set model <name> (example: /set model codellama:latest)\n" +
+				" /set apikey <key> (for remote endpoints; /set apikey clear to remove)\n" + " /set system-prompt <text> (override the system prompt for this session)\n" +
+				"Or run /setup for a guided walkthrough.")
 		return *m, nil
 	}
 }

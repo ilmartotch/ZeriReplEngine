@@ -11,6 +11,7 @@ type TutorialStep int
 
 const (
 	StepWelcome TutorialStep = iota
+	StepChoosePath
 	StepSwitchContext
 	StepRunCode
 	StepSaveScript
@@ -30,7 +31,16 @@ const (
 	TutorialActionOpenScriptHub
 	TutorialActionMarkCompleted
 	TutorialActionExitToRepl
+	TutorialActionSetDataRoot
 )
+
+type DataRootCompletedMsg struct {
+	Path string
+}
+
+type DataRootFailedMsg struct {
+	Reason string
+}
 
 type TutorialAction struct {
 	Kind TutorialActionKind
@@ -45,15 +55,18 @@ type TutorialModel struct {
 	width int
 	height int
 	pythonAvailable bool
+	defaultDataParent string
+	waitingDataRoot bool
 	waitingRunResult bool
 	waitingSaveAck bool
 	waitingHubClose bool
 }
 
-func New(pythonAvailable bool) TutorialModel {
+func New(pythonAvailable bool, defaultDataParent string) TutorialModel {
 	m := TutorialModel{
 		step: StepWelcome,
 		pythonAvailable: pythonAvailable,
+		defaultDataParent: defaultDataParent,
 	}
 	m.syncInstruction()
 	return m
@@ -111,7 +124,7 @@ func (m TutorialModel) Update(msg tea.Msg) (TutorialModel, TutorialAction) {
 			return m, TutorialAction{Kind: TutorialActionMarkCompleted}
 		}
 		if m.step == StepWelcome && keyIsEnter(typed) {
-			m.step = StepSwitchContext
+			m.step = StepChoosePath
 			m.feedback = ""
 			m.syncInstruction()
 			return m, TutorialAction{}
@@ -124,6 +137,17 @@ func (m TutorialModel) Update(msg tea.Msg) (TutorialModel, TutorialAction) {
 	case TutorialCommandMsg:
 		input := strings.TrimSpace(typed.Input)
 		switch m.step {
+		case StepChoosePath:
+			if m.waitingDataRoot {
+				return m, TutorialAction{}
+			}
+			parent := input
+			if parent == "" {
+				parent = m.defaultDataParent
+			}
+			m.waitingDataRoot = true
+			m.feedback = "Preparing your data folder..."
+			return m, TutorialAction{Kind: TutorialActionSetDataRoot, Payload: parent}
 		case StepSwitchContext:
 			if input == "$py" || input == "$python" {
 				m.feedback = "✓ You're in the Python context."
@@ -153,6 +177,18 @@ func (m TutorialModel) Update(msg tea.Msg) (TutorialModel, TutorialAction) {
 				return m, TutorialAction{Kind: TutorialActionSendCommand, Payload: input}
 			}
 			m.feedback = "Type /save hello-zeri and press Enter."
+		}
+	case DataRootCompletedMsg:
+		if m.step == StepChoosePath && m.waitingDataRoot {
+			m.waitingDataRoot = false
+			m.feedback = "Data folder ready: " + strings.TrimSpace(typed.Path)
+			m.step = StepSwitchContext
+			m.syncInstruction()
+		}
+	case DataRootFailedMsg:
+		if m.step == StepChoosePath && m.waitingDataRoot {
+			m.waitingDataRoot = false
+			m.feedback = "Couldn't use that path: " + strings.TrimSpace(typed.Reason) + ". Try another folder."
 		}
 	case tutorialRunCompletedMsg:
 		if m.step == StepRunCode && m.waitingRunResult {
@@ -196,7 +232,9 @@ func normaliseKey(msg tea.KeyPressMsg) string {
 func (m *TutorialModel) syncInstruction() {
 	switch m.step {
 	case StepWelcome:
-		m.instruction = "Welcome to Zeri. In the next few minutes you will switch context, run code, save a script, and open Script Hub.\n\nPress Enter to start."
+		m.instruction = "Welcome to Zeri. In the next few minutes you will pick where your data lives, switch context, run code, save a script, and open Script Hub.\n\nPress Enter to start."
+	case StepChoosePath:
+		m.instruction = "Choose where Zeri stores your data. A \"zeri\" folder will be created inside it.\n\nPress Enter to accept the default:\n" + m.defaultDataParent + "\n\nor type another folder path and press Enter."
 	case StepSwitchContext:
 		m.instruction = "Type $py and press Enter."
 	case StepRunCode:

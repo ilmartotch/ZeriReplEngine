@@ -8,6 +8,19 @@ import (
 	lg "charm.land/lipgloss/v2"
 )
 
+var Version = "dev"
+
+func displayVersion() string {
+	v := strings.TrimSpace(Version)
+	if v == "" {
+		v = "dev"
+	}
+	if v != "dev" && !strings.HasPrefix(v, "v") {
+		v = "v" + v
+	}
+	return v
+}
+
 var logoLines = []string{
 	`███████╗███████╗██████╗ ██╗`,
 	`╚══███╔╝██╔════╝██╔══██╗██║`,
@@ -49,7 +62,7 @@ func RenderLogo() string {
 func RenderHeader(termWidth, termHeight int) string {
 	subtitle := lg.NewStyle().
 		Foreground(ColourIndustrialGrey).
-		Render("v0.1.0-alpha  ·  modular REPL environment")
+		Render(displayVersion() + "  ·  modular REPL environment")
 
 	if termHeight < 15 {
 		return lg.NewStyle().
@@ -98,4 +111,9 @@ func RenderHeader(termWidth, termHeight int) string {
  *   - To change the gradient direction, swap the colour parameters in
  *     interpolateColour or iterate columns in reverse.
  *   - Logo glyph must not be altered without updating the column count.
+ *   - The header subtitle version is no longer hardcoded: it reads the
+ *     package-level Version variable, set from main at startup and injected
+ *     at build time via -ldflags "-X main.version=...". displayVersion
+ *     normalises it (falls back to "dev", ensures a leading "v"). Release
+ *     and git-describe-based builds therefore track the latest tag.
  */

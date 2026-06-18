@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 	"yuumi/internal/bridge"
+	"yuumi/internal/ui"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -18,6 +19,7 @@ import (
 var version = "dev"
 
 func main() {
+	ui.Version = version
 	if shouldPrintVersion(os.Args[1:]) {
 		fmt.Println(formatVersionOutput())
 		os.Exit(0)
@@ -32,7 +34,7 @@ func main() {
 	defer cancel()
 	profiler := newStartupProfiler(opts.profileStartup)
 
-	if err := ensureZeriDirectories(); err != nil {
+	if err := initializeDataLocation(opts.noOnboarding); err != nil {
 		fmt.Fprintf(os.Stderr, "[ZERI][SESSION-010] Storage initialization failed: %v. Hint: verify write permissions for user data directories.\n", err)
 		os.Exit(1)
 	}

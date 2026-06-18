@@ -154,7 +154,13 @@ Write-Host "Wrote dist/version.txt with version: $Version"
 Write-Host "Build TUI Go (zeri.exe)"
 $YuumiUi = Join-Path $Root "ui"
 Push-Location $YuumiUi
-$GoVersion = if ([string]::IsNullOrWhiteSpace($env:ZERI_VERSION)) { $Version } else { $env:ZERI_VERSION }
+$GoVersion = $env:ZERI_VERSION
+if ([string]::IsNullOrWhiteSpace($GoVersion)) {
+    $GoVersion = (& git -C $Root describe --tags --always 2>$null)
+}
+if ([string]::IsNullOrWhiteSpace($GoVersion)) {
+    $GoVersion = $Version
+}
 $GoVersion = $GoVersion.Trim()
 if ($GoVersion.StartsWith("v")) {
     $GoVersion = $GoVersion.Substring(1)
