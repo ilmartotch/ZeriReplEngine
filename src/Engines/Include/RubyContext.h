@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BaseContext.h"
+#include "BuiltinExecutor.h"
 #include "Interface/IExecutor.h"
 
 #include <memory>
@@ -27,6 +28,7 @@ namespace Zeri::Engines::Defaults {
 
     private:
         std::shared_ptr<IExecutor> m_executor;
+        BuiltinExecutor m_builtinExecutor;
         bool m_initialized{ false };
     };
 

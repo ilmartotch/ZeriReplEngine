@@ -156,17 +156,13 @@ namespace Zeri::Engines::Defaults {
         }
 
         if (cmd.commandName == "delete") {
-            if (cmd.args.empty()) {
-                return std::unexpected(ExecutionError{
-                    "LUA_DELETE_NAME_MISSING",
-                    "Missing script name for /delete.",
-                    cmd.rawInput,
-                    { "Usage: /delete <name> or /delete --hard <name> --confirm <name>" }
-                });
-            }
-
-            if (cmd.args[0] == "--hard") {
-                if (cmd.args.size() < 4 || cmd.args[2] != "--confirm" || cmd.args[1] != cmd.args[3]) {
+            const auto hardIt = cmd.flags.find("hard");
+            if (hardIt != cmd.flags.end()) {
+                const auto confirmIt = cmd.flags.find("confirm");
+                const std::string& hardTarget = hardIt->second;
+                const bool missingHardTarget = hardTarget.empty() || hardTarget == "true";
+                const bool missingConfirmTarget = confirmIt == cmd.flags.end() || confirmIt->second.empty() || confirmIt->second == "true";
+                if (missingHardTarget || missingConfirmTarget || hardTarget != confirmIt->second) {
                     return std::unexpected(ExecutionError{
                         "LUA_DELETE_HARD_USAGE",
                         "Invalid hard delete syntax.",
@@ -174,10 +170,19 @@ namespace Zeri::Engines::Defaults {
                         { "Usage: /delete --hard <name> --confirm <name>" }
                     });
                 }
-                if (!HardDeleteScript(state, "lua", cmd.args[1])) {
-                    return std::unexpected(ExecutionError{ "LUA_SCRIPT_NOT_FOUND", "Script not found: " + cmd.args[1], cmd.rawInput });
+                if (!HardDeleteScript(state, "lua", hardTarget)) {
+                    return std::unexpected(ExecutionError{ "LUA_SCRIPT_NOT_FOUND", "Script not found: " + hardTarget, cmd.rawInput });
                 }
-                return "Hard-deleted Lua script: " + cmd.args[1];
+                return "Hard-deleted Lua script: " + hardTarget;
+            }
+
+            if (cmd.args.empty()) {
+                return std::unexpected(ExecutionError{
+                    "LUA_DELETE_NAME_MISSING",
+                    "Missing script name for /delete.",
+                    cmd.rawInput,
+                    { "Usage: /delete <name> or /delete --hard <name> --confirm <name>" }
+                });
             }
 
             if (!DeleteScript(state, "lua", cmd.args[0])) {
@@ -268,7 +273,7 @@ namespace Zeri::Engines::Defaults {
             const auto diffLines = BuildUnifiedDiff(cmd.args[0], versionA, versionB, *contentA, *contentB);
             for (const auto& line : diffLines) {
                 if (line.kind == ScriptDiffLine::Kind::Removal) {
-                    terminal.WriteError(line.text);
+                    terminal.Write(line.text);
                     continue;
                 }
                 if (line.kind == ScriptDiffLine::Kind::Addition) {
@@ -277,7 +282,7 @@ namespace Zeri::Engines::Defaults {
                 }
                 terminal.WriteInfo(line.text);
             }
-            return "";
+            return "Diff rendered.";
         }
 
         if (cmd.commandName == "rollback") {
@@ -336,6 +341,14 @@ namespace Zeri::Engines::Defaults {
                     << "  " << match.modifiedUtc << "\n";
             }
             return output.str();
+        }
+
+        auto builtinOutcome = m_builtinExecutor.Execute(cmd, state, terminal);
+        if (builtinOutcome.has_value()) {
+            return builtinOutcome;
+        }
+        if (builtinOutcome.error().code != "UnknownBuiltin") {
+            return std::unexpected(builtinOutcome.error());
         }
 
         return std::unexpected(ExecutionError{

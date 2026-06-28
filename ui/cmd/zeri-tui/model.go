@@ -1027,10 +1027,17 @@ func (m AppModel) updateOnboarding(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		key := normalisedKeyPress(typed)
 		switch key {
-		case "ctrl+h", "ctrl+c", "esc", "escape", "ctrl+b", "left":
+		case "ctrl+c", "esc", "escape", "ctrl+b", "left":
 			var action onboarding.TutorialAction
 			m.onboardingModel, action = m.onboardingModel.Update(typed)
 			return m, m.applyOnboardingAction(action)
+		case "ctrl+h":
+			if m.onboardingModel.Step() == onboarding.StepScriptHub {
+				var action onboarding.TutorialAction
+				m.onboardingModel, action = m.onboardingModel.Update(typed)
+				return m, m.applyOnboardingAction(action)
+			}
+			return m, nil
 		}
 		if (typed.String() == "enter" || typed.String() == "return") && !typed.Mod.Contains(tea.ModShift) {
 			if m.onboardingModel.Step() == onboarding.StepWelcome {

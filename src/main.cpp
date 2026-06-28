@@ -386,6 +386,9 @@ namespace {
 
         const auto* current = runtimeState.GetCurrentContext();
         const std::string currentName = current ? ToLower(current->GetName()) : std::string{ "global" };
+        if (currentName == normalized) {
+            return true;
+        }
         const bool pluginContextTarget = pluginLoader != nullptr && pluginLoader->HasContext(normalized);
         if (!CanReachContext(currentName, normalized) && !pluginContextTarget) {
             terminal.WriteError(
@@ -415,8 +418,7 @@ namespace {
         Zeri::Ui::OutputSink* sink = nullptr,
         const Zeri::Core::StartupDiagnosticsReport* startupDiagnostics = nullptr,
         const std::vector<Zeri::Core::BugSnapshotCommandRecord>* commandHistory = nullptr,
-        Zeri::Engines::Defaults::PluginLoader* pluginLoader = nullptr,
-        Zeri::Engines::Defaults::LuaPluginLoader* luaPluginLoader = nullptr
+        Zeri::Engines::Defaults::PluginLoader* pluginLoader = nullptr
     ) {
         if (!Zeri::Engines::IsGlobalCommand(cmd.commandName)) {
             return false;
@@ -499,74 +501,6 @@ namespace {
                 result += "    Unavailable: unable to resolve user data directory from environment.";
             }
             terminal.WriteLine(result);
-            return true;
-        }
-
-        if (cmd.commandName == "plugins") {
-            const auto nativePlugins = pluginLoader == nullptr
-                ? std::vector<Zeri::Engines::Defaults::NativePluginInfo>{}
-                : pluginLoader->LoadedPlugins();
-            const auto luaPlugins = luaPluginLoader == nullptr
-                ? std::vector<Zeri::Engines::Defaults::LuaPluginInfo>{}
-                : luaPluginLoader->LoadedPlugins();
-
-            const std::filesystem::path pluginDirectory = pluginLoader == nullptr
-                ? Zeri::Engines::Defaults::PluginLoader::ResolveDefaultPluginDirectory()
-                : pluginLoader->PluginDirectory();
-
-            const std::size_t totalCount = nativePlugins.size() + luaPlugins.size();
-            if (totalCount == 0) {
-                terminal.WriteLine(
-                    "No plugins loaded. Plugin directory: " + pluginDirectory.string() +
-                    "\nRegistry: https://github.com/ilmartotch/zeri-plugins"
-                );
-                return true;
-            }
-
-            std::string output = "Loaded plugins (" + std::to_string(totalCount) + "):\n";
-            for (const auto& plugin : nativePlugins) {
-                std::string kinds;
-                if (plugin.hasExecutor) {
-                    kinds += "executor";
-                }
-                if (plugin.hasContext) {
-                    if (!kinds.empty()) {
-                        kinds += " + ";
-                    }
-                    kinds += "context";
-                }
-                if (kinds.empty()) {
-                    kinds = "metadata";
-                }
-
-                output += "  " + plugin.name + "  v" + plugin.version + "  [" + kinds + "]";
-                if (!plugin.description.empty()) {
-                    output += "  " + plugin.description;
-                }
-                output += "\n";
-            }
-
-            for (const auto& plugin : luaPlugins) {
-                std::string commandList;
-                for (std::size_t i = 0; i < plugin.commands.size(); ++i) {
-                    if (i > 0) {
-                        commandList += ", ";
-                    }
-                    commandList += "/" + plugin.commands[i];
-                }
-                output += "  " + plugin.name + "  v" + plugin.version + "  [lua commands]";
-                if (!commandList.empty()) {
-                    output += "  " + commandList;
-                }
-                if (!plugin.description.empty()) {
-                    output += "  " + plugin.description;
-                }
-                output += "\n";
-            }
-
-            output += "Plugin directory: " + pluginDirectory.string();
-            output += "\nRegistry: https://github.com/ilmartotch/zeri-plugins";
-            terminal.WriteLine(output);
             return true;
         }
 
@@ -829,8 +763,7 @@ namespace {
                     sink,
                     startupDiagnostics,
                     commandHistory,
-                    pluginLoader,
-                    luaPluginLoader
+                    pluginLoader
                 )) {
                     return true;
                 }

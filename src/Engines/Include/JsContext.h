@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BaseContext.h"
+#include "BuiltinExecutor.h"
 #include "Interface/IExecutor.h"
 
 #include <memory>
@@ -30,6 +31,7 @@ namespace Zeri::Engines::Defaults {
         [[nodiscard]] std::string DisplayName() const { return m_typescript ? "TypeScript" : "JavaScript"; }
 
         std::shared_ptr<IExecutor> m_executor;
+        BuiltinExecutor m_builtinExecutor;
         bool m_typescript{ false };
         bool m_initialized{ false };
     };

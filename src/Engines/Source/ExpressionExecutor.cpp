@@ -278,6 +278,18 @@ namespace Zeri::Engines::Defaults {
             expressionText = Trim(std::string_view(trimmed).substr(assignmentPos + 1));
 
             if (variableName.empty() || expressionText.empty() || !IsValidIdentifier(variableName)) {
+                const bool looksLikeInlineFunction =
+                    variableName.find('(') != std::string::npos ||
+                    variableName.find(')') != std::string::npos;
+                if (looksLikeInlineFunction) {
+                    return std::unexpected(ExecutionError{
+                        "InvalidAssignment",
+                        "Inline function definitions are not supported in expressions.",
+                        trimmed,
+                        { "Use /fn f(x) = <expression> to define a function." }
+                    });
+                }
+
                 return std::unexpected(ExecutionError{
                     "InvalidAssignment",
                     "Invalid assignment syntax.",

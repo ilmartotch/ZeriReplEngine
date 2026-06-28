@@ -166,14 +166,3 @@ target_compile_options(my-plugin PRIVATE -Wall -Wextra -Werror -pedantic)
 ```
 
 Output extension: `.dylib`
-
-## 6. Registry submission
-
-Plugin registry repository: https://github.com/ilmartotch/zeri-plugins
-
-Submission flow:
-
-1. Fork `ilmartotch/zeri-plugins`.
-2. Add your plugin entry in `registry.json`.
-3. Open a pull request with plugin name, version, repository URL, and compatibility notes.
-4. Wait for review and merge.

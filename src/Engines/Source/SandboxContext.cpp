@@ -240,7 +240,7 @@ namespace Zeri::Engines::Defaults {
         if (cmd.args.empty() || cmd.args[0].empty()) {
             return std::unexpected(ExecutionError{
                 "SANDBOX_MISSING_ARGS",
-                "Missing IDE name for set-ide.",
+                "Missing IDE name for /set-ide.",
                 cmd.rawInput,
                 { "Usage: /set-ide <name>" }
             });
