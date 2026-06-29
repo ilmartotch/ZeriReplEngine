@@ -230,7 +230,26 @@ func (r *RealYuumiClient) RegisterMessageHandler() {
 			program.Send(ScriptActionResponseMsg{
 				Action: action,
 				Ok: ok,
+				Error:  errText,
+			})
+		case "session_state_response":
+			action, _ := data["action"].(string)
+			ok, okType := data["ok"].(bool)
+			if !okType {
+				ok = false
+			}
+			errText, _ := data["error"].(string)
+			state := map[string]interface{}{}
+			if rawState, ok := data["state"].(map[string]interface{}); ok {
+				for key, value := range rawState {
+					state[key] = value
+				}
+			}
+			program.Send(SessionStateResponseMsg{
+				Action: action,
+				Ok: ok,
 				Error: errText,
+				State: state,
 			})
 		case "shared_scope_snapshot_response":
 			entries := map[string]interface{}{}

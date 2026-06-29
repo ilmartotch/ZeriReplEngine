@@ -285,33 +285,58 @@ func deleteScript(name string, language string) error {
 	return os.Remove(path)
 }
 
-func saveSession(model AppModel, name string, overwrite bool) error {
+func sessionSnapshotPath(name string) (string, string, error) {
 	safeName, err := sanitizeStorageName(name)
 	if err != nil {
-		return err
+		return "", "", err
 	}
 	dir, err := ZeriSessionsDir()
 	if err != nil {
-		return err
+		return "", "", err
 	}
 	path := filepath.Join(dir, safeName+".json")
+	return safeName, path, nil
+}
+
+func sessionSnapshotExists(name string) (string, bool, error) {
+	safeName, path, err := sessionSnapshotPath(name)
+	if err != nil {
+		return "", false, err
+	}
+	_, err = os.Stat(path)
+	if err == nil {
+		return safeName, true, nil
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return safeName, false, nil
+	}
+	return "", false, err
+}
+
+func saveSession(model AppModel, name string, overwrite bool, engineState map[string]interface{}) error {
+	safeName, path, err := sessionSnapshotPath(name)
+	if err != nil {
+		return err
+	}
 
 	if !overwrite {
 		if _, err = os.Stat(path); err == nil {
 			return ErrSessionExists{Name: safeName}
 		}
 	}
-
 	historyCopy := make([]ui.ChatMessage, len(model.messages))
 	copy(historyCopy, model.messages)
-	sessionVars := cloneSessionVars(model.sessionVars)
+	encodedEngineState, err := cloneEngineState(engineState)
+	if err != nil {
+		return err
+	}
 
 	snapshot := SessionSnapshot{
 		Name: safeName,
 		SavedAt: time.Now(),
 		ActiveContext: model.activeContextPath,
 		History: historyCopy,
-		SessionVars: sessionVars,
+		EngineState: encodedEngineState,
 	}
 
 	data, err := json.MarshalIndent(snapshot, "", "  ")
@@ -323,15 +348,10 @@ func saveSession(model AppModel, name string, overwrite bool) error {
 }
 
 func loadSession(name string) (SessionSnapshot, error) {
-	safeName, err := sanitizeStorageName(name)
+	safeName, path, err := sessionSnapshotPath(name)
 	if err != nil {
 		return SessionSnapshot{}, err
 	}
-	dir, err := ZeriSessionsDir()
-	if err != nil {
-		return SessionSnapshot{}, err
-	}
-	path := filepath.Join(dir, safeName+".json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -347,8 +367,8 @@ func loadSession(name string) (SessionSnapshot, error) {
 	if snapshot.Name == "" {
 		snapshot.Name = safeName
 	}
-	if snapshot.SessionVars == nil {
-		snapshot.SessionVars = map[string]string{}
+	if snapshot.EngineState == nil {
+		snapshot.EngineState = map[string]interface{}{}
 	}
 
 	return snapshot, nil
@@ -411,15 +431,19 @@ func listScriptNames(prefix string, language string) ([]string, error) {
 	return names, nil
 }
 
-func cloneSessionVars(input map[string]string) map[string]string {
+func cloneEngineState(input map[string]interface{}) (map[string]interface{}, error) {
 	if len(input) == 0 {
-		return map[string]string{}
+		return map[string]interface{}{}, nil
 	}
-	result := make(map[string]string, len(input))
-	for key, value := range input {
-		result[key] = value
+	encoded, err := json.Marshal(input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode engine state snapshot: %w", err)
 	}
-	return result
+	var output map[string]interface{}
+	if err := json.Unmarshal(encoded, &output); err != nil {
+		return nil, fmt.Errorf("failed to decode engine state snapshot: %w", err)
+	}
+	return output, nil
 }
 
 func formatScriptConfirmation(name string, language string, content string) string {

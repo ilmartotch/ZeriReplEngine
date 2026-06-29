@@ -281,19 +281,22 @@ namespace Zeri::Engines::Defaults {
             if (i > 0) paramList += ", ";
             paramList += params[i];
         }
-        m_functionDefinitions[fnName] = std::format("{}({}) → {}", fnName, paramList, body);
+        Zeri::Core::RuntimeState::MathFunctionDefinition definition;
+        definition.params = params;
+        definition.expression = body;
+        state.SetMathFunctionDefinition(fnName, std::move(definition));
         return std::format("[FunctionDefined] {}({}) = {}", fnName, paramList, body);
     }
 
     ExecutionOutcome MathContext::HandleListVariables(Zeri::Core::RuntimeState& state) {
-        const auto localVars = state.GetCurrentLocalVariables();
-        if (localVars.empty()) {
+        const auto mathVars = state.GetMathVariables();
+        if (mathVars.empty()) {
             return "No variables defined in the current scope.\n"
                    "  Assign with:  x = 42  or  result = sin(pi/4)";
         }
 
         std::string result = "Variables (current scope):\n";
-        for (const auto& [name, value] : localVars) {
+        for (const auto& [name, value] : mathVars) {
             auto numericVal = TryConvertToDouble(value);
             if (numericVal.has_value()) {
                 result += std::format("  {} = {}\n", name, FormatDouble(*numericVal));
@@ -307,20 +310,28 @@ namespace Zeri::Engines::Defaults {
     ExecutionOutcome MathContext::HandleListFunctions(Zeri::Core::RuntimeState& state) const {
         const auto localFns = state.GetCurrentLocalFunctions();
         const auto allFns = state.GetResolvedFunctions();
+        const auto functionDefinitions = state.GetMathFunctionDefinitions();
 
         std::string result;
 
-        if (!m_functionDefinitions.empty()) {
-            const std::size_t count = m_functionDefinitions.size();
+        if (!functionDefinitions.empty()) {
+            const std::size_t count = functionDefinitions.size();
             result += std::format("Defined functions ({}):\n", count);
-            for (const auto& [name, definition] : m_functionDefinitions) {
-                result += std::format("  {}\n", definition);
+            for (const auto& [name, definition] : functionDefinitions) {
+                std::string paramList;
+                for (std::size_t i = 0; i < definition.params.size(); ++i) {
+                    if (i > 0) {
+                        paramList += ", ";
+                    }
+                    paramList += definition.params[i];
+                }
+                result += std::format("  {}({}) → {}\n", name, paramList, definition.expression);
             }
         }
 
         bool hasInherited = false;
         for (const auto& [name, _] : allFns) {
-            if (!localFns.contains(name) && !m_functionDefinitions.contains(name)) {
+            if (!localFns.contains(name) && !functionDefinitions.contains(name)) {
                 if (!hasInherited) {
                     result += "Inherited functions (session/global):\n";
                     hasInherited = true;

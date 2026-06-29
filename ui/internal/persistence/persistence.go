@@ -17,7 +17,7 @@ type SessionSnapshot struct {
 	SavedAt time.Time `json:"saved_at"`
 	ActiveContext string `json:"active_context"`
 	History []ui.ChatMessage `json:"history"`
-	SessionVars map[string]string `json:"session_vars"`
+	EngineState map[string]interface{} `json:"engine_state"`
 }
 
 type locationPointer struct {

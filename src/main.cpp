@@ -806,6 +806,25 @@ namespace {
         sink.Send(response);
     }
 
+    void SendSessionStateResponse(
+        Zeri::Ui::OutputSink& sink,
+        std::string_view action,
+        bool ok,
+        std::string_view error = {},
+        const nlohmann::json* state = nullptr
+    ) {
+        nlohmann::json response;
+        response["type"] = "session_state_response";
+        response["action"] = std::string(action);
+        response["ok"] = ok;
+        if (!ok) {
+            response["error"] = std::string(error);
+        } else if (state != nullptr) {
+            response["state"] = *state;
+        }
+        sink.Send(response);
+    }
+
     void SendScriptListResponse(
         Zeri::Ui::OutputSink& sink,
         const std::vector<Zeri::Engines::ScriptEntry>& scripts
@@ -867,6 +886,42 @@ namespace {
                 response["entries"][key] = *serialized;
             }
             sink.Send(response);
+            return true;
+        }
+
+        if (type == "session_save_state") {
+            const auto sessionPath = Zeri::Core::ResolveSessionPath();
+            const auto saveResult = runtimeState.SaveSession(sessionPath);
+            if (!saveResult.has_value()) {
+                SendSessionStateResponse(sink, "session_save_state", false, saveResult.error());
+                return true;
+            }
+            const auto exportResult = runtimeState.ExportSessionState();
+            if (!exportResult.has_value()) {
+                SendSessionStateResponse(sink, "session_save_state", false, exportResult.error());
+                return true;
+            }
+            SendSessionStateResponse(sink, "session_save_state", true, {}, &(*exportResult));
+            return true;
+        }
+
+        if (type == "session_load_state") {
+            if (!request.contains("state")) {
+                SendSessionStateResponse(sink, "session_load_state", false, "Missing required field state.");
+                return true;
+            }
+            const auto loadResult = runtimeState.ImportSessionState(request["state"]);
+            if (!loadResult.has_value()) {
+                SendSessionStateResponse(sink, "session_load_state", false, loadResult.error());
+                return true;
+            }
+            const auto sessionPath = Zeri::Core::ResolveSessionPath();
+            const auto saveResult = runtimeState.SaveSession(sessionPath);
+            if (!saveResult.has_value()) {
+                SendSessionStateResponse(sink, "session_load_state", false, saveResult.error());
+                return true;
+            }
+            SendSessionStateResponse(sink, "session_load_state", true);
             return true;
         }
 
@@ -1060,6 +1115,8 @@ int RunMain(int argc, char* argv[]) {
         } else if (
             type == "list_scripts_with_content" ||
             type == "shared_scope_snapshot" ||
+            type == "session_save_state" ||
+            type == "session_load_state" ||
             type == "save_script" ||
             type == "delete_script" ||
             type == "run_script"
@@ -1285,6 +1342,8 @@ Bridge protocol (high-level):
       {"type": "command", "payload": "<user input>"}
       {"type": "input_response", "payload": "<wizard reply>"}
       {"type": "list_scripts_with_content"}
+      {"type": "session_save_state"}
+      {"type": "session_load_state", "state": { ... }}
       {"type": "save_script", "name": "<name>", "lang": "<lang>", "content": "<code>"}
       {"type": "delete_script", "name": "<name>", "lang": "<lang>", "hard": <bool>}
       {"type": "run_script", "name": "<name>", "lang": "<lang>"}
@@ -1295,6 +1354,7 @@ Bridge protocol (high-level):
       {"type": "req_input", "prompt": "<text>"}
       {"type": "script_list_response", "scripts": [ ... ]}
       {"type": "script_action_response", "action": "<...>", "ok": <bool>, "error": "<...>"}
+      {"type": "session_state_response", "action": "<session_save_state|session_load_state>", "ok": <bool>, "error": "<...>", "state": { ... }}
       {"type": "stream_batch_end", "reason": "<execution_complete|before_input_request|context_transition|runtime_idle|engine_shutdown>"}
 
 Behavior notes:

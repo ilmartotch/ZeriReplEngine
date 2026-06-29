@@ -43,7 +43,10 @@ func TestSessionSnapshotMarshalUnmarshal(t *testing.T) {
 			{Role: ui.RoleUser, Content: "hello"},
 			{Role: ui.RoleZeri, Content: "world"},
 		},
-		SessionVars: map[string]string{"k": "v"},
+		EngineState: map[string]interface{}{
+			"schema_version":   float64(2),
+			"global_variables": map[string]interface{}{"alpha": float64(5)},
+		},
 	}
 
 	raw, err := json.Marshal(input)
@@ -62,8 +65,8 @@ func TestSessionSnapshotMarshalUnmarshal(t *testing.T) {
 	if len(decoded.History) != len(input.History) {
 		t.Fatalf("history length mismatch: got=%d want=%d", len(decoded.History), len(input.History))
 	}
-	if decoded.SessionVars["k"] != "v" {
-		t.Fatalf("session vars mismatch: got=%v", decoded.SessionVars)
+	if decoded.EngineState["schema_version"] != float64(2) {
+		t.Fatalf("engine state schema mismatch: got=%v", decoded.EngineState["schema_version"])
 	}
 }
 

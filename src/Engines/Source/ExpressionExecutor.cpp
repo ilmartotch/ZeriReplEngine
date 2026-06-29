@@ -1,4 +1,5 @@
 #include "../Include/ExpressionExecutor.h"
+#include "../Include/Interface/IContext.h"
 #include <any>
 #include <cctype>
 #include <cstdlib>
@@ -398,6 +399,10 @@ namespace Zeri::Engines::Defaults {
 
         if (isAssignment) {
             state.SetVariable(variableName, result);
+            if (const auto* currentContext = state.GetCurrentContext();
+                currentContext != nullptr && currentContext->GetName() == "math") {
+                state.SetMathVariable(variableName, result);
+            }
             return "[VariableBinding] " + variableName + " = " + FormatDouble(result);
         }
 

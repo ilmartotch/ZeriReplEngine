@@ -30,6 +30,11 @@ namespace Zeri::Core {
 
     class RuntimeState {
     public:
+        struct MathFunctionDefinition {
+            std::vector<std::string> params;
+            std::string expression;
+        };
+
         enum class VariableScope {
             Local,
             Session,
@@ -70,6 +75,8 @@ namespace Zeri::Core {
         void SetPersistedVariable(const std::string& key, const std::any& value);
         [[nodiscard]] std::any GetPersistedVariable(const std::string& key) const;
         [[nodiscard]] bool HasPersistedVariable(const std::string& key) const;
+        void SetMathVariable(const std::string& key, const std::any& value);
+        [[nodiscard]] std::map<std::string, std::any> GetMathVariables() const;
 
         [[nodiscard]] std::optional<AnyValue> GetShared(const std::string& key) const;
         void SetShared(const std::string& key, const AnyValue& value);
@@ -91,6 +98,8 @@ namespace Zeri::Core {
         void SetGlobalFunction(const std::string& name, FunctionSignature function);
         void SetSessionFunction(const std::string& name, FunctionSignature function);
         void SetPersistedFunction(const std::string& name, FunctionSignature function);
+        void SetMathFunctionDefinition(const std::string& name, MathFunctionDefinition definition);
+        [[nodiscard]] std::map<std::string, MathFunctionDefinition> GetMathFunctionDefinitions() const;
 
         [[nodiscard]] std::map<std::string, FunctionSignature> GetResolvedFunctions() const;
         [[nodiscard]] std::size_t GetFunctionRegistryRevision() const;
@@ -115,6 +124,8 @@ namespace Zeri::Core {
         [[nodiscard]] std::expected<void, std::string> SaveSession(const std::filesystem::path& path) const;
 
         [[nodiscard]] std::expected<void, std::string> LoadSession(const std::filesystem::path& path);
+        [[nodiscard]] std::expected<nlohmann::json, std::string> ExportSessionState() const;
+        [[nodiscard]] std::expected<void, std::string> ImportSessionState(const nlohmann::json& root);
         [[nodiscard]] bool WasSessionCorrupted() const;
 
         void ResetSession();
@@ -124,6 +135,7 @@ namespace Zeri::Core {
         std::map<std::string, std::any> m_sessionVariables;
         std::map<std::string, std::any> m_globalVariables;
         std::map<std::string, std::any> m_persistedVariables;
+        std::map<std::string, std::any> m_mathVariables;
         mutable std::shared_mutex m_varMutex;
 
         std::map<std::string, AnyValue> m_sharedVariables;
@@ -133,6 +145,7 @@ namespace Zeri::Core {
         std::map<std::string, FunctionSignature> m_sessionFunctions;
         std::map<std::string, FunctionSignature> m_globalFunctions;
         std::map<std::string, FunctionSignature> m_persistedFunctions;
+        std::map<std::string, MathFunctionDefinition> m_mathFunctionDefinitions;
         mutable std::shared_mutex m_functionMutex;
         std::atomic_size_t m_functionRevision{ 0 };
 
@@ -163,10 +176,10 @@ RuntimeState owns ModuleManager through std::unique_ptr to preserve stable publi
 while allowing forward declaration of the module subsystem type.
 
 SaveSession:
-Serialize persisted variables to a JSON file on disk.
+Serialize the full executable runtime state to a JSON file on disk.
 path: Destination file path (e.g. ".zeri/state.json").
 
 LoadSession:
-Load persisted variables from a JSON file on disk.
+Load and replace the full executable runtime state from a JSON file on disk.
 path: Source file path (e.g. ".zeri/state.json").
 */

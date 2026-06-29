@@ -17,8 +17,6 @@ namespace Zeri::Engines::Defaults {
         ) override;
 
     private:
-        std::map<std::string, std::string> m_functionDefinitions;
-
         [[nodiscard]] static ExecutionOutcome HandleHelp();
         [[nodiscard]] static ExecutionOutcome HandleCalc(const Command& cmd);
         [[nodiscard]] static ExecutionOutcome HandleLogic(const Command& cmd);
@@ -41,10 +39,8 @@ Responsibilities:
   - Acts as a Julia-style sandbox for numerical computation within the REPL.
 
 Changes:
-  - Added m_functionDefinitions (std::map<std::string, std::string>) instance
-    member to store function display text (name(params) → body) at define time.
-  - HandleDefineFunction and HandleListFunctions changed from static to non-static
-    to allow access to the instance map.
+  - HandleDefineFunction and HandleListFunctions are instance methods so the
+    context can project persisted user-defined math function metadata.
 
 Dependencies: BaseContext, RuntimeState (via ExpressionExecutor).
 */

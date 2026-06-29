@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -144,6 +143,21 @@ type PendingBridgeRequest struct {
 	Language string
 }
 
+type SessionBridgeOperationKind int
+
+const (
+	SessionBridgeOperationNone SessionBridgeOperationKind = iota
+	SessionBridgeOperationSave
+	SessionBridgeOperationLoad
+)
+
+type SessionBridgeOperation struct {
+	Kind SessionBridgeOperationKind
+	SnapshotName string
+	Snapshot SessionSnapshot
+	Overwrite bool
+}
+
 type CodePreviewState struct {
 	Visible bool
 	ScriptName string
@@ -203,11 +217,12 @@ type AppModel struct {
 	pendingScriptIntent ScriptEditorIntent
 	saveMenu SaveMenuState
 	saveMenuCursor SaveMenuOption
-	sessionVars map[string]string
 	pendingSessionPrompt SessionPromptKind
 	sessionOverwriteVisible bool
 	sessionOverwriteCursor SessionOverwriteOption
 	pendingSessionOverwriteName string
+	pendingSessionBridgeOp SessionBridgeOperation
+	pendingLoadContextSync string
 	deleteConfirmVisible bool
 	deleteConfirmCursor DeleteConfirmOption
 	pendingDeleteScriptName string
@@ -635,6 +650,10 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if strings.EqualFold(strings.TrimSpace(msg.Reason), "execution_cancelled") {
 			m.addSystemMessage("^C  (execution cancelled)")
 		}
+		if normaliseContextName(m.pendingLoadContextSync) == "global" {
+			m.pendingLoadContextSync = ""
+			m.pendingContextPath = ""
+		}
 		m.stopExecutionSpinner()
 		return m, nil
 
@@ -643,6 +662,9 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.addErrorMessage("Script action failed: " + strings.TrimSpace(msg.Error))
 		}
 		return m, nil
+
+	case bridge.SessionStateResponseMsg:
+		return m.handleSessionStateResponse(msg)
 
 	case bridge.SharedScopeSnapshotMsg:
 		m.aiSharedScope = map[string]interface{}{}
@@ -707,6 +729,10 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.sandboxProcessRunning = false
 		}
 		m.pendingContextPath = ""
+		if strings.TrimSpace(m.pendingLoadContextSync) != "" &&
+			normaliseContextName(m.activeContextPath) == normaliseContextName(m.pendingLoadContextSync) {
+			m.pendingLoadContextSync = ""
+		}
 		m.autocomplete.ActiveContext = m.activeContext
 		m.refreshViewport()
 		return m, nil
@@ -1781,16 +1807,10 @@ func (m AppModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		case "enter", "return":
 			if m.sessionOverwriteCursor == SessionOverwriteConfirm {
 				name := m.pendingSessionOverwriteName
-				err := saveSession(m, name, true)
 				m.sessionOverwriteVisible = false
 				m.pendingSessionOverwriteName = ""
 				m.recalculateLayout()
-				if err != nil {
-					m.addErrorMessage("Session overwrite failed: " + err.Error())
-					return m, nil
-				}
-				m.addSystemMessage(fmt.Sprintf("Session %q overwritten successfully.", name))
-				return m, nil
+				return m.requestSessionStateSave(name, true)
 			}
 			m.sessionOverwriteVisible = false
 			m.pendingSessionOverwriteName = ""
@@ -2280,23 +2300,19 @@ func (m AppModel) handleSessionPromptSubmit(name string) (tea.Model, tea.Cmd) {
 	}
 
 	if prompt == SessionPromptSave {
-		err := saveSession(m, name, false)
-		if err == nil {
-			m.addSystemMessage(fmt.Sprintf("Session %q saved successfully.", name))
+		safeName, exists, err := sessionSnapshotExists(name)
+		if err != nil {
+			m.addErrorMessage("Session save failed: " + err.Error())
 			return m, nil
 		}
-
-		var existsErr ErrSessionExists
-		if errors.As(err, &existsErr) {
-			m.pendingSessionOverwriteName = existsErr.Name
+		if exists {
+			m.pendingSessionOverwriteName = safeName
 			m.sessionOverwriteVisible = true
 			m.sessionOverwriteCursor = SessionOverwriteConfirm
 			m.recalculateLayout()
 			return m, nil
 		}
-
-		m.addErrorMessage("Session save failed: " + err.Error())
-		return m, nil
+		return m.requestSessionStateSave(safeName, false)
 	}
 
 	snapshot, err := loadSession(name)
@@ -2304,10 +2320,12 @@ func (m AppModel) handleSessionPromptSubmit(name string) (tea.Model, tea.Cmd) {
 		m.addErrorMessage("Session load failed: " + err.Error())
 		return m, nil
 	}
+	if len(snapshot.EngineState) == 0 {
+		m.addErrorMessage("Session load failed: snapshot is missing engine state.")
+		return m, nil
+	}
 
-	m.applySessionSnapshot(snapshot)
-	m.addSystemMessage(fmt.Sprintf("Session %q loaded successfully.", snapshot.Name))
-	return m, nil
+	return m.requestSessionStateLoad(snapshot)
 }
 
 func (m *AppModel) applySessionSnapshot(snapshot SessionSnapshot) {
@@ -2316,7 +2334,6 @@ func (m *AppModel) applySessionSnapshot(snapshot SessionSnapshot) {
 	m.activeLanguage = ""
 
 	m.messages = append([]ui.ChatMessage{}, snapshot.History...)
-	m.sessionVars = cloneSessionVars(snapshot.SessionVars)
 
 	targetPath := normaliseContextName(snapshot.ActiveContext)
 	if targetPath == "" {
@@ -2327,6 +2344,127 @@ func (m *AppModel) applySessionSnapshot(snapshot SessionSnapshot) {
 	m.activeLanguage = m.resolveActiveLanguage(targetPath)
 	m.autocomplete.ActiveContext = m.activeContext
 	m.refreshViewport()
+}
+
+func contextSwitchCommandsForPath(path string) []string {
+	target := normaliseContextName(path)
+	if target == "" || target == "global" {
+		return []string{"$global"}
+	}
+	segments := strings.Split(target, "::")
+	commands := make([]string, 0, len(segments))
+	for _, segment := range segments {
+		segment = strings.TrimSpace(segment)
+		if segment == "" || segment == "global" {
+			continue
+		}
+		commands = append(commands, "$"+segment)
+	}
+	if len(commands) == 0 {
+		return []string{"$global"}
+	}
+	return commands
+}
+
+func (m AppModel) requestSessionStateSave(name string, overwrite bool) (tea.Model, tea.Cmd) {
+	if m.bridge == nil {
+		m.addErrorMessage("Session save failed: bridge is unavailable.")
+		return m, nil
+	}
+	m.pendingSessionBridgeOp = SessionBridgeOperation{
+		Kind: SessionBridgeOperationSave,
+		SnapshotName: strings.TrimSpace(name),
+		Overwrite: overwrite,
+	}
+	m.executionSubmitted()
+	return m, tea.Batch(
+		m.bridge.SendCommandPayloadCmd(map[string]interface{}{"type": "session_save_state"}),
+		executionSpinnerDelayCmd(),
+	)
+}
+
+func (m AppModel) requestSessionStateLoad(snapshot SessionSnapshot) (tea.Model, tea.Cmd) {
+	if m.bridge == nil {
+		m.addErrorMessage("Session load failed: bridge is unavailable.")
+		return m, nil
+	}
+	m.pendingSessionBridgeOp = SessionBridgeOperation{
+		Kind: SessionBridgeOperationLoad,
+		SnapshotName: strings.TrimSpace(snapshot.Name),
+		Snapshot: snapshot,
+	}
+	m.executionSubmitted()
+	return m, tea.Batch(
+		m.bridge.SendCommandPayloadCmd(map[string]interface{}{
+			"type": "session_load_state",
+			"state": snapshot.EngineState,
+		}),
+		executionSpinnerDelayCmd(),
+	)
+}
+
+func (m AppModel) handleSessionStateResponse(msg bridge.SessionStateResponseMsg) (tea.Model, tea.Cmd) {
+	m.stopExecutionSpinner()
+	operation := m.pendingSessionBridgeOp
+	m.pendingSessionBridgeOp = SessionBridgeOperation{}
+	if operation.Kind == SessionBridgeOperationNone {
+		if !msg.Ok {
+			m.addErrorMessage("Session operation failed: " + strings.TrimSpace(msg.Error))
+		}
+		return m, nil
+	}
+
+	if !msg.Ok {
+		switch operation.Kind {
+		case SessionBridgeOperationSave:
+			m.addErrorMessage("Session save failed: " + strings.TrimSpace(msg.Error))
+		case SessionBridgeOperationLoad:
+			m.addErrorMessage("Session load failed: " + strings.TrimSpace(msg.Error))
+		}
+		return m, nil
+	}
+
+	switch operation.Kind {
+	case SessionBridgeOperationSave:
+		if msg.Action != "session_save_state" {
+			m.addErrorMessage("Session save failed: unexpected bridge response action.")
+			return m, nil
+		}
+		if err := saveSession(m, operation.SnapshotName, operation.Overwrite, msg.State); err != nil {
+			m.addErrorMessage("Session save failed: " + err.Error())
+			return m, nil
+		}
+		if operation.Overwrite {
+			m.addSystemMessage(fmt.Sprintf("Session %q overwritten successfully.", operation.SnapshotName))
+		} else {
+			m.addSystemMessage(fmt.Sprintf("Session %q saved successfully.", operation.SnapshotName))
+		}
+		return m, nil
+	case SessionBridgeOperationLoad:
+		if msg.Action != "session_load_state" {
+			m.addErrorMessage("Session load failed: unexpected bridge response action.")
+			return m, nil
+		}
+		snapshot := operation.Snapshot
+		m.applySessionSnapshot(snapshot)
+		m.addSystemMessage(fmt.Sprintf("Session %q loaded successfully.", snapshot.Name))
+		targetPath := normaliseContextName(snapshot.ActiveContext)
+		if targetPath == "" {
+			targetPath = "global"
+		}
+		m.pendingLoadContextSync = targetPath
+		m.pendingContextPath = targetPath
+		commands := contextSwitchCommandsForPath(targetPath)
+		cmds := make([]tea.Cmd, 0, len(commands)+1)
+		for _, command := range commands {
+			cmds = append(cmds, m.bridge.SendDataCmd(command))
+		}
+		cmds = append(cmds, executionSpinnerDelayCmd())
+		m.executionSubmitted()
+		return m, tea.Sequence(cmds...)
+	default:
+		return m, nil
+	}
 }
 
 func slashCommandBase(input string) string {
@@ -2504,6 +2642,14 @@ func (m *AppModel) consumeEngineError(content string) {
 	if m.pendingBridgeRequest.Kind != PendingBridgeRequestNone {
 		m.flushEngineBatch(false)
 		m.handlePendingBridgeError(content)
+		return
+	}
+	if strings.TrimSpace(m.pendingLoadContextSync) != "" && strings.Contains(content, "[ZERI][CONTEXT-002]") {
+		m.flushEngineBatch(false)
+		m.pendingLoadContextSync = ""
+		m.pendingContextPath = ""
+		m.autocomplete.ActiveContext = m.activeContext
+		m.addErrorMessage("Session load failed: context synchronization requires the identity-switch no-op fix (F11-T01).")
 		return
 	}
 	if strings.TrimSpace(m.pendingContextPath) != "" {

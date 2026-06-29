@@ -40,6 +40,13 @@ type ScriptActionResponseMsg struct {
 	Error string
 }
 
+type SessionStateResponseMsg struct {
+	Action string
+	Ok bool
+	Error string
+	State map[string]interface{}
+}
+
 type SharedScopeSnapshotMsg struct {
 	Entries map[string]interface{}
 }
