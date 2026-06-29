@@ -18,7 +18,6 @@
 #include "Engines/Include/ScriptRegistry.h"
 #include "Engines/Include/RubyContext.h"
 #include "Engines/Include/SandboxContext.h"
-#include "Engines/Include/SetupContext.h"
 #include "Ui/Include/BridgeTerminal.h"
 #include "Ui/Include/BridgeProtocol.h"
 #include "Ui/Include/OutputSink.h"
@@ -68,6 +67,13 @@ namespace Zeri::Platform {
 
 namespace {
     inline constexpr std::string_view kBridgeRequestPrefix = "__bridge_request__";
+    inline constexpr std::string_view kSandboxIdeKey = "sandbox::ide";
+    inline constexpr std::string_view kAiEndpointKey = "zeri.ai.endpoint";
+    inline constexpr std::string_view kAiModelKey = "zeri.ai.model";
+    inline constexpr std::string_view kAiKeyKey = "zeri.ai.key";
+    inline constexpr std::string_view kDefaultSandboxIde = "code";
+    inline constexpr std::string_view kDefaultAiEndpoint = "http://localhost:11434";
+    inline constexpr std::string_view kDefaultAiModel = "codellama:latest";
 
     [[nodiscard]] bool IsUnreservedUrlChar(unsigned char c) {
         return std::isalnum(c) != 0 || c == '-' || c == '_' || c == '.' || c == '~';
@@ -89,6 +95,113 @@ namespace {
         }
 
         return encoded;
+    }
+
+    struct SettingsSnapshot {
+        std::string sandboxIde;
+        std::string aiEndpoint;
+        std::string aiModel;
+        std::string aiKey;
+        bool aiConfigured{ false };
+    };
+
+    [[nodiscard]] std::string TrimCopy(std::string_view value) {
+        auto isSpace = [](unsigned char c) { return std::isspace(c) != 0; };
+        while (!value.empty() && isSpace(static_cast<unsigned char>(value.front()))) value.remove_prefix(1);
+        while (!value.empty() && isSpace(static_cast<unsigned char>(value.back()))) value.remove_suffix(1);
+        return std::string(value);
+    }
+
+    [[nodiscard]] std::string AnyToString(const std::any& value) {
+        if (!value.has_value()) {
+            return {};
+        }
+        if (value.type() == typeid(std::string)) {
+            return std::any_cast<std::string>(value);
+        }
+        if (value.type() == typeid(const char*)) {
+            return std::string(std::any_cast<const char*>(value));
+        }
+        if (value.type() == typeid(char*)) {
+            return std::string(std::any_cast<char*>(value));
+        }
+        return {};
+    }
+
+    [[nodiscard]] std::string GetPersistedString(
+        const Zeri::Core::RuntimeState& state,
+        std::string_view key
+    ) {
+        return TrimCopy(AnyToString(state.GetPersistedVariable(std::string(key))));
+    }
+
+    [[nodiscard]] bool IsLocalAiEndpoint(std::string_view endpoint) {
+        std::string authority = TrimCopy(endpoint);
+        for (char& c : authority) {
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        }
+        if (authority.empty()) {
+            return true;
+        }
+
+        if (const auto schemePos = authority.find("://"); schemePos != std::string::npos) {
+            authority = authority.substr(schemePos + 3);
+        }
+        if (const auto slashPos = authority.find('/'); slashPos != std::string::npos) {
+            authority = authority.substr(0, slashPos);
+        }
+        if (const auto atPos = authority.rfind('@'); atPos != std::string::npos) {
+            authority = authority.substr(atPos + 1);
+        }
+
+        std::string host = authority;
+        if (!host.empty() && host.front() == '[') {
+            if (const auto closing = host.find(']'); closing != std::string::npos) {
+                host = host.substr(1, closing - 1);
+            }
+        } else if (const auto colonPos = host.find(':'); colonPos != std::string::npos) {
+            host = host.substr(0, colonPos);
+        }
+
+        host = TrimCopy(host);
+        return host == "localhost" || host == "127.0.0.1" || host == "::1";
+    }
+
+    [[nodiscard]] SettingsSnapshot BuildSettingsSnapshot(const Zeri::Core::RuntimeState& state) {
+        SettingsSnapshot snapshot;
+
+        snapshot.sandboxIde = GetPersistedString(state, kSandboxIdeKey);
+        if (snapshot.sandboxIde.empty()) {
+            snapshot.sandboxIde = std::string(kDefaultSandboxIde);
+        }
+
+        snapshot.aiEndpoint = GetPersistedString(state, kAiEndpointKey);
+        if (snapshot.aiEndpoint.empty()) {
+            snapshot.aiEndpoint = std::string(kDefaultAiEndpoint);
+        }
+
+        snapshot.aiModel = GetPersistedString(state, kAiModelKey);
+        if (snapshot.aiModel.empty()) {
+            snapshot.aiModel = std::string(kDefaultAiModel);
+        }
+
+        snapshot.aiKey = GetPersistedString(state, kAiKeyKey);
+        const bool localEndpoint = IsLocalAiEndpoint(snapshot.aiEndpoint);
+        snapshot.aiConfigured = !snapshot.aiEndpoint.empty() &&
+            !snapshot.aiModel.empty() &&
+            (localEndpoint || !snapshot.aiKey.empty());
+
+        return snapshot;
+    }
+
+    void AttachSettingsSnapshot(nlohmann::json& response, const SettingsSnapshot& snapshot) {
+        response["snapshot"] = nlohmann::json::object();
+        response["snapshot"]["sandbox_ide"] = snapshot.sandboxIde;
+        response["snapshot"]["ai_endpoint"] = snapshot.aiEndpoint;
+        response["snapshot"]["ai_model"] = snapshot.aiModel;
+        response["snapshot"]["ai_key"] = snapshot.aiKey;
+        response["snapshot"]["ai_key_present"] = !snapshot.aiKey.empty();
+        response["snapshot"]["ai_configured"] = snapshot.aiConfigured;
     }
 
     [[nodiscard]] std::string BuildIssueReportBody(
@@ -266,7 +379,6 @@ namespace {
         if (normalized == "ruby") return std::make_unique<Zeri::Engines::Defaults::RubyContext>();
         if (normalized == "math") return std::make_unique<Zeri::Engines::Defaults::MathContext>();
         if (normalized == "sandbox") return std::make_unique<Zeri::Engines::Defaults::SandboxContext>();
-        if (normalized == "setup") return std::make_unique<Zeri::Engines::Defaults::SetupContext>();
         if (pluginLoader != nullptr) {
             auto pluginContext = pluginLoader->CreateContext(normalized);
             if (pluginContext != nullptr) {
@@ -825,6 +937,34 @@ namespace {
         sink.Send(response);
     }
 
+    void SendSettingsSnapshotResponse(
+        Zeri::Ui::OutputSink& sink,
+        const Zeri::Core::RuntimeState& runtimeState
+    ) {
+        nlohmann::json response;
+        response["type"] = "settings_snapshot_response";
+        response["ok"] = true;
+        AttachSettingsSnapshot(response, BuildSettingsSnapshot(runtimeState));
+        sink.Send(response);
+    }
+
+    void SendSettingsUpdateResponse(
+        Zeri::Ui::OutputSink& sink,
+        bool ok,
+        std::string_view error,
+        const Zeri::Core::RuntimeState* runtimeState = nullptr
+    ) {
+        nlohmann::json response;
+        response["type"] = "settings_update_response";
+        response["ok"] = ok;
+        if (!ok) {
+            response["error"] = std::string(error);
+        } else if (runtimeState != nullptr) {
+            AttachSettingsSnapshot(response, BuildSettingsSnapshot(*runtimeState));
+        }
+        sink.Send(response);
+    }
+
     void SendScriptListResponse(
         Zeri::Ui::OutputSink& sink,
         const std::vector<Zeri::Engines::ScriptEntry>& scripts
@@ -886,6 +1026,74 @@ namespace {
                 response["entries"][key] = *serialized;
             }
             sink.Send(response);
+            return true;
+        }
+
+        if (type == "settings_snapshot") {
+            SendSettingsSnapshotResponse(sink, runtimeState);
+            return true;
+        }
+
+        if (type == "settings_update") {
+            bool updated = false;
+
+            if (request.contains("sandbox_ide")) {
+                if (!request["sandbox_ide"].is_string()) {
+                    SendSettingsUpdateResponse(sink, false, "sandbox_ide must be a string.");
+                    return true;
+                }
+                const std::string sandboxIde = TrimCopy(request.value("sandbox_ide", ""));
+                if (sandboxIde.empty()) {
+                    SendSettingsUpdateResponse(sink, false, "sandbox_ide cannot be empty.");
+                    return true;
+                }
+                runtimeState.SetPersistedVariable(std::string(kSandboxIdeKey), sandboxIde);
+                updated = true;
+            }
+
+            if (request.contains("ai_endpoint")) {
+                if (!request["ai_endpoint"].is_string()) {
+                    SendSettingsUpdateResponse(sink, false, "ai_endpoint must be a string.");
+                    return true;
+                }
+                const std::string endpoint = TrimCopy(request.value("ai_endpoint", ""));
+                if (endpoint.empty()) {
+                    SendSettingsUpdateResponse(sink, false, "ai_endpoint cannot be empty.");
+                    return true;
+                }
+                runtimeState.SetPersistedVariable(std::string(kAiEndpointKey), endpoint);
+                updated = true;
+            }
+
+            if (request.contains("ai_model")) {
+                if (!request["ai_model"].is_string()) {
+                    SendSettingsUpdateResponse(sink, false, "ai_model must be a string.");
+                    return true;
+                }
+                const std::string model = TrimCopy(request.value("ai_model", ""));
+                if (model.empty()) {
+                    SendSettingsUpdateResponse(sink, false, "ai_model cannot be empty.");
+                    return true;
+                }
+                runtimeState.SetPersistedVariable(std::string(kAiModelKey), model);
+                updated = true;
+            }
+
+            if (request.contains("ai_key")) {
+                if (!request["ai_key"].is_string()) {
+                    SendSettingsUpdateResponse(sink, false, "ai_key must be a string.");
+                    return true;
+                }
+                runtimeState.SetPersistedVariable(std::string(kAiKeyKey), TrimCopy(request.value("ai_key", "")));
+                updated = true;
+            }
+
+            if (!updated) {
+                SendSettingsUpdateResponse(sink, false, "No supported fields provided for settings_update.");
+                return true;
+            }
+
+            SendSettingsUpdateResponse(sink, true, {}, &runtimeState);
             return true;
         }
 
@@ -1115,6 +1323,8 @@ int RunMain(int argc, char* argv[]) {
         } else if (
             type == "list_scripts_with_content" ||
             type == "shared_scope_snapshot" ||
+            type == "settings_snapshot" ||
+            type == "settings_update" ||
             type == "session_save_state" ||
             type == "session_load_state" ||
             type == "save_script" ||
@@ -1342,6 +1552,8 @@ Bridge protocol (high-level):
       {"type": "command", "payload": "<user input>"}
       {"type": "input_response", "payload": "<wizard reply>"}
       {"type": "list_scripts_with_content"}
+      {"type": "settings_snapshot"}
+      {"type": "settings_update", "sandbox_ide": "...", "ai_endpoint": "...", "ai_model": "...", "ai_key": "..."}
       {"type": "session_save_state"}
       {"type": "session_load_state", "state": { ... }}
       {"type": "save_script", "name": "<name>", "lang": "<lang>", "content": "<code>"}
@@ -1353,6 +1565,8 @@ Bridge protocol (high-level):
       {"type": "context_changed", "context": "<name>", "prompt": "<prompt>"}
       {"type": "req_input", "prompt": "<text>"}
       {"type": "script_list_response", "scripts": [ ... ]}
+      {"type": "settings_snapshot_response", "ok": true, "snapshot": { ... }}
+      {"type": "settings_update_response", "ok": <bool>, "error": "<...>", "snapshot": { ... }}
       {"type": "script_action_response", "action": "<...>", "ok": <bool>, "error": "<...>"}
       {"type": "session_state_response", "action": "<session_save_state|session_load_state>", "ok": <bool>, "error": "<...>", "state": { ... }}
       {"type": "stream_batch_end", "reason": "<execution_complete|before_input_request|context_transition|runtime_idle|engine_shutdown>"}

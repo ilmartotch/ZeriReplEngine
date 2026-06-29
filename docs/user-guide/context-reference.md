@@ -12,6 +12,7 @@ All contexts below are currently implemented and reachable from the REPL.
 | `/help` | Show help for the active context |
 | `restart` | Restart and reconnect the engine after a disconnection |
 | `/runtime-status` | Open Runtime Center with runtime diagnostics |
+| `/settings` | Open the configuration hub (IDE, data location pointer, AI settings) |
 | `/copy last` | Copy the latest non-user output message |
 | `/copy all` | Copy the full visible message history |
 | `/context` | List reachable contexts |
@@ -58,7 +59,6 @@ $python
 | Command | Description |
 | --- | --- |
 | `/open [file]` | Open a file/path in the configured IDE |
-| `/set-ide <name>` | Set preferred IDE command |
 | `/watch` | Show current sandbox process status |
 | `/list` | List modules from the modules directory |
 | `/build <moduleName>` | Build a module with CMake |

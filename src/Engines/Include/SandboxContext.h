@@ -26,7 +26,6 @@ namespace Zeri::Engines::Defaults {
 
     private:
         ExecutionOutcome HandleOpen(const Command& cmd, Zeri::Core::RuntimeState& state, Zeri::Ui::ITerminal& terminal);
-        ExecutionOutcome HandleSetIde(const Command& cmd, Zeri::Core::RuntimeState& state);
         [[nodiscard]] static std::string ResolveSandboxIde(const Zeri::Core::RuntimeState& state);
         ExecutionOutcome RunExternalFilePath(
             std::string_view filePathInput,
@@ -55,7 +54,7 @@ SandboxContext.h — Module development and code execution environment.
 
 Responsibilities:
   - Module management (list, build, run) through ModuleManager + ProcessBridge.
-  - IDE integration (open, set-ide).
+  - IDE integration (open).
   - Placeholder monitoring (watch).
 
 Dependencies: BaseContext, ProcessBridge, ModuleManager.

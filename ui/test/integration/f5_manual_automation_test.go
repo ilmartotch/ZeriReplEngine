@@ -25,7 +25,7 @@ func TestT35SandboxHelpAndUnknownCommand(t *testing.T) {
 	switchContextOrFail(t, client, "$sandbox")
 
 	help := harness.Send(client, "/help")
-	if !responseContains(help.Output, "/open") || !responseContains(help.Output, "/set-ide") || !responseContains(help.Output, "/watch") || !responseContains(help.Output, "/list") || !responseContains(help.Output, "/build") || !responseContains(help.Output, "/run") {
+	if !responseContains(help.Output, "/open") || !responseContains(help.Output, "/watch") || !responseContains(help.Output, "/list") || !responseContains(help.Output, "/build") || !responseContains(help.Output, "/run") {
 		t.Fatalf("sandbox help is missing expected commands: %s", responseDump(help.Output, help.Errors))
 	}
 
@@ -48,17 +48,12 @@ func TestT36SandboxWatchStatus(t *testing.T) {
 	}
 }
 
-func TestT37SandboxSetIdeAndOpen(t *testing.T) {
+func TestT37SandboxOpenUsesConfiguredIde(t *testing.T) {
 	ep := harness.SpawnEngine(t)
 	defer harness.Cleanup(t, ep)
 
 	client := harness.Connect(ep)
 	switchContextOrFail(t, client, "$sandbox")
-
-	setIde := harness.Send(client, "/set-ide code")
-	if !responseContains(setIde.Output, "Sandbox IDE set to: code") {
-		t.Fatalf("expected IDE setup confirmation: %s", responseDump(setIde.Output, setIde.Errors))
-	}
 
 	open := harness.Send(client, "/open .")
 	openSucceeded := responseContains(open.Output, "Open command dispatched.") || responseContains(open.Output, "Opened in IDE:")

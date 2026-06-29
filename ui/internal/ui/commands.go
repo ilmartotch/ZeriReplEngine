@@ -55,10 +55,9 @@ func defaultHelpCatalog() helpCatalogData {
 			{Name: "ai", Description: "AI-assisted code generation context"},
 			{Name: "math", Description: "Mathematical expression engine"},
 			{Name: "sandbox", Description: "Module development environment"},
-			{Name: "setup", Description: "Configuration wizard"},
 		},
 		Reachable: map[string][]string{
-			"global":  {"global", "code", "customcommand", "ai", "math", "sandbox", "setup"},
+			"global":  {"global", "code", "customcommand", "ai", "math", "sandbox"},
 			"code":    {"global", "lua", "python", "js", "ts", "ruby"},
 			"default": {"global"},
 		},
@@ -67,7 +66,7 @@ func defaultHelpCatalog() helpCatalogData {
 				{Command: "/help", Synopsis: "Show help for the active context"},
 				{Command: "restart", Synopsis: "Restart and reconnect the engine after a disconnection"},
 				{Command: "/runtime-status", Synopsis: "Open Runtime Center with runtime diagnostics"},
-				{Command: "/settings", Synopsis: "Review data root and onboarding settings; change with /settings path <parent>"},
+				{Command: "/settings", Synopsis: "Configuration hub for IDE, data location pointer, and AI settings"},
 				{Command: "/copy last", Synopsis: "Copy the latest non-user output message"},
 				{Command: "/copy all", Synopsis: "Copy the full visible message history"},
 				{Command: "/clear", Synopsis: "Clear chat history"},
@@ -93,7 +92,6 @@ func defaultHelpCatalog() helpCatalogData {
 			},
 			"sandbox": {
 				{Command: "/open", Synopsis: "Open a file in the configured IDE"},
-				{Command: "/set-ide", Synopsis: "Set the preferred IDE"},
 				{Command: "/watch", Synopsis: "Show current sandbox process status"},
 				{Command: "/list", Synopsis: "List all available modules"},
 				{Command: "/build", Synopsis: "Build a module using CMake"},
@@ -107,9 +105,6 @@ func defaultHelpCatalog() helpCatalogData {
 				{Command: "/promote", Synopsis: "Promote a variable scope"},
 				{Command: "/calc", Synopsis: "Run a quick arithmetic command"},
 				{Command: "/logic", Synopsis: "Run a boolean logic command"},
-			},
-			"setup": {
-				{Command: "/start", Synopsis: "Run the configuration wizard"},
 			},
 			"customcommand": {
 				{Command: "/define", Synopsis: "Define a custom command body"},
@@ -417,7 +412,7 @@ func CommandScopeDescription(groups []string) string {
 /*
  * What:
  *   - Updated SandboxCommands to reflect current SandboxContext commands:
- *     /open, /set-ide, /watch, /list, /build, /run.
+ *     /open, /watch, /list, /build, /run.
  *   - Added CodeCommands for ScriptHub context routing commands.
  *   - Added new context switches $code and $customCommand.
  *   - SlashCommandsForContext now returns only script-group commands when the

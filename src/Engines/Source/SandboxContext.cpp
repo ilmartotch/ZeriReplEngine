@@ -236,20 +236,6 @@ namespace Zeri::Engines::Defaults {
         return "code";
     }
 
-    ExecutionOutcome SandboxContext::HandleSetIde(const Command& cmd, Zeri::Core::RuntimeState& state) {
-        if (cmd.args.empty() || cmd.args[0].empty()) {
-            return std::unexpected(ExecutionError{
-                "SANDBOX_MISSING_ARGS",
-                "Missing IDE name for /set-ide.",
-                cmd.rawInput,
-                { "Usage: /set-ide <name>" }
-            });
-        }
-
-        state.SetPersistedVariable("sandbox::ide", cmd.args[0]);
-        return Zeri::Engines::Success("Sandbox IDE set to: " + cmd.args[0]);
-    }
-
     ExecutionOutcome SandboxContext::HandleOpen(
         const Command& cmd,
         Zeri::Core::RuntimeState& state,
@@ -287,8 +273,6 @@ namespace Zeri::Engines::Defaults {
         }
 
         if (cmd.commandName == "open") return HandleOpen(cmd, state, terminal);
-
-        if (cmd.commandName == "set-ide") return HandleSetIde(cmd, state);
 
         if (cmd.commandName == "watch") {
             return Zeri::Engines::Info(m_bridge.IsRunning()
@@ -350,7 +334,6 @@ namespace Zeri::Engines::Defaults {
                 "\n"
                 "IDE + Monitoring:\n"
                 "  /open [file] - Open file/path in configured IDE\n"
-                "  /set-ide <name> - Set preferred IDE command\n"
                 "  /watch - Show current sandbox process status\n"
                 "\n"
                 "Configured IDE: {}\n",
@@ -724,7 +707,6 @@ Available commands:
   - /build: Invokes cmake via ProcessBridge to compile a module.
   - /run: Executes a module or external target (file/executable) in blocking mode.
   - /open: Opens a file/path in the configured IDE.
-  - /set-ide: Sets the preferred IDE command.
   - /watch: Reports sandbox process runtime status.
   - /help: Formatted list of all sandbox commands.
 

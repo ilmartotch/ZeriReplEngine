@@ -10,8 +10,7 @@ namespace Zeri::Engines {
     enum class ReplContext {
         Global,
         Math,
-        Sandbox,
-        Setup
+        Sandbox
     };
 
     struct Completion {
@@ -33,7 +32,7 @@ namespace Zeri::Engines {
             ReplContext context;
         };
 
-        static constexpr std::array<CommandSpec, 21> kCommands = {{
+        static constexpr std::array<CommandSpec, 20> kCommands = {{
             {"/help", "Show help for current context", ReplContext::Global},
             {"/context", "List available contexts", ReplContext::Global},
             {"/bug report", "Show bug-report instructions", ReplContext::Global},
@@ -53,12 +52,11 @@ namespace Zeri::Engines {
             {"/logic", "<op> <v1> <v2>", ReplContext::Math},
             {"/list", "List modules", ReplContext::Sandbox},
             {"/build", "<module>", ReplContext::Sandbox},
-            {"/run", "<module>", ReplContext::Sandbox},
-            {"/start", "Start configuration wizard", ReplContext::Setup}
+            {"/run", "<module>", ReplContext::Sandbox}
         }};
 
-        static constexpr std::array<std::string_view, 4> kContexts = {
-            "$global", "$math", "$sandbox", "$setup"
+        static constexpr std::array<std::string_view, 3> kContexts = {
+            "$global", "$math", "$sandbox"
         };
     };
 
@@ -68,10 +66,9 @@ namespace Zeri::Engines {
 CompletionEngine.h — Standalone completion data for IDE integration.
 
 Defines the static kCommands array mapping each command to its usage hint
-and parent context (Global, Math, Sandbox, Setup). Used for programmatic
+and parent context (Global, Math, Sandbox). Used for programmatic
 autocompletion and hint generation.
 
 QA Changes:
-  - Array expanded 16 -> 21: added /save (Global), /lua (Global), /context (Global), /bug report, and /bug snapshot.
-  - All descriptions translated from Italian to English.
+  - Command/context lists are kept aligned with currently supported top-level contexts.
 */

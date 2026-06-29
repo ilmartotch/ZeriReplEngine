@@ -10,11 +10,10 @@
     { "name": "ruby", "description": "Ruby scripting editor and executor" },
     { "name": "ai", "description": "AI-assisted code generation context" },
     { "name": "math", "description": "Mathematical expression engine" },
-    { "name": "sandbox", "description": "Module development environment" },
-    { "name": "setup", "description": "Configuration wizard" }
+    { "name": "sandbox", "description": "Module development environment" }
   ],
   "reachable": {
-    "global": ["global", "code", "customcommand", "ai", "math", "sandbox", "setup"],
+    "global": ["global", "code", "customcommand", "ai", "math", "sandbox"],
     "code": ["global", "lua", "python", "js", "ts", "ruby"],
     "default": ["global"]
   },
@@ -23,7 +22,7 @@
       { "command": "/help", "synopsis": "Show help for the active context" },
       { "command": "restart", "synopsis": "Restart and reconnect the engine after a disconnection" },
       { "command": "/runtime-status", "synopsis": "Open Runtime Center with runtime diagnostics" },
-      { "command": "/settings", "synopsis": "Review data root and onboarding settings; change with /settings path <parent>" },
+      { "command": "/settings", "synopsis": "Configuration hub for IDE, data location pointer, and AI settings" },
       { "command": "/copy last", "synopsis": "Copy the latest non-user output message" },
       { "command": "/copy all", "synopsis": "Copy the full visible message history" },
       { "command": "/context", "synopsis": "List reachable contexts" },
@@ -63,14 +62,10 @@
     ],
     "sandbox": [
       { "command": "/open", "synopsis": "Open a file in the configured IDE" },
-      { "command": "/set-ide", "synopsis": "Set the preferred IDE" },
       { "command": "/watch", "synopsis": "Show current sandbox process status" },
       { "command": "/list", "synopsis": "List all available modules" },
       { "command": "/build", "synopsis": "Build a module using CMake" },
       { "command": "/run", "synopsis": "Run a compiled module" }
-    ],
-    "setup": [
-      { "command": "/start", "synopsis": "Run the configuration wizard" }
     ],
     "customcommand": [
       { "command": "/define", "synopsis": "Define a custom command body" },

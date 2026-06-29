@@ -98,7 +98,7 @@ func contextLabel(context string) string {
  *
  * Why:
  *   - The project replaced language-based sandboxes (/lang js|py|rb)
- *     with context-based environments ($math, $sandbox, $setup, $global).
+ *     with context-based environments ($math, $sandbox, $global).
  *     The status bar must reflect the active context, not a language.
  *
  * Impact on other components:

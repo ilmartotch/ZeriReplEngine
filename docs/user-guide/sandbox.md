@@ -22,14 +22,13 @@ Sandbox environment active - paste a file path to execute it, or type /help for 
 | `/build <moduleName>` | Build a module |
 | `/run <moduleName|filePath> [args...] [--cwd <path>]` | Run a module or external target |
 | `/open [file]` | Open path in configured IDE |
-| `/set-ide <name>` | Set IDE command used by `/open` |
 | `/watch` | Show sandbox process monitor state |
 
 ## Typical workflow
 
 1. Configure IDE:
    ```text
-   /set-ide code
+   /settings ide code
    ```
 2. Inspect modules:
    ```text

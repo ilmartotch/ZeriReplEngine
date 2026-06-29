@@ -47,6 +47,27 @@ type SessionStateResponseMsg struct {
 	State map[string]interface{}
 }
 
+type SettingsSnapshot struct {
+	SandboxIde string
+	AiEndpoint string
+	AiModel string
+	AiKey string
+	AiKeyPresent bool
+	AiConfigured bool
+}
+
+type SettingsSnapshotResponseMsg struct {
+	Ok bool
+	Error string
+	Snapshot SettingsSnapshot
+}
+
+type SettingsUpdateResponseMsg struct {
+	Ok bool
+	Error string
+	Snapshot SettingsSnapshot
+}
+
 type SharedScopeSnapshotMsg struct {
 	Entries map[string]interface{}
 }

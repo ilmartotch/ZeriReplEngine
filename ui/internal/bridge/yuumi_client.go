@@ -119,6 +119,35 @@ func (r *RealYuumiClient) SendShutdownCmd() tea.Cmd {
 	}
 }
 
+func parseSettingsSnapshot(raw interface{}) SettingsSnapshot {
+	snapshot := SettingsSnapshot{}
+	payload, ok := raw.(map[string]interface{})
+	if !ok {
+		return snapshot
+	}
+
+	if value, ok := payload["sandbox_ide"].(string); ok {
+		snapshot.SandboxIde = value
+	}
+	if value, ok := payload["ai_endpoint"].(string); ok {
+		snapshot.AiEndpoint = value
+	}
+	if value, ok := payload["ai_model"].(string); ok {
+		snapshot.AiModel = value
+	}
+	if value, ok := payload["ai_key"].(string); ok {
+		snapshot.AiKey = value
+	}
+	if value, ok := payload["ai_key_present"].(bool); ok {
+		snapshot.AiKeyPresent = value
+	}
+	if value, ok := payload["ai_configured"].(bool); ok {
+		snapshot.AiConfigured = value
+	}
+
+	return snapshot
+}
+
 func (r *RealYuumiClient) RegisterMessageHandler() {
 	r.messageMutex.Lock()
 	if r.handlerStop != nil {
@@ -250,6 +279,28 @@ func (r *RealYuumiClient) RegisterMessageHandler() {
 				Ok: ok,
 				Error: errText,
 				State: state,
+			})
+		case "settings_snapshot_response":
+			ok, okType := data["ok"].(bool)
+			if !okType {
+				ok = false
+			}
+			errText, _ := data["error"].(string)
+			program.Send(SettingsSnapshotResponseMsg{
+				Ok: ok,
+				Error: errText,
+				Snapshot: parseSettingsSnapshot(data["snapshot"]),
+			})
+		case "settings_update_response":
+			ok, okType := data["ok"].(bool)
+			if !okType {
+				ok = false
+			}
+			errText, _ := data["error"].(string)
+			program.Send(SettingsUpdateResponseMsg{
+				Ok: ok,
+				Error: errText,
+				Snapshot: parseSettingsSnapshot(data["snapshot"]),
 			})
 		case "shared_scope_snapshot_response":
 			entries := map[string]interface{}{}

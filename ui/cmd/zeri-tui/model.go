@@ -301,9 +301,7 @@ func newAppModel(b bridge.YuumiClient, enginePath string, pipeName string, opts 
 	vp.SetWidth(72)
 	vp.SetHeight(10)
 
-	aiCfg, _ := loadAiContextConfig()
-	aiModel := aicontext.New(aiCfg.Endpoint, aiCfg.Model)
-	aiModel.SetApiKey(aiCfg.ApiKey)
+	aiModel := aicontext.New("", "")
 	pythonDetected := false
 	if manifest, err := loadRuntimeManifest(); err == nil {
 		for _, runtimeEntry := range manifest.Runtimes {
@@ -679,6 +677,12 @@ func (m AppModel) updateREPL(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.aiContext.BeginRequest(prompt, systemPrompt)
 		}
 		return m, nil
+
+	case bridge.SettingsSnapshotResponseMsg:
+		return m.handleSettingsSnapshotResponse(msg)
+
+	case bridge.SettingsUpdateResponseMsg:
+		return m.handleSettingsUpdateResponse(msg)
 
 	case bridge.InputRequestMsg:
 		m.flushEngineBatch(false)
@@ -2143,7 +2147,7 @@ func (m AppModel) handleSubmit() (tea.Model, tea.Cmd) {
 			return m.handleRestart()
 		}
 		m.addUserMessage(trimmed)
-		m.addSystemMessage("⚠ Engine unavailable. Type 'restart' to reconnect.")
+		m.addSystemMessage("Engine unavailable. Type 'restart' to reconnect.")
 		return m, nil
 	}
 
@@ -2181,6 +2185,9 @@ func (m AppModel) handleSubmit() (tea.Model, tea.Cmd) {
 
 	if strings.EqualFold(trimmed, "$ai") {
 		m.addUserMessage(trimmed)
+		if m.bridge != nil {
+			return m, m.requestSettingsSnapshot(SettingsRequestAiEntry)
+		}
 		return m.enterAiContext()
 	}
 
@@ -3384,8 +3391,11 @@ func (m AppModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 		m.addUserMessage(cmd)
 		remainder := strings.TrimSpace(strings.TrimPrefix(cmd, settingsCommand))
 		if remainder == "" {
-			m.settingsCenter = buildSettingsCenterState()
+			m.settingsCenter = buildSettingsCenterState(m.settingsCenter)
 			m.settingsVisible = true
+			if m.bridge != nil {
+				return m, m.requestSettingsSnapshot(SettingsRequestOpenModal)
+			}
 			return m, nil
 		}
 		if parent, ok := parseCommandArgument(remainder, settingsPathSubcommand); ok {
@@ -3394,7 +3404,10 @@ func (m AppModel) handleSlashCommand(cmd string) (tea.Model, tea.Cmd) {
 		if strings.EqualFold(remainder, settingsPathSubcommand) {
 			return m.handleSettingsPathChange("")
 		}
-		m.addSystemMessage("Unknown /settings option. Usage: /settings or /settings path <parent-folder>.")
+		if handledModel, cmdOut, handled := m.handleSettingsCommand(remainder); handled {
+			return handledModel, cmdOut
+		}
+		m.addSystemMessage("Unknown /settings option. Usage: /settings | /settings path <parent-folder> | /settings ide <name> | /settings ai endpoint <url> | /settings ai model <name> | /settings ai key <key|clear>.")
 		return m, nil
 	case strings.EqualFold(strings.TrimSpace(cmd), restartCoreCommand):
 		m.addUserMessage(cmd)
@@ -3854,6 +3867,11 @@ func (m AppModel) aiScriptName() string {
 }
 
 func (m *AppModel) handleAiSetCommand(cmd string) (tea.Model, tea.Cmd) {
+	if m.bridge == nil {
+		m.addErrorMessage("AI configuration is unavailable: engine bridge is not connected.")
+		return *m, nil
+	}
+
 	trimmed := strings.TrimSpace(cmd)
 	lower := strings.ToLower(trimmed)
 	switch {
@@ -3863,38 +3881,20 @@ func (m *AppModel) handleAiSetCommand(cmd string) (tea.Model, tea.Cmd) {
 			m.addErrorMessage("Usage: /set endpoint <url>")
 			return *m, nil
 		}
-		m.aiContext.SetEndpoint(value)
-		m.aiConfigured = true
-		_ = saveAiContextConfig(AiContextConfig{
-			Endpoint: m.aiContext.Endpoint(),
-			Model: m.aiContext.ModelName(),
-			ApiKey: m.aiContext.ApiKey(),
+		return *m, m.requestSettingsUpdate(SettingsUpdateFieldAiEndpoint, SettingsUpdateOriginAiContext, map[string]interface{}{
+			"type":        "settings_update",
+			"ai_endpoint": value,
 		})
-		if m.bridge != nil {
-			return *m, tea.Sequence(
-				m.bridge.SendDataCmd("/set zeri.ai.endpoint = "+m.aiContext.Endpoint()+" --string"),
-				m.aiContext.StartConnectivityCheck(),
-			)
-		}
-		return *m, m.aiContext.StartConnectivityCheck()
 	case strings.HasPrefix(lower, "/set model "):
 		value := strings.TrimSpace(trimmed[len("/set model "):])
 		if value == "" {
 			m.addErrorMessage("Usage: /set model <name>")
 			return *m, nil
 		}
-		m.aiContext.SetModelName(value)
-		m.aiConfigured = true
-		_ = saveAiContextConfig(AiContextConfig{
-			Endpoint: m.aiContext.Endpoint(),
-			Model: m.aiContext.ModelName(),
-			ApiKey: m.aiContext.ApiKey(),
+		return *m, m.requestSettingsUpdate(SettingsUpdateFieldAiModel, SettingsUpdateOriginAiContext, map[string]interface{}{
+			"type":     "settings_update",
+			"ai_model": value,
 		})
-		if m.bridge != nil {
-			return *m, m.bridge.SendDataCmd("/set zeri.ai.model = " + m.aiContext.ModelName() + " --string")
-		}
-		m.addSystemMessage("AI model set to " + m.aiContext.ModelName() + ".")
-		return *m, nil
 	case strings.HasPrefix(lower, "/set apikey ") || strings.HasPrefix(lower, "/set api-key "):
 		prefixLen := len("/set apikey ")
 		if strings.HasPrefix(lower, "/set api-key ") {
@@ -3908,19 +3908,10 @@ func (m *AppModel) handleAiSetCommand(cmd string) (tea.Model, tea.Cmd) {
 		if strings.EqualFold(value, "clear") || strings.EqualFold(value, "none") {
 			value = ""
 		}
-		m.aiContext.SetApiKey(value)
-		m.aiConfigured = true
-		_ = saveAiContextConfig(AiContextConfig{
-			Endpoint: m.aiContext.Endpoint(),
-			Model: m.aiContext.ModelName(),
-			ApiKey: m.aiContext.ApiKey(),
+		return *m, m.requestSettingsUpdate(SettingsUpdateFieldAiKey, SettingsUpdateOriginAiContext, map[string]interface{}{
+			"type":   "settings_update",
+			"ai_key": value,
 		})
-		if value == "" {
-			m.addSystemMessage("AI API key cleared.")
-		} else {
-			m.addSystemMessage("AI API key saved (hidden). Re-checking endpoint...")
-		}
-		return *m, m.aiContext.StartConnectivityCheck()
 	case strings.HasPrefix(lower, "/set system-prompt "):
 		value := strings.TrimSpace(trimmed[len("/set system-prompt "):])
 		if value == "" {

@@ -94,7 +94,6 @@ set(ENGINE_SOURCES
     src/Engines/Source/MathContext.cpp
     src/Engines/Source/ProcessBridge.cpp
     src/Engines/Source/SandboxContext.cpp
-    src/Engines/Source/SetupContext.cpp
     src/Engines/Source/DefaultDispatcher.cpp
     src/Engines/Source/CachedDispatcher.cpp
     src/Engines/Source/CompletionEngine.cpp
