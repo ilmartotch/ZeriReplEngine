@@ -109,8 +109,11 @@ func (m AppModel) renderSettingsModal() string {
 		dataRoot = "not selected"
 	}
 	dataRootScope := "from location pointer"
+	if IsDataRootEnvOverrideActive() && state.DataRootResolved {
+		dataRootScope = "from ZERI_HOME override"
+	}
 	if !state.DataRootResolved {
-		dataRootScope = "default fallback"
+		dataRootScope = "not configured"
 	}
 
 	defaultParent := state.DefaultDataParent

@@ -2,6 +2,7 @@ package persistence
 
 import (
 	"encoding/json"
+	"os"
 	"runtime"
 	"strings"
 	"testing"
@@ -10,6 +11,7 @@ import (
 )
 
 func TestZeriBaseDirReturnsValidPath(t *testing.T) {
+	root := t.TempDir()
 	switch runtime.GOOS {
 	case "windows":
 		t.Setenv("APPDATA", `C:\Temp\AppData`)
@@ -17,6 +19,10 @@ func TestZeriBaseDirReturnsValidPath(t *testing.T) {
 		t.Setenv("HOME", "/tmp/zeri-home")
 	default:
 		t.Setenv("XDG_CONFIG_HOME", "/tmp/zeri-config")
+	}
+	t.Setenv("ZERI_HOME", root)
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
 	}
 
 	path, err := ZeriBaseDir()

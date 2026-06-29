@@ -75,6 +75,18 @@ func ResetOnboarding() error {
 	return persistence.ResetOnboarding()
 }
 
+func EnsureBootstrapPointerFiles() error {
+	return persistence.EnsureBootstrapPointerFiles()
+}
+
+func DetectConfigHomeResidue(activeDataRoot string) ([]string, error) {
+	return persistence.DetectConfigHomeResidue(activeDataRoot)
+}
+
+func IsDataRootEnvOverrideActive() bool {
+	return persistence.IsDataRootEnvOverrideActive()
+}
+
 func ZeriScriptsDir(language string) (string, error) {
 	base, err := ZeriBaseDir()
 	if err != nil {

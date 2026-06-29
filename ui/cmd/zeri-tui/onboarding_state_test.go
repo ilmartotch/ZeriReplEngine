@@ -50,7 +50,7 @@ func TestNeedsOnboardingAfterCompletion(t *testing.T) {
 	}
 }
 
-func TestNeedsOnboardingMigratesLegacyMarker(t *testing.T) {
+func TestNeedsOnboardingHonorsOnDiskOnboardingFlag(t *testing.T) {
 	isolateOnboardingHome(t)
 
 	home, err := ConfigHomeDir()
@@ -61,24 +61,25 @@ func TestNeedsOnboardingMigratesLegacyMarker(t *testing.T) {
 		t.Fatalf("AdoptDataRoot returned error: %v", err)
 	}
 
-	legacyPath, err := legacyOnboardingConfigPath()
+	configDir, err := ZeriConfigDir()
 	if err != nil {
-		t.Fatalf("legacyOnboardingConfigPath returned error: %v", err)
+		t.Fatalf("ZeriConfigDir returned error: %v", err)
 	}
+	legacyPath := filepath.Join(configDir, "config.json")
 	if err := os.MkdirAll(filepath.Dir(legacyPath), 0o755); err != nil {
 		t.Fatalf("mkdir failed: %v", err)
 	}
-	payload, _ := json.Marshal(onboardingConfig{OnboardingCompleted: true})
+	payload, _ := json.Marshal(map[string]bool{"onboarding_completed": true})
 	if err := os.WriteFile(legacyPath, payload, 0o644); err != nil {
 		t.Fatalf("write legacy marker failed: %v", err)
 	}
 
 	if needsOnboarding(false) {
-		t.Fatalf("expected legacy completion to be honored")
+		t.Fatalf("expected persisted completion to be honored")
 	}
 
 	completed, err := OnboardingCompleted()
 	if err != nil || !completed {
-		t.Fatalf("expected legacy flag migrated into location.json, got completed=%v err=%v", completed, err)
+		t.Fatalf("expected persisted completion to load, got completed=%v err=%v", completed, err)
 	}
 }

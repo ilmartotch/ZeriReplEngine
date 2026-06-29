@@ -1,6 +1,7 @@
 package persistence
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -26,23 +27,19 @@ func isolateConfigHome(t *testing.T) string {
 }
 
 func TestResolveBaseDirAbsentPointer(t *testing.T) {
-	home := isolateConfigHome(t)
+	isolateConfigHome(t)
 
 	if _, ok, err := ResolveBaseDir(); err != nil || ok {
 		t.Fatalf("expected no pointer, got ok=%v err=%v", ok, err)
 	}
 
-	base, err := ZeriBaseDir()
-	if err != nil {
-		t.Fatalf("ZeriBaseDir returned error: %v", err)
-	}
-	if base != home {
-		t.Fatalf("expected fallback to config home %q, got %q", home, base)
+	if _, err := ZeriBaseDir(); err == nil {
+		t.Fatalf("expected ZeriBaseDir to fail when data root is not configured")
 	}
 }
 
 func TestSetDataRootUnderParentRecordsChoice(t *testing.T) {
-	isolateConfigHome(t)
+	home := isolateConfigHome(t)
 	parent := t.TempDir()
 
 	dataRoot, err := SetDataRootUnderParent(parent)
@@ -59,6 +56,25 @@ func TestSetDataRootUnderParentRecordsChoice(t *testing.T) {
 	}
 	if resolved != dataRoot {
 		t.Fatalf("expected resolved %q, got %q", dataRoot, resolved)
+	}
+
+	pointerPath := filepath.Join(home, "location.json")
+	payload, err := os.ReadFile(pointerPath)
+	if err != nil {
+		t.Fatalf("expected location pointer at %s: %v", pointerPath, err)
+	}
+	var pointer map[string]any
+	if err := json.Unmarshal(payload, &pointer); err != nil {
+		t.Fatalf("pointer payload is not valid JSON: %v", err)
+	}
+	if got := pointer["version"]; got == nil {
+		t.Fatalf("expected pointer version field")
+	}
+	if got := pointer["data_root"]; got == nil {
+		t.Fatalf("expected pointer data_root field")
+	}
+	if got := pointer["_comment"]; got == nil {
+		t.Fatalf("expected pointer _comment field")
 	}
 
 	base, err := ZeriBaseDir()
@@ -92,6 +108,10 @@ func TestOnboardingFlagRoundTrip(t *testing.T) {
 
 	if completed, err := OnboardingCompleted(); err != nil || completed {
 		t.Fatalf("expected absent pointer to report not completed, got completed=%v err=%v", completed, err)
+	}
+
+	if err := AdoptDataRoot(t.TempDir()); err != nil {
+		t.Fatalf("AdoptDataRoot returned error: %v", err)
 	}
 
 	if err := SetOnboardingCompleted(true); err != nil {

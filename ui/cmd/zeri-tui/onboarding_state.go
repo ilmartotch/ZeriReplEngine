@@ -1,49 +1,26 @@
 package main
 
 import (
-	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
-
-type onboardingConfig struct {
-	OnboardingCompleted bool `json:"onboarding_completed"`
-}
-
-func legacyOnboardingConfigPath() (string, error) {
-	configDir, err := ZeriConfigDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(configDir, "config.json"), nil
-}
-
-func legacyOnboardingCompleted() bool {
-	path, err := legacyOnboardingConfigPath()
-	if err != nil {
-		return false
-	}
-	payload, err := os.ReadFile(path)
-	if err != nil {
-		return false
-	}
-	var cfg onboardingConfig
-	if err = json.Unmarshal(payload, &cfg); err != nil {
-		return false
-	}
-	return cfg.OnboardingCompleted
-}
 
 func saveOnboardingCompleted() error {
 	return SetOnboardingCompleted(true)
 }
 
 func initializeDataLocation(noOnboarding bool) error {
-	_, ok, err := ResolveDataRoot()
+	dataRoot, ok, err := ResolveDataRoot()
 	if err != nil {
 		return err
 	}
 	if ok {
+		if err := EnsureBootstrapPointerFiles(); err != nil {
+			return err
+		}
+		warnConfigHomeResidue(dataRoot)
 		return ensureZeriDirectories()
 	}
 	if legacyInstallPresent() || noOnboarding {
@@ -54,7 +31,8 @@ func initializeDataLocation(noOnboarding bool) error {
 		if err := AdoptDataRoot(home); err != nil {
 			return err
 		}
-		return ensureZeriDirectories()
+		warnConfigHomeResidue(home)
+		return nil
 	}
 	return nil
 }
@@ -73,21 +51,6 @@ func legacyInstallPresent() bool {
 	return false
 }
 
-func migrateLegacyOnboardingFlag() bool {
-	completed, err := OnboardingCompleted()
-	if err == nil && completed {
-		return true
-	}
-	if _, ok, resolveErr := ResolveDataRoot(); resolveErr != nil || !ok {
-		return false
-	}
-	if !legacyOnboardingCompleted() {
-		return false
-	}
-	_ = SetOnboardingCompleted(true)
-	return true
-}
-
 func needsOnboarding(skip bool) bool {
 	if skip {
 		return false
@@ -99,27 +62,41 @@ func needsOnboarding(skip bool) bool {
 	if err != nil {
 		return false
 	}
-	if completed {
-		return false
+	return !completed
+}
+
+func warnConfigHomeResidue(activeDataRoot string) {
+	trimmedRoot := strings.TrimSpace(activeDataRoot)
+	if trimmedRoot == "" {
+		return
 	}
-	if migrateLegacyOnboardingFlag() {
-		return false
+	residue, err := DetectConfigHomeResidue(trimmedRoot)
+	if err != nil || len(residue) == 0 {
+		return
 	}
-	return true
+	home, homeErr := ConfigHomeDir()
+	if homeErr != nil {
+		return
+	}
+	fmt.Fprintf(
+		os.Stderr,
+		"[ZERI][SESSION-013] Found legacy data directories in %s (%s) while active data root is %s. Files were left untouched.\n",
+		home,
+		strings.Join(residue, ", "),
+		trimmedRoot,
+	)
 }
 
 /*
 onboarding_state.go
 
-First-run completion state is consolidated into the single canonical
-location.json pointer (ConfigHomeDir) through the persistence helpers
-OnboardingCompleted / SetOnboardingCompleted. The legacy marker that used to
-live at <dataRoot>/config/config.json is read once, only as a migration source:
-when an existing install already recorded OnboardingCompleted=true there,
-migrateLegacyOnboardingFlag copies the flag into location.json so upgrading
-users are not forced back through onboarding.
+Data-location bootstrap is resolved before the UI starts:
+- if data_root is already configured, startup keeps using it and warns (non
+  blocking) when residual data directories exist under ConfigHomeDir while the
+  active root points elsewhere.
+- if running with --no-onboarding (or migrating a legacy install), startup
+  explicitly commits the default data_root to ConfigHomeDir.
 
-needsOnboarding is deterministic and isolated: first run is true when the
-pointer is absent, or when onboarding_completed is false and no legacy
-completion marker can be migrated. It no longer inspects the script registry.
+Onboarding completion state is read from the data root itself (config/config.json)
+through OnboardingCompleted / SetOnboardingCompleted.
 */

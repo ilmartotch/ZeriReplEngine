@@ -1099,30 +1099,58 @@ func (m *AppModel) applyOnboardingAction(action onboarding.TutorialAction) tea.C
 			if err != nil {
 				return onboarding.DataRootFailedMsg{Reason: err.Error()}
 			}
-			if err := ensureZeriDirectories(); err != nil {
-				return onboarding.DataRootFailedMsg{Reason: err.Error()}
-			}
 			return onboarding.DataRootCompletedMsg{Path: dataRoot, Notice: notice}
 		}
 	case onboarding.TutorialActionMarkCompleted:
-		if _, ok, _ := ResolveDataRoot(); !ok {
-			if home, err := ConfigHomeDir(); err == nil {
-				_ = AdoptDataRoot(home)
-				_ = ensureZeriDirectories()
-			}
+		if _, err := ensureCommittedDataRoot(); err != nil {
+			m.addErrorMessage("Could not finalize onboarding.\n" + err.Error())
+			return nil
 		}
-		_ = saveOnboardingCompleted()
+		if err := saveOnboardingCompleted(); err != nil {
+			m.addErrorMessage("Could not save onboarding state.\n" + err.Error())
+			return nil
+		}
 		m.onboardingActive = false
 		m.mode = ModeREPL
 		m.addSystemMessage("Onboarding completed. Welcome to Zeri.")
 		return nil
 	case onboarding.TutorialActionExitToRepl:
+		dataRoot, err := ensureCommittedDataRoot()
+		if err != nil {
+			m.addErrorMessage("Onboarding was skipped, but data location setup failed.\n" + err.Error())
+			return nil
+		}
 		m.onboardingActive = false
 		m.mode = ModeREPL
-		m.addSystemMessage("Onboarding skipped. Data location not configured yet — run /settings to set it later.")
+		m.addSystemMessage("Onboarding skipped. Data location set to: " + dataRoot + ".\nUse /settings path <parent-folder> to change it later.")
 		return nil
 	}
 	return nil
+}
+
+func ensureCommittedDataRoot() (string, error) {
+	dataRoot, ok, err := ResolveDataRoot()
+	if err != nil {
+		return "", err
+	}
+	if ok {
+		return dataRoot, nil
+	}
+	home, err := ConfigHomeDir()
+	if err != nil {
+		return "", err
+	}
+	if err := AdoptDataRoot(home); err != nil {
+		return "", err
+	}
+	dataRoot, ok, err = ResolveDataRoot()
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", fmt.Errorf("data root is not configured after default adoption")
+	}
+	return dataRoot, nil
 }
 
 func (m AppModel) View() tea.View {

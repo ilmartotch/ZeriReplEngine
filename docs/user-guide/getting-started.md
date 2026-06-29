@@ -131,9 +131,19 @@ macOS: ~/Library/Application Support/zeri/location.json
 Linux: $XDG_CONFIG_HOME/zeri/location.json (or ~/.config/zeri/location.json)
 ```
 
-That file holds both the chosen data root (`data_root`) and whether onboarding
-has been completed (`onboarding_completed`). Your scripts and sessions live under
-the data root and are never stored in `location.json`.
+`location.json` is a bootstrap pointer. It uses schema version 1 and contains:
+
+- `version`
+- `data_root`
+- `_comment`
+
+The same folder also includes `README.txt` that explains the bootstrap model.
+All runtime data (`scripts/`, `sessions/`, `config/`, `state.json`) lives under
+`data_root`, not in the config-home pointer folder (unless `data_root` itself is
+that default folder).
+
+If `ZERI_HOME` is set, Zeri ignores `location.json` and uses `ZERI_HOME` as
+`data_root`.
 
 To replay onboarding from scratch, run:
 
