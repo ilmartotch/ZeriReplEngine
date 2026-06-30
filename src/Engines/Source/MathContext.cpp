@@ -33,6 +33,19 @@ namespace {
         return std::nullopt;
     }
 
+    struct ParsedLogicExpression {
+        std::string op;
+        std::string lhs;
+        std::string rhs;
+    };
+
+    [[nodiscard]] std::optional<std::string_view> NormalizeLogicOperator(std::string_view token) {
+        if (token == "and" || token == "&&") return "and";
+        if (token == "or"  || token == "||") return "or";
+        if (token == "xor" || token == "^")  return "xor";
+        return std::nullopt;
+    }
+
     [[nodiscard]] std::string_view TrimSV(std::string_view value) {
         while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front()))) value.remove_prefix(1);
         while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back()))) value.remove_suffix(1);
@@ -48,16 +61,76 @@ namespace {
         return result;
     }
 
+    [[nodiscard]] std::optional<ParsedLogicExpression> TryParseInfixLogic(std::string_view text) {
+        const auto trimmed = TrimSV(text);
+        if (trimmed.empty()) {
+            return std::nullopt;
+        }
+
+        {
+            std::istringstream stream{std::string(trimmed)};
+            std::string lhs;
+            std::string opToken;
+            std::string rhs;
+            std::string extra;
+            if ((stream >> lhs >> opToken >> rhs) && !(stream >> extra)) {
+                if (const auto normalized = NormalizeLogicOperator(opToken); normalized.has_value()) {
+                    return ParsedLogicExpression{
+                        std::string(*normalized),
+                        std::move(lhs),
+                        std::move(rhs)
+                    };
+                }
+            }
+        }
+
+        std::size_t operatorPos = std::string_view::npos;
+        std::string_view operatorToken;
+        const auto considerOperator = [&](std::string_view candidate) {
+            const auto pos = trimmed.find(candidate);
+            if (pos != std::string_view::npos &&
+                (operatorPos == std::string_view::npos || pos < operatorPos)) {
+                operatorPos = pos;
+                operatorToken = candidate;
+            }
+        };
+
+        considerOperator("&&");
+        considerOperator("||");
+        considerOperator("^");
+
+        if (operatorPos == std::string_view::npos) {
+            return std::nullopt;
+        }
+
+        const auto lhs = TrimSV(trimmed.substr(0, operatorPos));
+        const auto rhs = TrimSV(trimmed.substr(operatorPos + operatorToken.size()));
+        if (lhs.empty() || rhs.empty()) {
+            return std::nullopt;
+        }
+
+        const auto normalized = NormalizeLogicOperator(operatorToken);
+        if (!normalized.has_value()) {
+            return std::nullopt;
+        }
+
+        return ParsedLogicExpression{
+            std::string(*normalized),
+            std::string(lhs),
+            std::string(rhs)
+        };
+    }
+
     [[nodiscard]] std::optional<double> TryConvertToDouble(const std::any& value) {
         if (!value.has_value()) return std::nullopt;
         const auto& t = value.type();
-        if (t == typeid(double))            return std::any_cast<double>(value);
-        if (t == typeid(float))             return static_cast<double>(std::any_cast<float>(value));
-        if (t == typeid(int))               return static_cast<double>(std::any_cast<int>(value));
-        if (t == typeid(long))              return static_cast<double>(std::any_cast<long>(value));
-        if (t == typeid(long long))         return static_cast<double>(std::any_cast<long long>(value));
-        if (t == typeid(unsigned int))      return static_cast<double>(std::any_cast<unsigned int>(value));
-        if (t == typeid(unsigned long))     return static_cast<double>(std::any_cast<unsigned long>(value));
+        if (t == typeid(double)) return std::any_cast<double>(value);
+        if (t == typeid(float)) return static_cast<double>(std::any_cast<float>(value));
+        if (t == typeid(int)) return static_cast<double>(std::any_cast<int>(value));
+        if (t == typeid(long)) return static_cast<double>(std::any_cast<long>(value));
+        if (t == typeid(long long)) return static_cast<double>(std::any_cast<long long>(value));
+        if (t == typeid(unsigned int)) return static_cast<double>(std::any_cast<unsigned int>(value));
+        if (t == typeid(unsigned long)) return static_cast<double>(std::any_cast<unsigned long>(value));
         if (t == typeid(unsigned long long))return static_cast<double>(std::any_cast<unsigned long long>(value));
         if (t == typeid(std::string)) {
             double d = 0.0;
@@ -120,9 +193,8 @@ namespace Zeri::Engines::Defaults {
             return HandleExpression(cmd.args[0], state);
         }
 
-        if (cmd.commandName == "help")    return HandleHelp();
-        if (cmd.commandName == "calc")    return HandleCalc(cmd);
-        if (cmd.commandName == "logic")   return HandleLogic(cmd);
+        if (cmd.commandName == "help") return HandleHelp();
+        if (cmd.commandName == "logic") return HandleLogic(cmd);
 
         if (cmd.commandName == "eval") {
             return HandleExpression(JoinArgs(cmd.args), state);
@@ -132,8 +204,8 @@ namespace Zeri::Engines::Defaults {
             return HandleDefineFunction(cmd, state);
         }
 
-        if (cmd.commandName == "vars")    return HandleListVariables(state);
-        if (cmd.commandName == "fns")     return HandleListFunctions(state);
+        if (cmd.commandName == "vars") return HandleListVariables(state);
+        if (cmd.commandName == "fns") return HandleListFunctions(state);
         if (cmd.commandName == "promote") return HandlePromote(cmd, state);
 
         return std::unexpected(ExecutionError{
@@ -237,8 +309,8 @@ namespace Zeri::Engines::Defaults {
 
         compiled->symbolTable.add_constants();
         compiled->symbolTable.add_constant("euler", 2.718281828459045);
-        compiled->symbolTable.add_constant("phi",   1.618033988749895);
-        compiled->symbolTable.add_constant("tau",   6.283185307179586);
+        compiled->symbolTable.add_constant("phi", 1.618033988749895);
+        compiled->symbolTable.add_constant("tau", 6.283185307179586);
         compiled->symbolTable.add_constant("sqrt2", 1.4142135623730951);
 
         for (std::size_t i = 0; i < params.size(); ++i) {
@@ -292,16 +364,16 @@ namespace Zeri::Engines::Defaults {
         const auto mathVars = state.GetMathVariables();
         if (mathVars.empty()) {
             return "No variables defined in the current scope.\n"
-                   "  Assign with:  x = 42  or  result = sin(pi/4)";
+                   " Assign with: x = 42 or result = sin(pi/4)";
         }
 
         std::string result = "Variables (current scope):\n";
         for (const auto& [name, value] : mathVars) {
             auto numericVal = TryConvertToDouble(value);
             if (numericVal.has_value()) {
-                result += std::format("  {} = {}\n", name, FormatDouble(*numericVal));
+                result += std::format(" {} = {}\n", name, FormatDouble(*numericVal));
             } else {
-                result += std::format("  {} = <non-numeric>\n", name);
+                result += std::format(" {} = <non-numeric>\n", name);
             }
         }
         return result;
@@ -325,7 +397,7 @@ namespace Zeri::Engines::Defaults {
                     }
                     paramList += definition.params[i];
                 }
-                result += std::format("  {}({}) → {}\n", name, paramList, definition.expression);
+                result += std::format(" {}({}) → {}\n", name, paramList, definition.expression);
             }
         }
 
@@ -336,7 +408,7 @@ namespace Zeri::Engines::Defaults {
                     result += "Inherited functions (session/global):\n";
                     hasInherited = true;
                 }
-                result += std::format("  {}\n", name);
+                result += std::format(" {}\n", name);
             }
         }
 
@@ -364,8 +436,8 @@ namespace Zeri::Engines::Defaults {
         const auto& scopeName = cmd.args[1];
 
         Zeri::Core::RuntimeState::VariableScope targetScope;
-        if (scopeName == "session")        targetScope = Zeri::Core::RuntimeState::VariableScope::Session;
-        else if (scopeName == "global")    targetScope = Zeri::Core::RuntimeState::VariableScope::Global;
+        if (scopeName == "session") targetScope = Zeri::Core::RuntimeState::VariableScope::Session;
+        else if (scopeName == "global") targetScope = Zeri::Core::RuntimeState::VariableScope::Global;
         else if (scopeName == "persisted") targetScope = Zeri::Core::RuntimeState::VariableScope::Persisted;
         else {
             return std::unexpected(ExecutionError{
@@ -395,37 +467,37 @@ namespace Zeri::Engines::Defaults {
             "Math Context — Available Commands\n"
             "\n"
             "Global Commands:\n"
-            "  /help                    — Show help for the active context\n"
-            "  /context                 — List available contexts\n"
-            "  /back                    — Return to previous context\n"
-            "  /save                    — Save session state to disk\n"
-            "  /bug report              — Show bug-report instructions\n"
-            "  /exit                    — Exit the REPL\n"
+            "  /help — Show help for the active context\n"
+            "  /context — List available contexts\n"
+            "  /back — Return to previous context\n"
+            "  /save — Save session state to disk\n"
+            "  /bug report — Show bug-report instructions\n"
+            "  /exit — Exit the REPL\n"
             "\n"
             "Math Commands:\n"
             "Free-form expressions (type directly, no prefix needed):\n"
-            "  2 + 3 * sin(pi/4)        — Arithmetic with trig functions\n"
-            "  x = 42                    — Variable assignment\n"
-            "  result = x^2 + log(x)     — Computed assignment\n"
-            "  f(3.14)                   — Call a user-defined function\n"
+            "  2 + 3 * sin(pi/4) — Arithmetic with trig functions\n"
+            "  x = 42 — Variable assignment\n"
+            "  result = x^2 + log(x) — Computed assignment\n"
+            "  f(3.14) — Call a user-defined function\n"
             "\n"
             "Commands:\n"
-            "  /eval <expr>             — Explicit expression evaluation\n"
-            "  /fn <sig> = <body>       — Define function (e.g. /fn f(x) = x*sin(x))\n"
-            "  /define                  — Alias for /fn\n"
-            "  /vars                    — List variables in current scope\n"
-            "  /fns                     — List defined and available functions\n"
-            "  /promote <var> <scope>   — Promote variable (session|global|persisted)\n"
-            "  /calc <a> <op> <b>       — Legacy arithmetic (e.g. /calc 2 * 8)\n"
-            "  /logic <op> <v1> <v2>    — Boolean logic (and|or|xor true|false)\n"
+            "  /eval <expr> — Explicit expression evaluation\n"
+            "  /fn <sig> = <body> — Define function (e.g. /fn f(x) = x*sin(x))\n"
+            "  /define — Alias for /fn\n"
+            "  /vars — List variables in current scope\n"
+            "  /fns — List defined and available functions\n"
+            "  /promote <var> <scope> — Promote variable (session|global|persisted)\n"
+            "  /logic <op> <v1> <v2> — Prefix boolean logic (and|or|xor)\n"
+            "  /logic <v1> <op> <v2> — Infix boolean logic (&&, ||, ^, and, or, xor)\n"
             "\n"
             "Built-in functions (exprtk):\n"
-            "  Trig:    sin cos tan asin acos atan atan2\n"
-            "  Hyp:     sinh cosh tanh asinh acosh atanh\n"
-            "  Log:     log log2 log10 exp\n"
-            "  Power:   pow sqrt abs cbrt\n"
-            "  Round:   ceil floor round trunc frac\n"
-            "  Other:   min max clamp mod if(cond, t, f)\n"
+            "  Trig: sin cos tan asin acos atan atan2\n"
+            "  Hyp: sinh cosh tanh asinh acosh atanh\n"
+            "  Log: log log2 log10 exp\n"
+            "  Power: pow sqrt abs cbrt\n"
+            "  Round: ceil floor round trunc frac\n"
+            "  Other: min max clamp mod if(cond, t, f)\n"
             "\n"
             "Constants:\n"
             "  pi = 3.14159...  euler = 2.71828...  phi = 1.61803...\n"
@@ -433,82 +505,59 @@ namespace Zeri::Engines::Defaults {
             "\n"
             "Variable scopes:\n"
             "  Default: local (lost on context exit)\n"
-            "  /promote x session     — Persist for REPL session lifetime\n"
-            "  /promote x persisted   — Persist to disk across sessions";
-    }
-
-    ExecutionOutcome MathContext::HandleCalc(const Command& cmd) {
-        std::vector<std::string> effectiveArgs = cmd.args;
-
-        if (effectiveArgs.size() < 3 && cmd.pipeInput.has_value()) {
-            std::istringstream iss(*cmd.pipeInput);
-            std::string a, op, b;
-            if (iss >> a >> op >> b) {
-                effectiveArgs = { a, op, b };
-            }
-        }
-
-        if (effectiveArgs.size() < 3) {
-            return std::unexpected(ExecutionError{
-                "MathArgs",
-                "Invalid arguments for /calc.",
-                "/calc",
-                { "Usage: /calc <a> <+|-|*|/> <b>",
-                  "Tip: type expressions directly instead (e.g. 2+3)." }
-            });
-        }
-
-        double lhs = 0.0;
-        double rhs = 0.0;
-        if (!TryParseDouble(effectiveArgs[0], lhs) || !TryParseDouble(effectiveArgs[2], rhs)) {
-            return std::unexpected(ExecutionError{
-                "MathNumber",
-                "Both operands must be valid numeric values.",
-                "/calc",
-                { "Example: /calc 10.5 * 2" }
-            });
-        }
-
-        const std::string& op = effectiveArgs[1];
-        double result = 0.0;
-
-        if (op == "+")      result = lhs + rhs;
-        else if (op == "-") result = lhs - rhs;
-        else if (op == "*") result = lhs * rhs;
-        else if (op == "/") {
-            if (rhs == 0.0) {
-                return std::unexpected(ExecutionError{
-                    "MathDivideByZero",
-                    "Division by zero is not allowed.",
-                    "/calc",
-                    { "Use a non-zero divisor." }
-                });
-            }
-            result = lhs / rhs;
-        } else {
-            return std::unexpected(ExecutionError{
-                "MathOperator",
-                "Unsupported operator.",
-                "/calc",
-                { "Supported operators: + - * /" }
-            });
-        }
-
-        return std::format("{} {} {} = {}", lhs, op, rhs, result);
+            "  /promote x session — Persist for REPL session lifetime\n"
+            "  /promote x persisted — Persist to disk across sessions";
     }
 
     ExecutionOutcome MathContext::HandleLogic(const Command& cmd) {
-        if (cmd.args.size() < 3) {
+        if (cmd.args.empty()) {
             return std::unexpected(ExecutionError{
                 "LogicArgs",
                 "Invalid arguments for /logic.",
                 "/logic",
-                { "Usage: /logic <and|or|xor> <true|false> <true|false>" }
+                {
+                    "Usage: /logic <and|or|xor> <true|false|1|0> <true|false|1|0>",
+                    "Usage: /logic <true|false|1|0> <operator> <true|false|1|0>",
+                    "Operators: and, or, xor, &&, ||, ^"
+                }
             });
         }
 
-        auto lhs = ParseBool(cmd.args[1]);
-        auto rhs = ParseBool(cmd.args[2]);
+        std::string opToken;
+        std::string lhsToken;
+        std::string rhsToken;
+
+        if (cmd.args.size() >= 3) {
+            if (const auto infixOperator = NormalizeLogicOperator(cmd.args[1]); infixOperator.has_value()) {
+                opToken = std::string(*infixOperator);
+                lhsToken = cmd.args[0];
+                rhsToken = cmd.args[2];
+            } else {
+                opToken = cmd.args[0];
+                lhsToken = cmd.args[1];
+                rhsToken = cmd.args[2];
+            }
+        } else {
+            const auto infix = TryParseInfixLogic(JoinArgs(cmd.args));
+            if (!infix.has_value()) {
+                return std::unexpected(ExecutionError{
+                    "LogicArgs",
+                    "Invalid arguments for /logic.",
+                    "/logic",
+                    {
+                        "Usage: /logic <and|or|xor> <true|false|1|0> <true|false|1|0>",
+                        "Usage: /logic <true|false|1|0> <operator> <true|false|1|0>",
+                        "Operators: and, or, xor, &&, ||, ^"
+                    }
+                });
+            }
+            opToken = infix->op;
+            lhsToken = infix->lhs;
+            rhsToken = infix->rhs;
+        }
+
+        auto lhs = ParseBool(lhsToken);
+        auto rhs = ParseBool(rhsToken);
 
         if (!lhs.has_value() || !rhs.has_value()) {
             return std::unexpected(ExecutionError{
@@ -519,18 +568,27 @@ namespace Zeri::Engines::Defaults {
             });
         }
 
-        const std::string& op = cmd.args[0];
+        const auto normalizedOp = NormalizeLogicOperator(opToken);
+        if (!normalizedOp.has_value()) {
+            return std::unexpected(ExecutionError{
+                "LogicOperator",
+                "Unsupported logical operator.",
+                "/logic",
+                { "Supported operators: and, or, xor, &&, ||, ^" }
+            });
+        }
+
         bool result = false;
 
-        if (op == "and")      result = *lhs && *rhs;
-        else if (op == "or")  result = *lhs || *rhs;
-        else if (op == "xor") result = (*lhs != *rhs);
+        if (*normalizedOp == "and")      result = *lhs && *rhs;
+        else if (*normalizedOp == "or")  result = *lhs || *rhs;
+        else if (*normalizedOp == "xor") result = (*lhs != *rhs);
         else {
             return std::unexpected(ExecutionError{
                 "LogicOperator",
                 "Unsupported logical operator.",
                 "/logic",
-                { "Supported operators: and, or, xor" }
+                { "Supported operators: and, or, xor, &&, ||, ^" }
             });
         }
 
@@ -543,7 +601,7 @@ namespace Zeri::Engines::Defaults {
 MathContext.cpp — Mathematical expression engine.
 
 Handles math expressions and logic operations via exprtk.
-Supports explicit slash commands (/calc, /logic, /eval, /fn, /vars, /fns,
+Supports explicit slash commands (/logic, /eval, /fn, /vars, /fns,
 /promote), variable promotion and assignment, and user-defined functions.
 
 Changes:

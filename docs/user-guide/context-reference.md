@@ -82,8 +82,7 @@ $python
 | `/vars` | List variables in current scope |
 | `/fns` | List defined and inherited functions |
 | `/promote <var> <scope>` | Promote variable scope (`session`, `global`, `persisted`) |
-| `/calc <a> <op> <b>` | Legacy arithmetic helper |
-| `/logic <op> <v1> <v2>` | Boolean logic helper |
+| `/logic <op> <v1> <v2>` or `/logic <v1> <op> <v2>` | Boolean logic helper (`and`, `or`, `xor`, `&&`, `\|\|`, `^`) |
 
 **Example**
 

@@ -222,16 +222,22 @@ func TestMathContextOperations(t *testing.T) {
 	}
 }
 
-func TestMathCalcOperation(t *testing.T) {
+func TestMathExpressionEvaluation(t *testing.T) {
 	ep := harness.SpawnEngine(t)
 	defer harness.Cleanup(t, ep)
 	client := harness.Connect(ep)
 	switchContextOrFail(t, client, "$math")
 
-	response := harness.Send(client, "/calc 2 * 8")
-	if !responseContains(response.Output, "2 * 8 = 16") {
-		t.Fatalf("expected /calc result output: %s", responseDump(response.Output, response.Errors))
+	inline := harness.Send(client, "2+3*4")
+	if !responseContains(inline.Output, "14") {
+		t.Fatalf("expected inline math expression result: %s", responseDump(inline.Output, inline.Errors))
 	}
+
+	eval := harness.Send(client, "/eval 3+4*2")
+	if !responseContains(eval.Output, "11") {
+		t.Fatalf("expected /eval expression result: %s", responseDump(eval.Output, eval.Errors))
+	}
+
 }
 
 func TestMathLogicOperation(t *testing.T) {
@@ -240,9 +246,25 @@ func TestMathLogicOperation(t *testing.T) {
 	client := harness.Connect(ep)
 	switchContextOrFail(t, client, "$math")
 
-	response := harness.Send(client, "/logic and true false")
-	if !responseContains(response.Output, "false") {
-		t.Fatalf("expected /logic result output: %s", responseDump(response.Output, response.Errors))
+	cases := []struct {
+		input    string
+		expected string
+	}{
+		{input: "/logic and true false", expected: "false"},
+		{input: "/logic true && false", expected: "false"},
+		{input: "/logic true&&false", expected: "false"},
+		{input: "/logic true||false", expected: "true"},
+		{input: "/logic true ^ true", expected: "false"},
+		{input: "/logic true xor false", expected: "true"},
+		{input: "/logic or true false", expected: "true"},
+		{input: "/logic xor true true", expected: "false"},
+	}
+
+	for _, tc := range cases {
+		response := harness.Send(client, tc.input)
+		if !responseContains(response.Output, tc.expected) {
+			t.Fatalf("expected %q from %q: %s", tc.expected, tc.input, responseDump(response.Output, response.Errors))
+		}
 	}
 }
 

@@ -840,22 +840,47 @@ namespace {
             return true;
         }
 
-        const auto hasPipeOperator = [&cmd]() -> bool {
-            if (cmd.rawInput.find('|') != std::string::npos) {
+        const auto isMathLogicCommand = [&runtimeState, &cmd]() -> bool {
+            if (cmd.commandName != "logic") {
+                return false;
+            }
+
+            const auto* currentContext = runtimeState.GetCurrentContext();
+            return currentContext != nullptr && currentContext->GetName() == "math";
+        }();
+
+        const auto containsUnsupportedPipe = [isMathLogicCommand](std::string_view text) -> bool {
+            for (std::size_t i = 0; i < text.size(); ++i) {
+                if (text[i] != '|') {
+                    continue;
+                }
+
+                const bool isDoublePipe = (i + 1 < text.size() && text[i + 1] == '|');
+                if (isMathLogicCommand && isDoublePipe) {
+                    ++i;
+                    continue;
+                }
                 return true;
             }
-            if (cmd.commandName.find('|') != std::string::npos) {
+            return false;
+        };
+
+        const auto hasUnsupportedPipeOperator = [&cmd, &containsUnsupportedPipe]() -> bool {
+            if (containsUnsupportedPipe(cmd.rawInput)) {
+                return true;
+            }
+            if (containsUnsupportedPipe(cmd.commandName)) {
                 return true;
             }
             for (const auto& arg : cmd.args) {
-                if (arg.find('|') != std::string::npos) {
+                if (containsUnsupportedPipe(arg)) {
                     return true;
                 }
             }
             return false;
         }();
 
-        if (hasPipeOperator) {
+        if (hasUnsupportedPipeOperator) {
             terminal.WriteError("[ZERI][PARSE-003] Unknown command. Hint: run /help to see available commands.");
             return fail("pipe operator is not supported.");
         }

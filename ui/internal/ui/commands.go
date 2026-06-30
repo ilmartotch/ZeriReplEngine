@@ -103,8 +103,7 @@ func defaultHelpCatalog() helpCatalogData {
 				{Command: "/vars", Synopsis: "List variables"},
 				{Command: "/fns", Synopsis: "List functions"},
 				{Command: "/promote", Synopsis: "Promote a variable scope"},
-				{Command: "/calc", Synopsis: "Run a quick arithmetic command"},
-				{Command: "/logic", Synopsis: "Run a boolean logic command"},
+				{Command: "/logic", Synopsis: "Run a boolean logic command (prefix or infix)"},
 			},
 			"customcommand": {
 				{Command: "/define", Synopsis: "Define a custom command body"},

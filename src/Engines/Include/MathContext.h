@@ -18,7 +18,6 @@ namespace Zeri::Engines::Defaults {
 
     private:
         [[nodiscard]] static ExecutionOutcome HandleHelp();
-        [[nodiscard]] static ExecutionOutcome HandleCalc(const Command& cmd);
         [[nodiscard]] static ExecutionOutcome HandleLogic(const Command& cmd);
         [[nodiscard]] static ExecutionOutcome HandleExpression(const std::string& expr, Zeri::Core::RuntimeState& state);
         [[nodiscard]] ExecutionOutcome HandleDefineFunction(const Command& cmd, Zeri::Core::RuntimeState& state);
@@ -35,7 +34,7 @@ MathContext.h — Full-featured math computation engine.
 Responsibilities:
   - Free-form expression evaluation via exprtk.
   - Variable assignment, user-defined functions, scope promotion.
-  - Backward-compatible /calc and /logic commands.
+  - /logic command with prefix and infix forms.
   - Acts as a Julia-style sandbox for numerical computation within the REPL.
 
 Changes:

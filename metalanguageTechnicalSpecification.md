@@ -41,7 +41,7 @@ Zeri uses a context-driven REPL meta-language. Each input line is parsed and dis
 - Context-specific command sets are enforced.
 - Global commands are always available where configured (`/help`, `/context`, `/back`, `/save`, `/load`, `/status`, `/reset`, `/exit`, `/set`, `/get`, `/bug`, `/runtime-status`, `/copy`, `/clear`, `restart`).
 - Script contexts support `/new`, `/edit`, `/show`, `/run`, `/list`, `/delete`.
-- `$math` supports free-form expressions and `/eval`, `/fn`, `/vars`, `/fns`, `/promote`, `/calc`, `/logic`.
+- `$math` supports free-form expressions and `/eval`, `/fn`, `/vars`, `/fns`, `/promote`, `/logic`.
 - `$sandbox` supports `/open`, `/watch`, `/list`, `/build`, `/run`.
 - `$customCommand` supports `/define`, `/list`, `/run`, `/show`, `/delete`.
 

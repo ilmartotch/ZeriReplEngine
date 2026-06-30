@@ -57,8 +57,7 @@
       { "command": "/vars", "synopsis": "List variables" },
       { "command": "/fns", "synopsis": "List functions" },
       { "command": "/promote", "synopsis": "Promote a variable scope" },
-      { "command": "/calc", "synopsis": "Run a quick arithmetic command" },
-      { "command": "/logic", "synopsis": "Run a boolean logic command" }
+      { "command": "/logic", "synopsis": "Run a boolean logic command (prefix or infix)" }
     ],
     "sandbox": [
       { "command": "/open", "synopsis": "Open a file in the configured IDE" },

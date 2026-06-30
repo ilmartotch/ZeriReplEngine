@@ -32,7 +32,7 @@ namespace Zeri::Engines {
             ReplContext context;
         };
 
-        static constexpr std::array<CommandSpec, 20> kCommands = {{
+        static constexpr std::array<CommandSpec, 19> kCommands = {{
             {"/help", "Show help for current context", ReplContext::Global},
             {"/context", "List available contexts", ReplContext::Global},
             {"/bug report", "Show bug-report instructions", ReplContext::Global},
@@ -48,8 +48,7 @@ namespace Zeri::Engines {
             {"/vars", "List variables", ReplContext::Math},
             {"/fns", "List functions", ReplContext::Math},
             {"/promote", "<var> <scope>", ReplContext::Math},
-            {"/calc", "<a> <op> <b>", ReplContext::Math},
-            {"/logic", "<op> <v1> <v2>", ReplContext::Math},
+            {"/logic", "<op> <v1> <v2> | <v1> <op> <v2>", ReplContext::Math},
             {"/list", "List modules", ReplContext::Sandbox},
             {"/build", "<module>", ReplContext::Sandbox},
             {"/run", "<module>", ReplContext::Sandbox}
