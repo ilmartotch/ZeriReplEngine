@@ -275,6 +275,8 @@ type AppModel struct {
 	startupProfiler *startupProfiler
 	lastEscAt time.Time
 	settingsVisible bool
+	pendingSettingsRequest SettingsRequestKind
+	pendingSettingsUpdate PendingSettingsUpdate
 	settingsCenter SettingsCenterState
 }
 
@@ -316,6 +318,7 @@ func newAppModel(b bridge.YuumiClient, enginePath string, pipeName string, opts 
 	onboardingModel := onboarding.New(pythonDetected, defaultDataParent)
 	execSpinner := spinner.New()
 	execSpinner.Spinner = spinner.Dot
+	aiCfg := buildSettingsCenterState(SettingsCenterState{})
 
 	return AppModel{
 		width: 80,
@@ -328,19 +331,19 @@ func newAppModel(b bridge.YuumiClient, enginePath string, pipeName string, opts 
 		activeContextPath: "global",
 		activeLanguage: "",
 		engineState: ConnectionConnected,
-		sessionVars: map[string]string{},
 		enginePath: strings.TrimSpace(enginePath),
 		pipeName: strings.TrimSpace(pipeName),
 		startupInProgress: true,
 		startupStage: "Initializing workspace...",
 		aiContext: aiModel,
-		aiConfigured: aiCfg.IsConfigured(),
+		aiConfigured: aiCfg.AiConfigured,
 		aiSharedScope: map[string]interface{}{},
 		onboardingModel: onboardingModel,
 		onboardingActive: onboardingRequired,
 		startupOptions: opts,
 		startupProfiler: profiler,
 		executionSpinner: execSpinner,
+		settingsCenter: aiCfg,
 	}
 }
 

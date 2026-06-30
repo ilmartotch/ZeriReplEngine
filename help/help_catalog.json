@@ -68,11 +68,11 @@
       { "command": "/run", "synopsis": "Run a compiled module" }
     ],
     "customcommand": [
-      { "command": "/define", "synopsis": "Define a custom command body" },
-      { "command": "/list", "synopsis": "List registered custom commands" },
-      { "command": "/run", "synopsis": "Run a custom command by name" },
-      { "command": "/show", "synopsis": "Show the custom command body" },
-      { "command": "/delete", "synopsis": "Delete a custom command" }
+      { "command": "/define <name> \"<body>\" [--context <ctx>]", "synopsis": "Define an executable macro body (global by default, or context-bound)" },
+      { "command": "/list", "synopsis": "List registered custom commands with scope" },
+      { "command": "/run <name>", "synopsis": "Execute a custom command by name" },
+      { "command": "/show <name>", "synopsis": "Show the resolved custom command body and scope" },
+      { "command": "/delete <name>", "synopsis": "Delete a custom command (interactive if scope is ambiguous)" }
     ],
     "script": [
       { "command": "/new", "synopsis": "Create a script" },

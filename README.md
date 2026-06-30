@@ -24,6 +24,14 @@ scoop bucket add zeri https://github.com/ilmartotch/scoop-zeri; scoop install ze
 5. /new hello  (then in editor: write code and run /save)
 ```
 
+## Custom command macros
+
+`$customCommand` definitions are executable macros:
+
+- `/define <name> "<body>" [--context <ctx>]` stores one or more slash commands
+- body steps use `;` and run in fail-fast order
+- commands are invokable by name with precedence `built-in > context-bound > global`
+
 ## Full documentation
 
 See `docs/user-guide/` for the complete user guide:

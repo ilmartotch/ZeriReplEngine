@@ -98,14 +98,21 @@ $python
 
 | Command | Description |
 | --- | --- |
-| `/define <name> "<body>"` | Define a custom command body |
-| `/list` | List registered custom commands |
-| `/run <name>` | Run a saved custom command |
-| `/show <name>` | Show the custom command body |
-| `/delete <name>` | Delete a custom command |
+| `/define <name> "<body>" [--context <ctx>]` | Define an executable macro (global by default, or bind to a context) |
+| `/list` | List registered custom commands with scope |
+| `/run <name>` | Execute a saved custom command (fail-fast chain) |
+| `/show <name>` | Show the resolved custom command body and scope |
+| `/delete <name>` | Delete a custom command (interactive disambiguation when names collide across scopes) |
 
 **Example**
 
 ```text
-/define greet "echo hello"
+/define build "/save ; /run"
+/define calc7 "/eval 7" --context math
 ```
+
+Rules:
+- Body steps are split by `;` and executed in order with fail-fast semantics.
+- Only explicit slash commands are allowed inside the body.
+- `;` inside quotes (or escaped as `\;`) is treated as literal text, not a separator.
+- Commands are invokable by name from prompts: resolution order is built-in > context-bound > global.

@@ -5,6 +5,7 @@
 #include "Core/Include/UserPaths.h"
 #include "Core/Include/AppPaths.h"
 #include "Core/Include/BugSnapshot.h"
+#include "Core/Include/StringUtils.h"
 #include "Engines/Include/GlobalContext.h"
 #include "Engines/Include/CustomCommandContext.h"
 #include "Engines/Include/JsContext.h"
@@ -30,6 +31,7 @@
 
 #include <memory>
 #include <format>
+#include <algorithm>
 #include <array>
 #include <cctype>
 #include <cstdio>
@@ -805,15 +807,31 @@ namespace {
         const Zeri::Core::StartupDiagnosticsReport* startupDiagnostics = nullptr,
         const std::vector<Zeri::Core::BugSnapshotCommandRecord>* commandHistory = nullptr,
         Zeri::Engines::Defaults::PluginLoader* pluginLoader = nullptr,
-        Zeri::Engines::Defaults::LuaPluginLoader* luaPluginLoader = nullptr
+        Zeri::Engines::Defaults::LuaPluginLoader* luaPluginLoader = nullptr,
+        int customCommandDepth = 0,
+        std::string* failureReason = nullptr
     ) {
+        auto fail = [&failureReason](std::string reason) {
+            if (failureReason != nullptr) {
+                *failureReason = std::move(reason);
+            }
+            return false;
+        };
+        auto writeExecutionError = [&terminal](const Zeri::Engines::ExecutionError& err) {
+            terminal.WriteError(EnsureStandardErrorMessage(
+                err.Format(),
+                "CUSTOM-001",
+                "review the command definition and retry with valid syntax."
+            ));
+        };
+
         auto dispatchResult = dispatcher.Dispatch(stageInput);
         if (!dispatchResult.has_value()) {
             const auto& err = dispatchResult.error();
             std::string caret(err.position, ' ');
             caret += '^';
             terminal.WriteError("[ZERI][PARSE-002] " + err.message + ". Hint: fix command syntax and retry.\n  " + stageInput + "\n  " + caret);
-            return false;
+            return fail("parse error: " + err.message);
         }
 
         auto cmd = dispatchResult->command;
@@ -839,19 +857,25 @@ namespace {
 
         if (hasPipeOperator) {
             terminal.WriteError("[ZERI][PARSE-003] Unknown command. Hint: run /help to see available commands.");
-            return false;
+            return fail("pipe operator is not supported.");
         }
 
         switch (cmd.type) {
         case Zeri::Engines::InputType::ContextSwitch:
             if (!cmd.args.empty() || !cmd.flags.empty()) {
                 terminal.WriteError("[ZERI][PARSE-004] Invalid context switch syntax. Hint: use $<context> without flags or extra arguments.");
-                return false;
+                return fail("invalid context switch syntax.");
             }
-            return SwitchContext(cmd.commandName, runtimeState, terminal, sink, pluginLoader);
+            if (!SwitchContext(cmd.commandName, runtimeState, terminal, sink, pluginLoader)) {
+                return fail("context switch failed.");
+            }
+            return true;
 
         case Zeri::Engines::InputType::SystemOp:
-            return ExecuteSystemOp(cmd, terminal);
+            if (!ExecuteSystemOp(cmd, terminal)) {
+                return fail("system command failed.");
+            }
+            return true;
 
         case Zeri::Engines::InputType::Expression:
         case Zeri::Engines::InputType::Command: {
@@ -864,7 +888,7 @@ namespace {
             auto* currentCtx = runtimeState.GetCurrentContext();
             if (!currentCtx) {
                 terminal.WriteError("[ZERI][CONTEXT-004] No active context is available. Hint: run /reset to restore the global context.");
-                return false;
+                return fail("missing active context.");
             }
 
             if (cmd.type == Zeri::Engines::InputType::Command) {
@@ -881,16 +905,121 @@ namespace {
                 }
             }
 
+            std::optional<std::string> customInvocationName;
+            const std::string activeContextName = ToLower(currentCtx->GetName());
+            const bool isCustomRunCall =
+                cmd.type == Zeri::Engines::InputType::Command &&
+                activeContextName == "customcommand" &&
+                cmd.commandName == "run";
+
+            if (isCustomRunCall) {
+                if (cmd.args.empty() || Zeri::Core::Utils::Trim(cmd.args[0]).empty()) {
+                    const Zeri::Engines::ExecutionError err{
+                        "CUSTOM_RUN_MISSING_NAME",
+                        "Missing command name for /run.",
+                        cmd.rawInput,
+                        { "Usage: /run <name>" }
+                    };
+                    writeExecutionError(err);
+                    return fail("custom run missing command name.");
+                }
+                customInvocationName = Zeri::Core::Utils::Trim(cmd.args[0]);
+            } else if (cmd.type == Zeri::Engines::InputType::Expression) {
+                const std::string expressionInput = Zeri::Core::Utils::Trim(cmd.args.empty() ? cmd.rawInput : cmd.args[0]);
+                if (
+                    !expressionInput.empty() &&
+                    std::none_of(expressionInput.begin(), expressionInput.end(), [](unsigned char c) { return std::isspace(c) != 0; })
+                ) {
+                    customInvocationName = expressionInput;
+                }
+            }
+
+            if (customInvocationName.has_value()) {
+                auto resolvedResult = Zeri::Engines::Defaults::CustomCommandContext::ResolveForInvocation(
+                    runtimeState,
+                    *customInvocationName,
+                    activeContextName
+                );
+                if (!resolvedResult.has_value()) {
+                    writeExecutionError(resolvedResult.error());
+                    return fail("custom command resolution failed.");
+                }
+
+                if (resolvedResult->has_value()) {
+                    if (customCommandDepth >= 24) {
+                        const Zeri::Engines::ExecutionError err{
+                            "CUSTOM_RECURSION_LIMIT",
+                            "Custom command recursion depth limit reached (24) while invoking '" + resolvedResult->value().name + "'.",
+                            cmd.rawInput,
+                            { "Review recursive custom command calls and break the cycle." }
+                        };
+                        writeExecutionError(err);
+                        return fail("custom command recursion limit reached.");
+                    }
+
+                    auto splitResult = Zeri::Engines::Defaults::CustomCommandContext::SplitBody(
+                        resolvedResult->value().body,
+                        cmd.rawInput
+                    );
+                    if (!splitResult.has_value()) {
+                        writeExecutionError(splitResult.error());
+                        return fail("invalid custom command body.");
+                    }
+
+                    for (std::size_t i = 0; i < splitResult->size(); ++i) {
+                        const auto& stepCommand = splitResult->at(i);
+                        std::string stepReason;
+                        if (!ExecuteStage(
+                            stepCommand,
+                            dispatcher,
+                            runtimeState,
+                            terminal,
+                            sink,
+                            startupDiagnostics,
+                            commandHistory,
+                            pluginLoader,
+                            luaPluginLoader,
+                            customCommandDepth + 1,
+                            &stepReason
+                        )) {
+                            const Zeri::Engines::ExecutionError err{
+                                "CUSTOM_CHAIN_FAILED",
+                                "Custom command '" + resolvedResult->value().name + "' failed at step " + std::to_string(i + 1) +
+                                    " (" + stepCommand + "). Reason: " +
+                                    (stepReason.empty() ? std::string("sub-command execution failed.") : stepReason),
+                                cmd.rawInput,
+                                { "Fix the failing step or split the macro into smaller commands for troubleshooting." }
+                            };
+                            writeExecutionError(err);
+                            return fail("custom command execution failed at step " + std::to_string(i + 1) + ".");
+                        }
+                    }
+                    return true;
+                }
+
+                if (isCustomRunCall) {
+                    const Zeri::Engines::ExecutionError err{
+                        "CUSTOM_NOT_FOUND",
+                        "Custom command not found: " + *customInvocationName,
+                        cmd.rawInput
+                    };
+                    writeExecutionError(err);
+                    return fail("custom command not found.");
+                }
+            }
+
             auto outcome = currentCtx->HandleCommand(cmd, runtimeState, terminal);
             HandleOutcome(outcome, terminal);
 
-            if (!outcome.has_value()) return false;
+            if (!outcome.has_value()) {
+                return fail(outcome.error().message);
+            }
             return true;
         }
 
         default:
             terminal.WriteError("[ZERI][PARSE-005] Unrecognized input type. Hint: run /help to review supported input forms.");
-            return false;
+            return fail("unrecognized input type.");
         }
     }
 

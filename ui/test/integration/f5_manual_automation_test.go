@@ -118,7 +118,7 @@ func TestCustomCommandDefineListRunShowDelete(t *testing.T) {
 	client := harness.Connect(ep)
 	switchContextOrFail(t, client, "$customCommand")
 
-	define := harness.Send(client, "/define greet \"echo hello\"")
+	define := harness.Send(client, "/define greet \"/help\"")
 	if !responseContains(define.Output, "Custom command defined: greet") {
 		t.Fatalf("expected define success, got: %s", responseDump(define.Output, define.Errors))
 	}
@@ -129,12 +129,12 @@ func TestCustomCommandDefineListRunShowDelete(t *testing.T) {
 	}
 
 	show := harness.Send(client, "/show greet")
-	if !responseContains(show.Output, "echo hello") {
+	if !responseContains(show.Output, "/help") {
 		t.Fatalf("expected body in /show output: %s", responseDump(show.Output, show.Errors))
 	}
 
 	run := harness.Send(client, "/run greet")
-	if !responseContains(run.Output, "echo hello") {
+	if !responseContains(run.Output, "CustomCommand commands:") {
 		t.Fatalf("expected body in /run output: %s", responseDump(run.Output, run.Errors))
 	}
 
