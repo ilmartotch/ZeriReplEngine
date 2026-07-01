@@ -1,5 +1,6 @@
 #include "Core/Include/RuntimeState.h"
 #include "Core/Include/HelpCatalog.h"
+#include "Core/Include/CatalogRegistry.h"
 #include "Core/Include/SystemGuard.h"
 #include "Core/Include/StartupDiagnostics.h"
 #include "Core/Include/UserPaths.h"
@@ -374,11 +375,13 @@ namespace {
         const std::string normalized = ToLower(name);
         if (normalized == "code") return std::make_unique<Zeri::Engines::Defaults::ScriptHubContext>();
         if (normalized == "customcommand") return std::make_unique<Zeri::Engines::Defaults::CustomCommandContext>();
-        if (normalized == "js") return std::make_unique<Zeri::Engines::Defaults::JsContext>(false);
-        if (normalized == "ts") return std::make_unique<Zeri::Engines::Defaults::JsContext>(true);
-        if (normalized == "lua") return std::make_unique<Zeri::Engines::Defaults::LuaContext>();
-        if (normalized == "python") return std::make_unique<Zeri::Engines::Defaults::PythonContext>();
-        if (normalized == "ruby") return std::make_unique<Zeri::Engines::Defaults::RubyContext>();
+        if (const auto* language = Zeri::Core::CatalogRegistry::Instance().ResolveLanguage(normalized); language != nullptr) {
+            if (language->id == "js") return std::make_unique<Zeri::Engines::Defaults::JsContext>(false);
+            if (language->id == "ts") return std::make_unique<Zeri::Engines::Defaults::JsContext>(true);
+            if (language->id == "lua") return std::make_unique<Zeri::Engines::Defaults::LuaContext>();
+            if (language->id == "python") return std::make_unique<Zeri::Engines::Defaults::PythonContext>();
+            if (language->id == "ruby") return std::make_unique<Zeri::Engines::Defaults::RubyContext>();
+        }
         if (normalized == "math") return std::make_unique<Zeri::Engines::Defaults::MathContext>();
         if (normalized == "sandbox") return std::make_unique<Zeri::Engines::Defaults::SandboxContext>();
         if (pluginLoader != nullptr) {
@@ -449,7 +452,7 @@ namespace {
             return;
         }
         nlohmann::json message;
-        message["type"] = Zeri::Ui::kBridgeTypeStreamBatchEnd;
+        message["type"] = Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdStreamBatchEnd);
         message["reason"] = reason;
         sink->Send(message);
     }
@@ -463,7 +466,7 @@ namespace {
             return;
         }
         nlohmann::json message;
-        message["type"] = "context_changed";
+        message["type"] = Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdContextChanged);
         message["context"] = context;
         message["prompt"] = prompt;
         sink->Send(message);
@@ -536,6 +539,42 @@ namespace {
     ) {
         if (!Zeri::Engines::IsGlobalCommand(cmd.commandName)) {
             return false;
+        }
+
+        if (cmd.commandName == "help") {
+            const auto* current = runtimeState.GetCurrentContext();
+            const std::string currentName = ToLower(current != nullptr ? current->GetName() : "global");
+            const auto commands = Zeri::Core::HelpCatalog::Instance().CommandsForContext(currentName);
+
+            std::string output = "Help — $" + currentName + "\n\n";
+            output += "Commands:\n";
+            for (const auto& command : commands) {
+                output += "  ";
+                output += command.command;
+                output += " — ";
+                output += command.synopsis;
+                output += "\n";
+            }
+
+            output += "\nReachable contexts:\n";
+            const auto reachable = Zeri::Core::HelpCatalog::Instance().ReachableFrom(currentName);
+            for (const auto& contextName : reachable) {
+                const auto* context = Zeri::Core::HelpCatalog::Instance().FindContext(contextName);
+                if (context == nullptr) {
+                    continue;
+                }
+                output += "  $";
+                output += context->name;
+                output += " — ";
+                output += context->description;
+                if (ToLower(context->name) == currentName) {
+                    output += " [active]";
+                }
+                output += "\n";
+            }
+
+            terminal.WriteLine(output);
+            return true;
         }
 
         if (cmd.commandName == "context") {
@@ -1063,7 +1102,7 @@ namespace {
         std::string_view error = {}
     ) {
         nlohmann::json response;
-        response["type"] = "script_action_response";
+        response["type"] = Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdScriptActionResponse);
         response["action"] = std::string(action);
         response["ok"] = ok;
         if (!ok) {
@@ -1080,7 +1119,7 @@ namespace {
         const nlohmann::json* state = nullptr
     ) {
         nlohmann::json response;
-        response["type"] = "session_state_response";
+        response["type"] = Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdSessionStateResponse);
         response["action"] = std::string(action);
         response["ok"] = ok;
         if (!ok) {
@@ -1096,7 +1135,7 @@ namespace {
         const Zeri::Core::RuntimeState& runtimeState
     ) {
         nlohmann::json response;
-        response["type"] = "settings_snapshot_response";
+        response["type"] = Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdSettingsSnapshotResponse);
         response["ok"] = true;
         AttachSettingsSnapshot(response, BuildSettingsSnapshot(runtimeState));
         sink.Send(response);
@@ -1109,7 +1148,7 @@ namespace {
         const Zeri::Core::RuntimeState* runtimeState = nullptr
     ) {
         nlohmann::json response;
-        response["type"] = "settings_update_response";
+        response["type"] = Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdSettingsUpdateResponse);
         response["ok"] = ok;
         if (!ok) {
             response["error"] = std::string(error);
@@ -1124,7 +1163,7 @@ namespace {
         const std::vector<Zeri::Engines::ScriptEntry>& scripts
     ) {
         nlohmann::json response;
-        response["type"] = "script_list_response";
+        response["type"] = Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdScriptListResponse);
         response["scripts"] = nlohmann::json::array();
         for (const auto& script : scripts) {
             response["scripts"].push_back({
@@ -1163,14 +1202,14 @@ namespace {
         }
 
         const std::string type = request.value("type", "");
-        if (type == "list_scripts_with_content") {
+        if (type == Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdListScriptsWithContent)) {
             SendScriptListResponse(sink, Zeri::Engines::ListScriptsWithContent(runtimeState));
             return true;
         }
 
-        if (type == "shared_scope_snapshot") {
+        if (type == Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdSharedScopeSnapshot)) {
             nlohmann::json response;
-            response["type"] = "shared_scope_snapshot_response";
+            response["type"] = Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdSharedScopeSnapshotResponse);
             response["entries"] = nlohmann::json::object();
             for (const auto& [key, value] : runtimeState.ListShared()) {
                 const auto serialized = Zeri::Core::RuntimeState::SerializeAnyValue(value);
@@ -1183,12 +1222,12 @@ namespace {
             return true;
         }
 
-        if (type == "settings_snapshot") {
+        if (type == Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdSettingsSnapshot)) {
             SendSettingsSnapshotResponse(sink, runtimeState);
             return true;
         }
 
-        if (type == "settings_update") {
+        if (type == Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdSettingsUpdate)) {
             bool updated = false;
 
             if (request.contains("sandbox_ide")) {
@@ -1251,7 +1290,7 @@ namespace {
             return true;
         }
 
-        if (type == "session_save_state") {
+        if (type == Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdSessionSaveState)) {
             const auto sessionPath = Zeri::Core::ResolveSessionPath();
             const auto saveResult = runtimeState.SaveSession(sessionPath);
             if (!saveResult.has_value()) {
@@ -1267,7 +1306,7 @@ namespace {
             return true;
         }
 
-        if (type == "session_load_state") {
+        if (type == Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdSessionLoadState)) {
             if (!request.contains("state")) {
                 SendSessionStateResponse(sink, "session_load_state", false, "Missing required field state.");
                 return true;
@@ -1287,7 +1326,7 @@ namespace {
             return true;
         }
 
-        if (type == "save_script") {
+        if (type == Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdSaveScript)) {
             const std::string name = request.value("name", "");
             const std::string lang = request.value("lang", "");
             const std::string content = request.value("content", "");
@@ -1300,7 +1339,7 @@ namespace {
             return true;
         }
 
-        if (type == "delete_script") {
+        if (type == Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdDeleteScript)) {
             const std::string name = request.value("name", "");
             const std::string lang = request.value("lang", "");
             const bool hard = request.value("hard", false);
@@ -1323,7 +1362,7 @@ namespace {
             return true;
         }
 
-        if (type == "run_script") {
+        if (type == Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdRunScript)) {
             const std::string name = request.value("name", "");
             const std::string lang = request.value("lang", "");
             if (name.empty() || lang.empty()) {
@@ -1444,7 +1483,10 @@ int RunMain(int argc, char* argv[]) {
 
     auto pipeArg = ParsePipeArg(argc, argv);
     if (!pipeArg.has_value()) {
-        std::fprintf(stderr, "[ZERI][CLI-002] Missing required --yuumi-pipe <name> argument. Hint: launch through zeri (TUI) or provide --yuumi-pipe explicitly.\n");
+        const auto* cliError = Zeri::Core::CatalogRegistry::Instance().FindError("CLI-002");
+        const std::string message = cliError != nullptr ? cliError->message : "Missing required --yuumi-pipe <name> argument.";
+        const std::string hint = cliError != nullptr ? cliError->hint : "launch through zeri (TUI) or provide --yuumi-pipe explicitly";
+        std::fprintf(stderr, "[ZERI][CLI-002] %s Hint: %s.\n", message.c_str(), hint.c_str());
         std::fflush(stderr);
         return 1;
     }
@@ -1468,25 +1510,25 @@ int RunMain(int argc, char* argv[]) {
     bridge.on_message([bridgeTerminal](const nlohmann::json& msg, yuumi::Channel) {
         std::string type = msg.value("type", "");
 
-        if (type == "command") {
+        if (type == Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdCommand)) {
             std::string payload = msg.value("payload", "");
             bridgeTerminal->EnqueueCommand(payload);
-        } else if (type == "input_response") {
+        } else if (type == Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdInputResponse)) {
             std::string payload = msg.value("payload", "");
             bridgeTerminal->EnqueueInputResponse(payload);
         } else if (
-            type == "list_scripts_with_content" ||
-            type == "shared_scope_snapshot" ||
-            type == "settings_snapshot" ||
-            type == "settings_update" ||
-            type == "session_save_state" ||
-            type == "session_load_state" ||
-            type == "save_script" ||
-            type == "delete_script" ||
-            type == "run_script"
+            type == Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdListScriptsWithContent) ||
+            type == Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdSharedScopeSnapshot) ||
+            type == Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdSettingsSnapshot) ||
+            type == Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdSettingsUpdate) ||
+            type == Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdSessionSaveState) ||
+            type == Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdSessionLoadState) ||
+            type == Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdSaveScript) ||
+            type == Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdDeleteScript) ||
+            type == Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdRunScript)
         ) {
             bridgeTerminal->EnqueueCommand(std::string(kBridgeRequestPrefix) + msg.dump());
-        } else if (type == "cancel_execution") {
+        } else if (type == Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdCancelExecution)) {
             bridgeTerminal->EnqueueCommand("__cancel_execution__");
         }
     });
@@ -1503,7 +1545,7 @@ int RunMain(int argc, char* argv[]) {
     }
 
     nlohmann::json handshakeMsg;
-    handshakeMsg["type"] = Zeri::Ui::kBridgeTypeHandshake;
+    handshakeMsg["type"] = Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdHandshake);
     handshakeMsg["protocol_version"] = Zeri::Ui::ZERI_PROTOCOL_VERSION;
     sinkOwner->Send(handshakeMsg);
 
@@ -1526,7 +1568,7 @@ int RunMain(int argc, char* argv[]) {
     }
 
     nlohmann::json readyMsg;
-    readyMsg["type"] = "ready";
+    readyMsg["type"] = Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdReady);
     sinkOwner->Send(readyMsg);
 
     Zeri::Ui::ITerminal& terminal = *terminalOwner;
@@ -1547,16 +1589,6 @@ int RunMain(int argc, char* argv[]) {
             executionCancelAcknowledged.store(true, std::memory_order_release);
         }
     });
-
-    if (!Zeri::Core::HelpCatalog::Instance().IsLoaded()) {
-        const auto& error = Zeri::Core::HelpCatalog::Instance().LastError();
-        const std::string details = error.empty() ? "No additional diagnostics available." : error;
-        terminal.WriteError(
-            "[ZERI][CONTEXT-005] Help catalog is unavailable, /help output may be incomplete. "
-            "Hint: package help/help_catalog.json next to the executable. "
-            "Details: " + details
-        );
-    }
 
     runtimeState.GetCurrentContext()->OnEnter(terminal);
     if (const auto persistencePaths = TryCollectPersistencePaths(); persistencePaths.has_value()) {

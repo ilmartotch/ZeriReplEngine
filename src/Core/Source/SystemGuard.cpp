@@ -1,4 +1,5 @@
 #include "../Include/SystemGuard.h"
+#include "../Include/CatalogRegistry.h"
 #include "../../Ui/Include/ITerminal.h"
 #include <array>
 #include <cctype>
@@ -150,16 +151,19 @@ namespace Zeri::Core {
 
     std::string SystemGuard::GetInstallHint(std::string_view language) {
         const std::string key = ToLower(language);
-        if (key == "lua") {
+        const auto* resolved = Zeri::Core::CatalogRegistry::Instance().ResolveLanguage(key);
+        const std::string runtime = resolved != nullptr ? resolved->runtime : key;
+
+        if (runtime == "lua") {
             return "Install luajit and ensure it is available in PATH.";
         }
-        if (key == "python") {
+        if (runtime == "python") {
             return "Install python3 and ensure it is available in PATH.";
         }
-        if (key == "js" || key == "ts") {
+        if (runtime == "js/ts") {
             return "Install bun and ensure it is available in PATH.";
         }
-        if (key == "ruby") {
+        if (runtime == "ruby") {
             return "Install Ruby 3.3+ (YJIT) and ensure it is available in PATH.";
         }
         return "Install a compatible runtime and ensure it is available in PATH.";

@@ -53,15 +53,6 @@ namespace Zeri::Core {
             return roots;
         }
 
-        [[nodiscard]] bool HasHelpCatalog(const std::vector<std::filesystem::path>& roots) {
-            for (const auto& root : roots) {
-                if (ExistsNoThrow(root / "help" / "help_catalog.json")) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
         [[nodiscard]] bool HasRuntimeManifest(const std::vector<std::filesystem::path>& roots) {
             for (const auto& root : roots) {
                 if (ExistsNoThrow(root / "runtime" / "runtime_manifest.json")) {
@@ -94,14 +85,6 @@ namespace Zeri::Core {
         StartupDiagnosticsReport report;
         report.executableDir = ResolveExecutableDir();
         const auto searchRoots = ResolveSearchRoots(report.executableDir);
-
-        if (!HasHelpCatalog(searchRoots)) {
-            report.issues.push_back({
-                "HELP_CATALOG_MISSING",
-                "help/help_catalog.json not found next to executable.",
-                "Ensure release packaging includes the help directory."
-            });
-        }
 
         if (!HasRuntimeManifest(searchRoots)) {
             report.issues.push_back({

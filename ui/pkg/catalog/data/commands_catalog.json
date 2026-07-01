@@ -1,0 +1,120 @@
+{
+  "version": 1,
+  "contexts": [
+    {
+      "id": "global",
+      "description": "Root command context",
+      "reachable": ["global", "code", "customcommand", "ai", "math", "sandbox"]
+    },
+    {
+      "id": "code",
+      "description": "Scripting language dispatch hub",
+      "reachable": ["global", "code", "lua", "python", "js", "ts", "ruby"]
+    },
+    {
+      "id": "customcommand",
+      "description": "Custom user command scope",
+      "reachable": ["global", "customcommand"]
+    },
+    {
+      "id": "js",
+      "description": "JavaScript scripting editor and executor",
+      "reachable": ["global", "code", "lua", "python", "js", "ts", "ruby"]
+    },
+    {
+      "id": "ts",
+      "description": "TypeScript scripting editor and executor",
+      "reachable": ["global", "code", "lua", "python", "js", "ts", "ruby"]
+    },
+    {
+      "id": "lua",
+      "description": "Lua scripting editor and executor",
+      "reachable": ["global", "code", "lua", "python", "js", "ts", "ruby"]
+    },
+    {
+      "id": "python",
+      "description": "Python scripting editor and executor",
+      "reachable": ["global", "code", "lua", "python", "js", "ts", "ruby"]
+    },
+    {
+      "id": "ruby",
+      "description": "Ruby scripting editor and executor",
+      "reachable": ["global", "code", "lua", "python", "js", "ts", "ruby"]
+    },
+    {
+      "id": "ai",
+      "description": "AI-assisted code generation context",
+      "reachable": ["global", "ai"]
+    },
+    {
+      "id": "math",
+      "description": "Mathematical expression engine",
+      "reachable": ["global", "math"]
+    },
+    {
+      "id": "sandbox",
+      "description": "Module development environment",
+      "reachable": ["global", "sandbox"]
+    }
+  ],
+  "commands": [
+    { "id": "help", "command": "/help", "synopsis": "Show help for the active context", "scope": { "type": "global" }, "owners": ["engine", "tui"] },
+    { "id": "restart", "command": "restart", "synopsis": "Restart and reconnect the engine after a disconnection", "scope": { "type": "global" }, "owners": ["tui"] },
+    { "id": "runtime-status", "command": "/runtime-status", "synopsis": "Open Runtime Center with runtime diagnostics", "scope": { "type": "global" }, "owners": ["tui"] },
+    { "id": "settings", "command": "/settings", "synopsis": "Configuration hub for IDE, data location pointer, and AI settings", "scope": { "type": "global" }, "owners": ["tui"] },
+    { "id": "copy-last", "command": "/copy last", "synopsis": "Copy the latest non-user output message", "scope": { "type": "global" }, "owners": ["tui"] },
+    { "id": "copy-all", "command": "/copy all", "synopsis": "Copy the full visible message history", "scope": { "type": "global" }, "owners": ["tui"] },
+    { "id": "context", "command": "/context", "synopsis": "List reachable contexts", "scope": { "type": "global" }, "owners": ["engine", "tui"] },
+    { "id": "back", "command": "/back", "synopsis": "Return to previous context", "scope": { "type": "global" }, "owners": ["engine", "tui"] },
+    { "id": "save", "command": "/save", "synopsis": "Save session state to disk", "scope": { "type": "global" }, "owners": ["engine", "tui"] },
+    { "id": "load", "command": "/load", "synopsis": "Load a saved session from disk", "scope": { "type": "global" }, "owners": ["tui"] },
+    { "id": "status", "command": "/status", "synopsis": "Show engine diagnostics and persistence paths", "scope": { "type": "global" }, "owners": ["engine", "tui"] },
+    { "id": "reset", "command": "/reset", "synopsis": "Reset the current session", "scope": { "type": "global" }, "owners": ["engine", "tui"] },
+    { "id": "bug-report", "command": "/bug report", "synopsis": "Show bug-report instructions", "scope": { "type": "global" }, "owners": ["engine", "tui"] },
+    { "id": "bug-snapshot", "command": "/bug snapshot", "synopsis": "Create a diagnostic snapshot file for issue attachments", "scope": { "type": "global" }, "owners": ["engine", "tui"] },
+    { "id": "clear", "command": "/clear", "synopsis": "Clear chat history", "scope": { "type": "global" }, "owners": ["tui"] },
+    { "id": "exit", "command": "/exit", "synopsis": "Exit the REPL", "scope": { "type": "global" }, "owners": ["engine", "tui"] },
+    { "id": "set-variable", "command": "/set", "synopsis": "Store a typed variable in the current scope (--number|--string|--bool)", "scope": { "type": "context", "contexts": ["global"] }, "owners": ["engine", "tui"] },
+    { "id": "get-variable", "command": "/get", "synopsis": "Read a variable from the current scope", "scope": { "type": "context", "contexts": ["global"] }, "owners": ["engine", "tui"] },
+    { "id": "errors", "command": "/errors", "synopsis": "Show the error code catalog (filter with /errors <family>)", "scope": { "type": "global" }, "owners": ["tui"] },
+    { "id": "shared-list", "command": "/shared list", "synopsis": "List all cross-language shared keys and values", "scope": { "type": "global" }, "owners": ["engine", "tui"] },
+    { "id": "shared-clear", "command": "/shared clear", "synopsis": "Clear all cross-language shared keys", "scope": { "type": "global" }, "owners": ["engine", "tui"] },
+
+    { "id": "ai-setup", "command": "/setup", "synopsis": "Guided setup for the AI endpoint, model, and API key", "scope": { "type": "context", "contexts": ["ai"] }, "owners": ["tui"] },
+    { "id": "ai-set-endpoint", "command": "/set endpoint", "synopsis": "Set the AI endpoint URL (example: /set endpoint http://localhost:11434)", "scope": { "type": "context", "contexts": ["ai"] }, "owners": ["tui"] },
+    { "id": "ai-set-model", "command": "/set model", "synopsis": "Set the AI model name (example: /set model codellama:latest)", "scope": { "type": "context", "contexts": ["ai"] }, "owners": ["tui"] },
+    { "id": "ai-set-apikey", "command": "/set apikey", "synopsis": "Set the API key for remote endpoints (example: /set apikey sk-...)", "scope": { "type": "context", "contexts": ["ai"] }, "owners": ["tui"] },
+    { "id": "ai-set-system-prompt", "command": "/set system-prompt", "synopsis": "Override the system prompt for this session", "scope": { "type": "context", "contexts": ["ai"] }, "owners": ["tui"] },
+
+    { "id": "code-search", "command": "/search", "synopsis": "Search scripts across all supported languages", "scope": { "type": "context", "contexts": ["code", "js", "ts", "lua", "python", "ruby"] }, "owners": ["engine", "tui"] },
+
+    { "id": "math-eval", "command": "/eval", "synopsis": "Evaluate an expression", "scope": { "type": "context", "contexts": ["math"] }, "owners": ["engine", "tui"] },
+    { "id": "math-fn", "command": "/fn", "synopsis": "Define a function", "scope": { "type": "context", "contexts": ["math"] }, "owners": ["engine", "tui"] },
+    { "id": "math-vars", "command": "/vars", "synopsis": "List variables", "scope": { "type": "context", "contexts": ["math"] }, "owners": ["engine", "tui"] },
+    { "id": "math-fns", "command": "/fns", "synopsis": "List functions", "scope": { "type": "context", "contexts": ["math"] }, "owners": ["engine", "tui"] },
+    { "id": "math-promote", "command": "/promote", "synopsis": "Promote a variable scope", "scope": { "type": "context", "contexts": ["math"] }, "owners": ["engine", "tui"] },
+    { "id": "math-logic", "command": "/logic", "synopsis": "Run a boolean logic command (prefix or infix)", "scope": { "type": "context", "contexts": ["math"] }, "owners": ["engine", "tui"] },
+
+    { "id": "sandbox-open", "command": "/open", "synopsis": "Open a file in the configured IDE", "scope": { "type": "context", "contexts": ["sandbox"] }, "owners": ["engine", "tui"] },
+    { "id": "sandbox-watch", "command": "/watch", "synopsis": "Show current sandbox process status", "scope": { "type": "context", "contexts": ["sandbox"] }, "owners": ["engine", "tui"] },
+    { "id": "sandbox-list", "command": "/list", "synopsis": "List all available modules", "scope": { "type": "context", "contexts": ["sandbox"] }, "owners": ["engine", "tui"] },
+    { "id": "sandbox-build", "command": "/build", "synopsis": "Build a module using CMake", "scope": { "type": "context", "contexts": ["sandbox"] }, "owners": ["engine", "tui"] },
+    { "id": "sandbox-run", "command": "/run", "synopsis": "Run a compiled module", "scope": { "type": "context", "contexts": ["sandbox"] }, "owners": ["engine", "tui"] },
+
+    { "id": "custom-define", "command": "/define <name> \"<body>\" [--context <ctx>]", "synopsis": "Define an executable macro body (global by default, or context-bound)", "scope": { "type": "context", "contexts": ["customcommand"] }, "owners": ["engine", "tui"] },
+    { "id": "custom-list", "command": "/list", "synopsis": "List registered custom commands with scope", "scope": { "type": "context", "contexts": ["customcommand"] }, "owners": ["engine", "tui"] },
+    { "id": "custom-run", "command": "/run <name>", "synopsis": "Execute a custom command by name", "scope": { "type": "context", "contexts": ["customcommand"] }, "owners": ["engine", "tui"] },
+    { "id": "custom-show", "command": "/show <name>", "synopsis": "Show the resolved custom command body and scope", "scope": { "type": "context", "contexts": ["customcommand"] }, "owners": ["engine", "tui"] },
+    { "id": "custom-delete", "command": "/delete <name>", "synopsis": "Delete a custom command (interactive if scope is ambiguous)", "scope": { "type": "context", "contexts": ["customcommand"] }, "owners": ["engine", "tui"] },
+
+    { "id": "script-new", "command": "/new", "synopsis": "Create a script", "scope": { "type": "context", "contexts": ["js", "ts", "lua", "python", "ruby"] }, "owners": ["engine", "tui"] },
+    { "id": "script-edit", "command": "/edit", "synopsis": "Edit an existing script", "scope": { "type": "context", "contexts": ["js", "ts", "lua", "python", "ruby"] }, "owners": ["engine", "tui"] },
+    { "id": "script-show", "command": "/show", "synopsis": "Show a saved script", "scope": { "type": "context", "contexts": ["js", "ts", "lua", "python", "ruby"] }, "owners": ["engine", "tui"] },
+    { "id": "script-run", "command": "/run", "synopsis": "Run a script or last buffer", "scope": { "type": "context", "contexts": ["js", "ts", "lua", "python", "ruby"] }, "owners": ["engine", "tui"] },
+    { "id": "script-list", "command": "/list", "synopsis": "List saved scripts", "scope": { "type": "context", "contexts": ["js", "ts", "lua", "python", "ruby"] }, "owners": ["engine", "tui"] },
+    { "id": "script-delete", "command": "/delete", "synopsis": "Delete a saved script", "scope": { "type": "context", "contexts": ["js", "ts", "lua", "python", "ruby"] }, "owners": ["engine", "tui"] },
+    { "id": "script-history", "command": "/history", "synopsis": "Show script version history", "scope": { "type": "context", "contexts": ["js", "ts", "lua", "python", "ruby"] }, "owners": ["engine", "tui"] },
+    { "id": "script-diff", "command": "/diff", "synopsis": "Show unified diff between two versions", "scope": { "type": "context", "contexts": ["js", "ts", "lua", "python", "ruby"] }, "owners": ["engine", "tui"] },
+    { "id": "script-rollback", "command": "/rollback", "synopsis": "Restore an old version as new latest", "scope": { "type": "context", "contexts": ["js", "ts", "lua", "python", "ruby"] }, "owners": ["engine", "tui"] }
+  ]
+}

@@ -1,6 +1,7 @@
 #include "ZeriWireSidecarBridge.h"
 
 #include "../../../src/ZeriLink/Include/IProcessHost.h"
+#include "../../../src/Ui/Include/BridgeProtocol.h"
 
 #include <chrono>
 #include <condition_variable>
@@ -279,10 +280,10 @@ namespace Zeri::Bridge {
             return;
         }
 
-        if (type == "shared_get") {
+        if (type == Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdSharedGet)) {
             const std::string key = message.value("key", "");
             nlohmann::json response;
-            response["type"] = "shared_value";
+            response["type"] = Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdSharedValue);
             response["key"] = key;
             if (message.contains("request_id")) {
                 response["request_id"] = message["request_id"];
@@ -298,10 +299,10 @@ namespace Zeri::Bridge {
             return;
         }
 
-        if (type == "shared_set") {
+        if (type == Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdSharedSet)) {
             const std::string key = message.value("key", "");
             nlohmann::json response;
-            response["type"] = "shared_ack";
+            response["type"] = Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdSharedAck);
             response["key"] = key;
             if (message.contains("request_id")) {
                 response["request_id"] = message["request_id"];
@@ -320,9 +321,9 @@ namespace Zeri::Bridge {
             return;
         }
 
-        if (type == "shared_list") {
+        if (type == Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdSharedList)) {
             nlohmann::json response;
-            response["type"] = "shared_list_response";
+            response["type"] = Zeri::Ui::BridgeTypeValue(Zeri::Ui::kBridgeTypeIdSharedListResponse);
             if (message.contains("request_id")) {
                 response["request_id"] = message["request_id"];
             }

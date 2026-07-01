@@ -37,6 +37,26 @@ go test ./...
 go vet ./...
 ```
 
+## Catalog-driven metadata (commands/errors/languages/bridge types)
+
+Descriptive metadata is single-source and embedded at build time for both
+engine and TUI. Edit only these files:
+
+- `ui/pkg/catalog/data/commands_catalog.json`
+- `ui/pkg/catalog/data/errors_catalog.json`
+- `ui/pkg/catalog/data/languages_catalog.json`
+- `ui/pkg/catalog/data/bridge_types_catalog.json`
+
+Rules:
+
+1. Keep `version` as a positive integer.
+2. Command scopes must reference existing context IDs.
+3. Language `context` values must reference existing context IDs.
+4. Bridge type IDs must be unique and consumed by name via protocol helpers.
+
+Do not add parallel hardcoded registries in Go/C++ when a catalog entry can
+express the same metadata.
+
 ## Continuous integration
 
 CI (`.github/workflows/ci.yml`) runs on every push to `main`/`dev` and on pull

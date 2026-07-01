@@ -184,14 +184,7 @@ namespace {
         }
 
         const auto& catalog = Zeri::Core::HelpCatalog::Instance();
-        if (catalog.FindContext(normalized) != nullptr) {
-            return true;
-        }
-
-        static const std::set<std::string> kFallbackContexts = {
-            "global", "code", "customcommand", "ai", "math", "sandbox", "lua", "python", "ruby", "js", "ts"
-        };
-        return kFallbackContexts.contains(normalized);
+        return catalog.FindContext(normalized) != nullptr;
     }
 
     [[nodiscard]] std::expected<std::string, Zeri::Engines::ExecutionError> ValidateCommandName(

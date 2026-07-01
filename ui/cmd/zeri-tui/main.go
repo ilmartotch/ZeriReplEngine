@@ -12,6 +12,7 @@ import (
 	"time"
 	"yuumi/internal/bridge"
 	"yuumi/internal/ui"
+	"yuumi/pkg/catalog"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -26,7 +27,11 @@ func main() {
 	}
 	opts, err := parseAppOptions(os.Args[1:])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[ZERI][CLI-001] %v. Hint: run zeri --version or use supported options --no-onboarding --reset-onboarding --profile-startup --exit-after-ready.\n", err)
+		cliHint := "run zeri --version or use supported options --no-onboarding --reset-onboarding --profile-startup --exit-after-ready"
+		if entry, ok := catalog.ErrorByCode("CLI-001"); ok && strings.TrimSpace(entry.Hint) != "" {
+			cliHint = entry.Hint
+		}
+		fmt.Fprintf(os.Stderr, "[ZERI][CLI-001] %v. Hint: %s.\n", err, cliHint)
 		os.Exit(1)
 	}
 

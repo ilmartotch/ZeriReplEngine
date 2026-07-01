@@ -11,6 +11,7 @@ import (
 	"time"
 	persistence "yuumi/internal/persistence"
 	"yuumi/internal/ui"
+	"yuumi/pkg/catalog"
 )
 
 type ErrSessionExists struct {
@@ -121,37 +122,17 @@ func ensureZeriDirectories() error {
 }
 
 func scriptFolderName(language string) string {
-	switch strings.ToLower(strings.TrimSpace(language)) {
-	case "python", "py":
-		return "py"
-	case "javascript", "js":
-		return "js"
-	case "typescript", "ts":
-		return "ts"
-	case "ruby", "rb":
-		return "ruby"
-	case "lua":
-		return "lua"
-	default:
-		return strings.ToLower(strings.TrimSpace(language))
+	if resolved, ok := catalog.ResolveLanguage(language); ok {
+		return resolved.Folder
 	}
+	return strings.ToLower(strings.TrimSpace(language))
 }
 
 func languageExtension(language string) string {
-	switch scriptFolderName(language) {
-	case "lua":
-		return "lua"
-	case "py":
-		return "py"
-	case "js":
-		return "js"
-	case "ts":
-		return "ts"
-	case "ruby":
-		return "rb"
-	default:
-		return "txt"
+	if resolved, ok := catalog.ResolveLanguage(language); ok {
+		return resolved.Extension
 	}
+	return "txt"
 }
 
 func sanitizeStorageName(name string) (string, error) {

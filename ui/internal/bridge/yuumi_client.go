@@ -3,6 +3,7 @@ package bridge
 import (
 	"context"
 	"sync"
+	"yuumi/pkg/catalog"
 	"yuumi/pkg/yuumi"
 
 	tea "charm.land/bubbletea/v2"
@@ -61,7 +62,7 @@ func (r *RealYuumiClient) SendInputResponseCmd(value string) tea.Cmd {
 			return nil
 		}
 		payload := map[string]interface{}{
-			"type": "input_response",
+			"type": catalog.BridgeTypeValue(catalog.BridgeTypeInputResponseID),
 			"payload": value,
 		}
 		client.Send(payload, yuumi.ChannelCommand)
@@ -76,7 +77,7 @@ func (r *RealYuumiClient) SendDataCmd(s string) tea.Cmd {
 			return nil
 		}
 		payload := map[string]interface{}{
-			"type": "command",
+			"type": catalog.BridgeTypeValue(catalog.BridgeTypeCommandID),
 			"payload": s,
 		}
 		client.Send(payload, yuumi.ChannelCommand)
@@ -172,25 +173,25 @@ func (r *RealYuumiClient) RegisterMessageHandler() {
 
 		msgType, _ := data["type"].(string)
 		switch msgType {
-		case "ready":
+		case catalog.BridgeTypeValue(catalog.BridgeTypeReadyID):
 			program.Send(ConnectedMsg{})
-		case "output", "info", "success":
+		case catalog.BridgeTypeValue(catalog.BridgeTypeOutputID), catalog.BridgeTypeValue(catalog.BridgeTypeInfoID), catalog.BridgeTypeValue(catalog.BridgeTypeSuccessID):
 			payload, _ := data["payload"].(string)
 			if payload != "" {
 				program.Send(DataMsg{Content: payload})
 			}
-		case "error":
+		case catalog.BridgeTypeValue(catalog.BridgeTypeErrorID):
 			payload, _ := data["payload"].(string)
 			if payload != "" {
 				program.Send(ErrorMsg{Content: payload})
 			}
-		case "req_input":
+		case catalog.BridgeTypeValue(catalog.BridgeTypeReqInputID):
 			prompt, _ := data["prompt"].(string)
 			program.Send(InputRequestMsg{Prompt: prompt})
-		case "stream_batch_end":
+		case catalog.BridgeTypeValue(catalog.BridgeTypeStreamBatchEndID):
 			reason, _ := data["reason"].(string)
 			program.Send(StreamBatchEndMsg{Reason: reason})
-		case "sel_request":
+		case catalog.BridgeTypeValue(catalog.BridgeTypeSelRequestID):
 			title, _ := data["title"].(string)
 			options := make([]string, 0)
 			if optionsRaw, ok := data["options"].([]interface{}); ok {
@@ -203,14 +204,14 @@ func (r *RealYuumiClient) RegisterMessageHandler() {
 				}
 			}
 			program.Send(SelectionRequestMsg{Title: title, Options: options})
-		case "context_changed":
+		case catalog.BridgeTypeValue(catalog.BridgeTypeContextChangedID):
 			name, _ := data["context"].(string)
 			active, ok := data["active"].(bool)
 			if !ok {
 				active = true
 			}
 			program.Send(ContextChangedMsg{ContextName: name, Active: active})
-		case "code_mode":
+		case catalog.BridgeTypeValue(catalog.BridgeTypeCodeModeID):
 			name, _ := data["context"].(string)
 			if name == "" {
 				name = "sandbox"
@@ -220,7 +221,7 @@ func (r *RealYuumiClient) RegisterMessageHandler() {
 				active = false
 			}
 			program.Send(ContextChangedMsg{ContextName: name, Active: active})
-		case "script_list_response":
+		case catalog.BridgeTypeValue(catalog.BridgeTypeScriptListResponseID):
 			records := make([]ScriptRecord, 0)
 			if scriptsRaw, ok := data["scripts"].([]interface{}); ok {
 				for _, itemRaw := range scriptsRaw {
@@ -249,7 +250,7 @@ func (r *RealYuumiClient) RegisterMessageHandler() {
 				}
 			}
 			program.Send(ScriptListResponseMsg{Scripts: records})
-		case "script_action_response":
+		case catalog.BridgeTypeValue(catalog.BridgeTypeScriptActionResponseID):
 			action, _ := data["action"].(string)
 			ok, okType := data["ok"].(bool)
 			if !okType {
@@ -261,7 +262,7 @@ func (r *RealYuumiClient) RegisterMessageHandler() {
 				Ok: ok,
 				Error:  errText,
 			})
-		case "session_state_response":
+		case catalog.BridgeTypeValue(catalog.BridgeTypeSessionStateResponseID):
 			action, _ := data["action"].(string)
 			ok, okType := data["ok"].(bool)
 			if !okType {
@@ -280,7 +281,7 @@ func (r *RealYuumiClient) RegisterMessageHandler() {
 				Error: errText,
 				State: state,
 			})
-		case "settings_snapshot_response":
+		case catalog.BridgeTypeValue(catalog.BridgeTypeSettingsSnapshotResponseID):
 			ok, okType := data["ok"].(bool)
 			if !okType {
 				ok = false
@@ -291,7 +292,7 @@ func (r *RealYuumiClient) RegisterMessageHandler() {
 				Error: errText,
 				Snapshot: parseSettingsSnapshot(data["snapshot"]),
 			})
-		case "settings_update_response":
+		case catalog.BridgeTypeValue(catalog.BridgeTypeSettingsUpdateResponseID):
 			ok, okType := data["ok"].(bool)
 			if !okType {
 				ok = false
@@ -302,7 +303,7 @@ func (r *RealYuumiClient) RegisterMessageHandler() {
 				Error: errText,
 				Snapshot: parseSettingsSnapshot(data["snapshot"]),
 			})
-		case "shared_scope_snapshot_response":
+		case catalog.BridgeTypeValue(catalog.BridgeTypeSharedScopeSnapshotResponseID):
 			entries := map[string]interface{}{}
 			if raw, ok := data["entries"].(map[string]interface{}); ok {
 				for key, value := range raw {

@@ -45,6 +45,7 @@ int main(int argc, char* argv[]) {
     std::cout << "loaded=" << (loaded ? "true" : "false") << "\n";
     std::cout << "contexts=" << catalog.Contexts().size() << "\n";
     std::cout << "global_commands=" << catalog.CommandsForGroup("global").size() << "\n";
+    std::cout << "engine_global_help=" << (catalog.IsEngineGlobalCommand("help") ? "true" : "false") << "\n";
     std::cout << "last_error=" << error << "\n";
 
     if (expected.has_value() && expected.value() != loaded) {
@@ -59,6 +60,11 @@ int main(int argc, char* argv[]) {
                       << "' but got '" << error << "'\n";
             return EXIT_FAILURE;
         }
+    }
+
+    if (loaded && !catalog.IsEngineGlobalCommand("help")) {
+        std::cerr << "Expected /help to be resolved as engine-global from the embedded commands catalog.\n";
+        return EXIT_FAILURE;
     }
 
     return EXIT_SUCCESS;

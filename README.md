@@ -32,6 +32,12 @@ scoop bucket add zeri https://github.com/ilmartotch/scoop-zeri; scoop install ze
 - body steps use `;` and run in fail-fast order
 - commands are invokable by name with precedence `built-in > context-bound > global`
 
+## Catalog architecture
+
+Command metadata, error codes, language definitions, and IPC type names are
+single-source catalogs in `ui/pkg/catalog/data/*.json`, embedded into both
+engine and TUI at build time.
+
 ## Full documentation
 
 See `docs/user-guide/` for the complete user guide:

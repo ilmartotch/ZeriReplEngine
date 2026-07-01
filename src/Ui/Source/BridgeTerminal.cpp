@@ -18,29 +18,29 @@ namespace Zeri::Ui {
 
     void BridgeTerminal::EmitBatchEnd(const std::string& reason) {
         nlohmann::json message;
-        message["type"] = kBridgeTypeStreamBatchEnd;
+        message["type"] = BridgeTypeValue(kBridgeTypeIdStreamBatchEnd);
         message["reason"] = reason;
         m_sink.Send(message);
     }
 
     void BridgeTerminal::Write(const std::string& text) {
-        SendOutput("output", text);
+        SendOutput(std::string(BridgeTypeValue(kBridgeTypeIdOutput)), text);
     }
 
     void BridgeTerminal::WriteLine(const std::string& text) {
-        SendOutput("output", text);
+        SendOutput(std::string(BridgeTypeValue(kBridgeTypeIdOutput)), text);
     }
 
     void BridgeTerminal::WriteError(const std::string& text) {
-        SendOutput("error", text);
+        SendOutput(std::string(BridgeTypeValue(kBridgeTypeIdError)), text);
     }
 
     void BridgeTerminal::WriteSuccess(const std::string& text) {
-        SendOutput("success", text);
+        SendOutput(std::string(BridgeTypeValue(kBridgeTypeIdSuccess)), text);
     }
 
     void BridgeTerminal::WriteInfo(const std::string& text) {
-        SendOutput("info", text);
+        SendOutput(std::string(BridgeTypeValue(kBridgeTypeIdInfo)), text);
     }
 
     std::optional<std::string> BridgeTerminal::ReadLine(const std::string& prompt) {
@@ -49,7 +49,7 @@ namespace Zeri::Ui {
         if (depth > 0) {
             EmitBatchEnd(kBatchEndBeforeInputRequest);
             nlohmann::json reqMsg;
-            reqMsg["type"] = "req_input";
+            reqMsg["type"] = BridgeTypeValue(kBridgeTypeIdReqInput);
             reqMsg["prompt"] = prompt;
             m_sink.Send(reqMsg);
 
@@ -89,8 +89,9 @@ namespace Zeri::Ui {
     }
 
     std::optional<int> BridgeTerminal::SelectMenu(const std::string& title, const std::vector<std::string>& options) {
+        EmitBatchEnd(kBatchEndBeforeInputRequest);
         nlohmann::json req;
-        req["type"] = "sel_request";
+        req["type"] = BridgeTypeValue(kBridgeTypeIdSelRequest);
         req["title"] = title;
         req["options"] = options;
         m_sink.Send(req);

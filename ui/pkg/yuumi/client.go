@@ -10,36 +10,37 @@ import (
 	"os"
 	"sync"
 	"time"
+	"yuumi/pkg/catalog"
 )
 
 type MessageHandler func(data map[string]interface{}, ch Channel)
 
 type ConnectOptions struct {
-	MaxRetries  int
-	BaseDelay   time.Duration
-	MaxDelay    time.Duration
+	MaxRetries int
+	BaseDelay time.Duration
+	MaxDelay time.Duration
 	DialTimeout time.Duration
 }
 
 func DefaultConnectOptions() ConnectOptions {
 	return ConnectOptions{
-		MaxRetries:  12,
-		BaseDelay:   100 * time.Millisecond,
-		MaxDelay:    4 * time.Second,
+		MaxRetries: 12,
+		BaseDelay: 100 * time.Millisecond,
+		MaxDelay: 4 * time.Second,
 		DialTimeout: 2 * time.Second,
 	}
 }
 
 type Client struct {
-	conn         net.Conn
-	mu           sync.Mutex
-	handler      MessageHandler
+	conn net.Conn
+	mu sync.Mutex
+	handler MessageHandler
 	onDisconnect func(error)
-	running      bool
+	running bool
 }
 
 type AppProtocolVersionMismatchError struct {
-	EngineVersion   int
+	EngineVersion int
 	ExpectedVersion int
 }
 
@@ -118,7 +119,7 @@ func (c *Client) OnDisconnect(fn func(error)) {
 }
 
 func (c *Client) Shutdown() error {
-	_ = c.Send(map[string]interface{}{"type": "shutdown"}, ChannelControl)
+	_ = c.Send(map[string]interface{}{"type": catalog.BridgeTypeValue(catalog.BridgeTypeShutdownID)}, ChannelControl)
 	c.mu.Lock()
 	c.running = false
 	c.mu.Unlock()
@@ -203,7 +204,7 @@ func (c *Client) readAppHandshake() error {
 	}
 
 	msgType, _ := data["type"].(string)
-	if msgType != "handshake" {
+	if msgType != catalog.BridgeTypeValue(catalog.BridgeTypeHandshakeID) {
 		return NewError(ErrProtocolViolation, "App handshake: expected handshake frame as first message")
 	}
 

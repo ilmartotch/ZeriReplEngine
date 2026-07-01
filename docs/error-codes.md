@@ -6,7 +6,7 @@
 | CONTEXT-002 | Context switch is not allowed from `$from` to `$to`. | User requests a context that is not reachable from the current context. | Run `/context` to list reachable targets. |
 | CONTEXT-003 | Unknown context: `<name>`. | Requested context name is not implemented. | Run `/context` and use one listed target. |
 | CONTEXT-004 | No active context is available. | Command/expression dispatch occurs while no active context exists. | Run `/reset` to restore the global context. |
-| CONTEXT-005 | Help catalog is unavailable, `/help` output may be incomplete. | `help/help_catalog.json` missing/unreadable at runtime. | Package `help/help_catalog.json` next to the executable. |
+| CONTEXT-005 | Command catalog is unavailable, `/help` output may be incomplete. | Embedded command catalog failed to initialize. | Rebuild zeri; embedded catalogs must be valid at build time. |
 | CONTEXT-006 | Context warning forwarded as error output. | Warning message is emitted on error channel without explicit ZERI code. | Run `/help` in the current context and retry the command. |
 | CONTEXT-007 | Typed execution error forwarded as standardized error output. | `ExecutionError` result reaches output handler without a ZERI-prefixed code. | Review the error code and retry with documented syntax. |
 | CONTEXT-008 | Script editor executor is unavailable. | `/run` is invoked inside editor without executor instance. | Re-enter language context and retry `/run`. |
@@ -17,7 +17,7 @@
 | SESSION-004 | Failed to save session on shutdown: `<error>`. | Automatic save during engine shutdown fails. | Ensure sessions path is writable (`/status`). |
 | SESSION-010 | Storage initialization failed: `<error>`. | Go TUI fails to create/resolve local storage directories at startup. | Verify write permissions for user data directories. |
 | SESSION-011 | Unable to resolve executable path: `<error>`. | Go TUI cannot resolve its own executable path. | Reinstall zeri or launch it from a valid installation directory. |
-| CLI-001 | Unknown option: `<option>`. | Unsupported CLI option passed to `zeri`. | Use supported options: `--no-onboarding`, `--profile-startup`, `--exit-after-ready`. |
+| CLI-001 | Unknown option: `<option>`. | Unsupported CLI option passed to `zeri`. | Use supported options: `--no-onboarding`, `--reset-onboarding`, `--profile-startup`, `--exit-after-ready`. |
 | CLI-002 | Missing required `--yuumi-pipe <name>` argument. | `zeri-engine` is started directly without IPC pipe argument. | Launch through `zeri` (TUI) or pass `--yuumi-pipe <name>` explicitly. |
 | PARSE-001 | Empty system command. | `!` is used without an actual shell command. | Use `!<command>` (example: `!echo hello`). |
 | PARSE-002 | `<parse message>`. | Meta parser rejects malformed input (for example unclosed quote). | Fix syntax and retry. |

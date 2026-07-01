@@ -1,34 +1,13 @@
 #pragma once
 
-#include <array>
-#include <algorithm>
+#include "../../Core/Include/HelpCatalog.h"
+
 #include <string_view>
 
 namespace Zeri::Engines {
 
-    inline constexpr std::array kGlobalCommands = {
-        std::string_view{ "exit" },
-        std::string_view{ "back" },
-        std::string_view{ "save" },
-        std::string_view{ "context" },
-        std::string_view{ "status" },
-        std::string_view{ "reset" },
-        std::string_view{ "bug" },
-        std::string_view{ "shared" }
-    };
-
     [[nodiscard]] inline bool IsGlobalCommand(std::string_view name) {
-        return std::ranges::find(kGlobalCommands, name) != kGlobalCommands.end();
+        return Zeri::Core::HelpCatalog::Instance().IsEngineGlobalCommand(name);
     }
 
 }
-
-/*
-GlobalCommandRegistry.h — Shared source of truth for global command names.
-
-Responsabilità:
-  - Defines kGlobalCommands as a constexpr list used across engine layers.
-  - Exposes IsGlobalCommand(std::string_view) for unified command classification.
-
-Dependencies: standard library only.
-*/

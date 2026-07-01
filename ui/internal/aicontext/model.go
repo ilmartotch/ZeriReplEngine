@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"yuumi/pkg/catalog"
 
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
@@ -404,34 +405,13 @@ func DetectCodeBlocks(content string) []CodeBlock {
 }
 
 func NormalizeCodeLang(lang string, fallback string) string {
-	normalized := strings.ToLower(strings.TrimSpace(lang))
-	switch normalized {
-	case "python", "py":
-		return "python"
-	case "lua":
-		return "lua"
-	case "javascript", "js":
-		return "js"
-	case "typescript", "ts":
-		return "ts"
-	case "ruby", "rb":
-		return "ruby"
+	if resolved, ok := catalog.ResolveLanguage(lang); ok {
+		return resolved.ID
 	}
-	fallbackNormalized := strings.ToLower(strings.TrimSpace(fallback))
-	switch fallbackNormalized {
-	case "python", "py":
-		return "python"
-	case "lua":
-		return "lua"
-	case "javascript", "js":
-		return "js"
-	case "typescript", "ts":
-		return "ts"
-	case "ruby", "rb":
-		return "ruby"
-	default:
-		return "python"
+	if resolved, ok := catalog.ResolveLanguage(fallback); ok {
+		return resolved.ID
 	}
+	return "python"
 }
 
 func BuildSystemPrompt(activeLang string, shared map[string]interface{}, override string) string {

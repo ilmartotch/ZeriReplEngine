@@ -1,0 +1,23 @@
+#pragma once
+
+#include <string_view>
+
+namespace Zeri::Core {
+
+inline constexpr std::string_view kEmbeddedCommandsCatalogJson = R"ZERI_CATALOG(
+@ZERI_COMMANDS_CATALOG_JSON@
+)ZERI_CATALOG";
+
+inline constexpr std::string_view kEmbeddedErrorsCatalogJson = R"ZERI_CATALOG(
+@ZERI_ERRORS_CATALOG_JSON@
+)ZERI_CATALOG";
+
+inline constexpr std::string_view kEmbeddedLanguagesCatalogJson = R"ZERI_CATALOG(
+@ZERI_LANGUAGES_CATALOG_JSON@
+)ZERI_CATALOG";
+
+inline constexpr std::string_view kEmbeddedBridgeTypesCatalogJson = R"ZERI_CATALOG(
+@ZERI_BRIDGE_TYPES_CATALOG_JSON@
+)ZERI_CATALOG";
+
+}

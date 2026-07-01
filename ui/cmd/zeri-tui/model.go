@@ -17,6 +17,7 @@ import (
 	"yuumi/internal/scripthub"
 	"yuumi/internal/system"
 	"yuumi/internal/ui"
+	"yuumi/pkg/catalog"
 	"yuumi/pkg/yuumi"
 
 	"charm.land/bubbles/v2/spinner"
@@ -1011,6 +1012,12 @@ func (m AppModel) updateScriptHub(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m AppModel) updateOnboarding(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch typed := msg.(type) {
+	case statusTickMsg:
+		m.memoryMB = system.GetProcessMemoryMB()
+		if m.startupInProgress {
+			m.startupSpinnerIndex = (m.startupSpinnerIndex + 1) % 4
+		}
+		return m, tickStatusCmd()
 	case tea.WindowSizeMsg:
 		m.width = typed.Width
 		m.height = typed.Height
@@ -1466,7 +1473,7 @@ func (m AppModel) handleDeleteConfirm() (tea.Model, tea.Cmd) {
 	}
 
 	deleteCmd := m.bridge.SendCommandPayloadCmd(map[string]interface{}{
-		"type": "delete_script",
+		"type": catalog.BridgeTypeValue(catalog.BridgeTypeDeleteScriptID),
 		"name": name,
 		"lang": language,
 	})
@@ -1904,7 +1911,7 @@ func (m AppModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if m.executionInFlight {
 			m.executionSpinnerDelayPending = false
 			m.executionSpinnerVisible = true
-			return m, m.bridge.SendCommandPayloadCmd(map[string]interface{}{"type": "cancel_execution"})
+			return m, m.bridge.SendCommandPayloadCmd(map[string]interface{}{"type": catalog.BridgeTypeValue(catalog.BridgeTypeCancelExecutionID)})
 		}
 		return m, tea.Quit
 	}
@@ -2222,7 +2229,7 @@ func (m AppModel) handleSubmit() (tea.Model, tea.Cmd) {
 			m.pendingAiPrompt = trimmed
 			m.pendingAiPromptSystem = systemPrompt
 			m.executionSubmitted()
-			return m, tea.Batch(m.bridge.SendCommandPayloadCmd(map[string]interface{}{"type": "shared_scope_snapshot"}), executionSpinnerDelayCmd())
+			return m, tea.Batch(m.bridge.SendCommandPayloadCmd(map[string]interface{}{"type": catalog.BridgeTypeValue(catalog.BridgeTypeSharedScopeSnapshotID)}), executionSpinnerDelayCmd())
 		}
 		return m, m.aiContext.BeginRequest(trimmed, systemPrompt)
 	}
@@ -2267,7 +2274,7 @@ func (m AppModel) handleScriptSaveMenuConfirm() (tea.Model, tea.Cmd) {
 	}
 
 	saveCmd := m.bridge.SendCommandPayloadCmd(map[string]interface{}{
-		"type": "save_script",
+		"type": catalog.BridgeTypeValue(catalog.BridgeTypeSaveScriptID),
 		"name": name,
 		"lang": language,
 		"content": content,
@@ -2282,7 +2289,7 @@ func (m AppModel) handleScriptSaveMenuConfirm() (tea.Model, tea.Cmd) {
 
 	if selection == SaveAndExecute {
 		runCmd := m.bridge.SendCommandPayloadCmd(map[string]interface{}{
-			"type": "run_script",
+			"type": catalog.BridgeTypeValue(catalog.BridgeTypeRunScriptID),
 			"name": name,
 			"lang": language,
 		})
@@ -2388,7 +2395,7 @@ func (m AppModel) requestSessionStateSave(name string, overwrite bool) (tea.Mode
 	}
 	m.executionSubmitted()
 	return m, tea.Batch(
-		m.bridge.SendCommandPayloadCmd(map[string]interface{}{"type": "session_save_state"}),
+		m.bridge.SendCommandPayloadCmd(map[string]interface{}{"type": catalog.BridgeTypeValue(catalog.BridgeTypeSessionSaveStateID)}),
 		executionSpinnerDelayCmd(),
 	)
 }
@@ -2406,7 +2413,7 @@ func (m AppModel) requestSessionStateLoad(snapshot SessionSnapshot) (tea.Model, 
 	m.executionSubmitted()
 	return m, tea.Batch(
 		m.bridge.SendCommandPayloadCmd(map[string]interface{}{
-			"type": "session_load_state",
+			"type":  catalog.BridgeTypeValue(catalog.BridgeTypeSessionLoadStateID),
 			"state": snapshot.EngineState,
 		}),
 		executionSpinnerDelayCmd(),
@@ -2995,12 +3002,10 @@ func normaliseContextName(name string) string {
 }
 
 func contextParent(name string) (string, bool) {
-	switch normaliseContextName(name) {
-	case "js", "ts", "lua", "python", "ruby":
+	if catalog.IsLanguageContext(normaliseContextName(name)) {
 		return "code", true
-	default:
-		return "", false
 	}
+	return "", false
 }
 
 func contextPathPrefix(path string, context string) string {
@@ -3150,12 +3155,7 @@ func (m AppModel) isCodeContextActive() bool {
 		return false
 	}
 
-	switch strings.ToLower(language) {
-	case "js", "ts", "python", "lua", "ruby":
-		return true
-	default:
-		return false
-	}
+	return catalog.IsLanguageContext(strings.ToLower(language))
 }
 
 func parseScriptNameArgument(input string, command string) (string, bool) {
@@ -3190,7 +3190,7 @@ func isScriptNotFoundError(content string) bool {
 func availableScriptHubRuntimes() []string {
 	manifest, err := loadRuntimeManifest()
 	if err != nil {
-		return []string{"js", "ts", "py", "lua", "ruby"}
+		return catalog.LanguageFolders()
 	}
 
 	available := map[string]bool{}
@@ -3198,17 +3198,8 @@ func availableScriptHubRuntimes() []string {
 		if result.Status != RuntimeStatusOK {
 			continue
 		}
-		name := strings.ToLower(strings.TrimSpace(result.Runtime.Name))
-		switch name {
-		case "bun":
-			available["js"] = true
-			available["ts"] = true
-		case "python":
-			available["py"] = true
-		case "luajit":
-			available["lua"] = true
-		case "ruby":
-			available["ruby"] = true
+		for _, folder := range catalog.RuntimeLanguageFolders(result.Runtime.Name) {
+			available[folder] = true
 		}
 	}
 
@@ -3885,7 +3876,7 @@ func (m *AppModel) handleAiSetCommand(cmd string) (tea.Model, tea.Cmd) {
 			return *m, nil
 		}
 		return *m, m.requestSettingsUpdate(SettingsUpdateFieldAiEndpoint, SettingsUpdateOriginAiContext, map[string]interface{}{
-			"type":        "settings_update",
+			"type": catalog.BridgeTypeValue(catalog.BridgeTypeSettingsUpdateID),
 			"ai_endpoint": value,
 		})
 	case strings.HasPrefix(lower, "/set model "):
@@ -3895,7 +3886,7 @@ func (m *AppModel) handleAiSetCommand(cmd string) (tea.Model, tea.Cmd) {
 			return *m, nil
 		}
 		return *m, m.requestSettingsUpdate(SettingsUpdateFieldAiModel, SettingsUpdateOriginAiContext, map[string]interface{}{
-			"type":     "settings_update",
+			"type": catalog.BridgeTypeValue(catalog.BridgeTypeSettingsUpdateID),
 			"ai_model": value,
 		})
 	case strings.HasPrefix(lower, "/set apikey ") || strings.HasPrefix(lower, "/set api-key "):
@@ -3912,7 +3903,7 @@ func (m *AppModel) handleAiSetCommand(cmd string) (tea.Model, tea.Cmd) {
 			value = ""
 		}
 		return *m, m.requestSettingsUpdate(SettingsUpdateFieldAiKey, SettingsUpdateOriginAiContext, map[string]interface{}{
-			"type":   "settings_update",
+			"type": catalog.BridgeTypeValue(catalog.BridgeTypeSettingsUpdateID),
 			"ai_key": value,
 		})
 	case strings.HasPrefix(lower, "/set system-prompt "):
@@ -3946,13 +3937,13 @@ func (m *AppModel) runAiCodeBlock() tea.Cmd {
 	name := m.aiScriptName()
 	m.aiContext.ClearActions()
 	saveCmd := m.bridge.SendCommandPayloadCmd(map[string]interface{}{
-		"type": "save_script",
+		"type": catalog.BridgeTypeValue(catalog.BridgeTypeSaveScriptID),
 		"name": name,
 		"lang": lang,
 		"content": block.Content,
 	})
 	runCmd := m.bridge.SendCommandPayloadCmd(map[string]interface{}{
-		"type": "run_script",
+		"type": catalog.BridgeTypeValue(catalog.BridgeTypeRunScriptID),
 		"name": name,
 		"lang": lang,
 	})
@@ -3988,7 +3979,7 @@ func (m *AppModel) saveAiCodeBlock() tea.Cmd {
 	m.aiContext.ClearActions()
 	m.addSystemMessage("Saving AI-generated script as " + name + ".")
 	return m.bridge.SendCommandPayloadCmd(map[string]interface{}{
-		"type": "save_script",
+		"type": catalog.BridgeTypeValue(catalog.BridgeTypeSaveScriptID),
 		"name": name,
 		"lang": lang,
 		"content": block.Content,

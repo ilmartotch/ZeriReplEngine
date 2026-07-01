@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "languages": [
+    {
+      "id": "js",
+      "aliases": ["javascript"],
+      "extension": "js",
+      "folder": "js",
+      "runtime": "bun",
+      "context": "js"
+    },
+    {
+      "id": "ts",
+      "aliases": ["typescript"],
+      "extension": "ts",
+      "folder": "ts",
+      "runtime": "bun",
+      "context": "ts"
+    },
+    {
+      "id": "lua",
+      "aliases": [],
+      "extension": "lua",
+      "folder": "lua",
+      "runtime": "luajit",
+      "context": "lua"
+    },
+    {
+      "id": "python",
+      "aliases": ["py"],
+      "extension": "py",
+      "folder": "py",
+      "runtime": "python",
+      "context": "python"
+    },
+    {
+      "id": "ruby",
+      "aliases": ["rb"],
+      "extension": "rb",
+      "folder": "ruby",
+      "runtime": "ruby",
+      "context": "ruby"
+    }
+  ]
+}

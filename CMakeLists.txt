@@ -25,6 +25,50 @@ configure_file(
     @ONLY
 )
 
+set(ZERI_COMMANDS_CATALOG_PATH "${CMAKE_SOURCE_DIR}/ui/pkg/catalog/data/commands_catalog.json")
+set(ZERI_ERRORS_CATALOG_PATH "${CMAKE_SOURCE_DIR}/ui/pkg/catalog/data/errors_catalog.json")
+set(ZERI_LANGUAGES_CATALOG_PATH "${CMAKE_SOURCE_DIR}/ui/pkg/catalog/data/languages_catalog.json")
+set(ZERI_BRIDGE_TYPES_CATALOG_PATH "${CMAKE_SOURCE_DIR}/ui/pkg/catalog/data/bridge_types_catalog.json")
+
+foreach(_catalog_path IN ITEMS
+    "${ZERI_COMMANDS_CATALOG_PATH}"
+    "${ZERI_ERRORS_CATALOG_PATH}"
+    "${ZERI_LANGUAGES_CATALOG_PATH}"
+    "${ZERI_BRIDGE_TYPES_CATALOG_PATH}"
+)
+    if(NOT EXISTS "${_catalog_path}")
+        message(FATAL_ERROR "Missing required catalog file: ${_catalog_path}")
+    endif()
+endforeach()
+
+file(READ "${ZERI_COMMANDS_CATALOG_PATH}" ZERI_COMMANDS_CATALOG_JSON)
+file(READ "${ZERI_ERRORS_CATALOG_PATH}" ZERI_ERRORS_CATALOG_JSON)
+file(READ "${ZERI_LANGUAGES_CATALOG_PATH}" ZERI_LANGUAGES_CATALOG_JSON)
+file(READ "${ZERI_BRIDGE_TYPES_CATALOG_PATH}" ZERI_BRIDGE_TYPES_CATALOG_JSON)
+
+string(JSON _commands_version ERROR_VARIABLE _commands_json_err GET "${ZERI_COMMANDS_CATALOG_JSON}" version)
+if(_commands_json_err)
+    message(FATAL_ERROR "Invalid commands catalog JSON: ${_commands_json_err}")
+endif()
+string(JSON _errors_version ERROR_VARIABLE _errors_json_err GET "${ZERI_ERRORS_CATALOG_JSON}" version)
+if(_errors_json_err)
+    message(FATAL_ERROR "Invalid errors catalog JSON: ${_errors_json_err}")
+endif()
+string(JSON _languages_version ERROR_VARIABLE _languages_json_err GET "${ZERI_LANGUAGES_CATALOG_JSON}" version)
+if(_languages_json_err)
+    message(FATAL_ERROR "Invalid languages catalog JSON: ${_languages_json_err}")
+endif()
+string(JSON _bridge_types_version ERROR_VARIABLE _bridge_types_json_err GET "${ZERI_BRIDGE_TYPES_CATALOG_JSON}" version)
+if(_bridge_types_json_err)
+    message(FATAL_ERROR "Invalid bridge types catalog JSON: ${_bridge_types_json_err}")
+endif()
+
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/embedded_catalog_assets.h.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/embedded_catalog_assets.h"
+    @ONLY
+)
+
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -65,6 +109,7 @@ endif()
 set(CORE_SOURCES
     src/Core/Source/BugSnapshot.cpp
     src/Core/Source/AppPaths.cpp
+    src/Core/Source/CatalogRegistry.cpp
     src/Core/Source/ContextManager.cpp
     src/Core/Source/HelpCatalog.cpp
     src/Core/Source/RuntimeState.cpp
@@ -120,6 +165,7 @@ else()
 endif()
 
 set(UI_SOURCES
+    src/Ui/Source/BridgeProtocol.cpp
     src/Ui/Source/BridgeTerminal.cpp
     src/Ui/Source/OutputSink.cpp
 )
@@ -211,12 +257,10 @@ install(DIRECTORY "${CMAKE_SOURCE_DIR}/help"
 )
 
 if(BUILD_TESTING)
-    file(WRITE "${CMAKE_BINARY_DIR}/_invalid_help_catalog.json" "{ invalid json }\n")
-    file(WRITE "${CMAKE_BINARY_DIR}/_invalid_schema_help_catalog.json" "{ \"contexts\": [] }\n")
-
     add_executable(zeri_help_catalog_smoke
         src/Tests/HelpCatalogSmoke.cpp
         src/Core/Source/AppPaths.cpp
+        src/Core/Source/CatalogRegistry.cpp
         src/Core/Source/HelpCatalog.cpp
     )
 
@@ -239,46 +283,10 @@ if(BUILD_TESTING)
     endif()
 
     add_test(
-        NAME helpcatalog-missing-safe
-        COMMAND zeri_help_catalog_smoke --expect-loaded=false --expect-error-contains=not found
-    )
-    set_tests_properties(helpcatalog-missing-safe PROPERTIES
-        ENVIRONMENT "ZERI_HELP_CATALOG_PATH=${CMAKE_BINARY_DIR}/_missing_help_catalog.json"
-        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
-    )
-
-    add_test(
-        NAME helpcatalog-loaded-explicit
+        NAME helpcatalog-loaded-embedded
         COMMAND zeri_help_catalog_smoke --expect-loaded=true
     )
-    set_tests_properties(helpcatalog-loaded-explicit PROPERTIES
-        ENVIRONMENT "ZERI_HELP_CATALOG_PATH=${CMAKE_SOURCE_DIR}/help/help_catalog.json"
-        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
-    )
-
-    add_test(
-        NAME helpcatalog-invalid-json-explicit
-        COMMAND zeri_help_catalog_smoke --expect-loaded=false --expect-error-contains=parse
-    )
-    set_tests_properties(helpcatalog-invalid-json-explicit PROPERTIES
-        ENVIRONMENT "ZERI_HELP_CATALOG_PATH=${CMAKE_BINARY_DIR}/_invalid_help_catalog.json"
-        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
-    )
-
-    add_test(
-        NAME helpcatalog-invalid-schema-explicit
-        COMMAND zeri_help_catalog_smoke --expect-loaded=false --expect-error-contains=schema
-    )
-    set_tests_properties(helpcatalog-invalid-schema-explicit PROPERTIES
-        ENVIRONMENT "ZERI_HELP_CATALOG_PATH=${CMAKE_BINARY_DIR}/_invalid_schema_help_catalog.json"
-        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
-    )
-
-    add_test(
-        NAME helpcatalog-random-cwd-no-crash
-        COMMAND zeri_help_catalog_smoke
-    )
-    set_tests_properties(helpcatalog-random-cwd-no-crash PROPERTIES
+    set_tests_properties(helpcatalog-loaded-embedded PROPERTIES
         WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
     )
 
