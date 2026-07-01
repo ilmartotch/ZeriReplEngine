@@ -76,7 +76,6 @@ namespace Zeri::Core {
         CatalogRegistry();
         void Load();
 
-        [[nodiscard]] static std::string ToLower(std::string_view value);
         [[nodiscard]] static std::string ToUpper(std::string_view value);
         [[nodiscard]] static std::string ExtractBaseCommand(std::string_view command);
         [[nodiscard]] static bool HasOwner(const CatalogCommandRecord& command, std::string_view owner);

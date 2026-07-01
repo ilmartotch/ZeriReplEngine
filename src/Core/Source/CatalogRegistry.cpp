@@ -1,4 +1,5 @@
 #include "../Include/CatalogRegistry.h"
+#include "../Include/StringUtils.h"
 
 #include <nlohmann/json.hpp>
 
@@ -48,17 +49,6 @@ namespace Zeri::Core {
             return result;
         }
 
-        [[nodiscard]] std::string Trim(std::string_view value) {
-            std::size_t begin = 0;
-            std::size_t end = value.size();
-            while (begin < end && std::isspace(static_cast<unsigned char>(value[begin])) != 0) {
-                ++begin;
-            }
-            while (end > begin && std::isspace(static_cast<unsigned char>(value[end - 1])) != 0) {
-                --end;
-            }
-            return std::string(value.substr(begin, end - begin));
-        }
     }
 
     CatalogRegistry& CatalogRegistry::Instance() {
@@ -99,7 +89,7 @@ namespace Zeri::Core {
     }
 
     const CatalogContextRecord* CatalogRegistry::FindContext(std::string_view id) const {
-        const auto it = m_contextIndexById.find(ToLower(id));
+        const auto it = m_contextIndexById.find(Utils::ToLower(id));
         if (it == m_contextIndexById.end()) {
             return nullptr;
         }
@@ -115,7 +105,7 @@ namespace Zeri::Core {
     }
 
     const CatalogLanguageRecord* CatalogRegistry::ResolveLanguage(std::string_view idOrAlias) const {
-        const auto it = m_languageIndexByAlias.find(ToLower(idOrAlias));
+        const auto it = m_languageIndexByAlias.find(Utils::ToLower(idOrAlias));
         if (it == m_languageIndexByAlias.end()) {
             return nullptr;
         }
@@ -131,7 +121,7 @@ namespace Zeri::Core {
     }
 
     bool CatalogRegistry::IsEngineGlobalCommandBase(std::string_view baseCommand) const {
-        const std::string normalized = ToLower(baseCommand);
+        const std::string normalized = Utils::ToLower(baseCommand);
         for (const auto& command : m_commands) {
             if (command.baseCommand != normalized) {
                 continue;
@@ -150,8 +140,8 @@ namespace Zeri::Core {
         std::string_view baseCommand,
         std::string_view owner
     ) const {
-        const std::string normalizedBase = ToLower(baseCommand);
-        const std::string normalizedOwner = ToLower(owner);
+        const std::string normalizedBase = Utils::ToLower(baseCommand);
+        const std::string normalizedOwner = Utils::ToLower(owner);
         std::set<std::string> contexts;
         bool hasGlobal = false;
 
@@ -207,8 +197,8 @@ namespace Zeri::Core {
 
             for (const auto& contextNode : commandsJson.at("contexts")) {
                 CatalogContextRecord context;
-                context.id = ToLower(Trim(contextNode.at("id").get<std::string>()));
-                context.description = Trim(contextNode.at("description").get<std::string>());
+                context.id = Utils::ToLower(Utils::Trim(contextNode.at("id").get<std::string>()));
+                context.description = Utils::Trim(contextNode.at("description").get<std::string>());
                 context.reachable = JsonStringArray(contextNode.value("reachable", nlohmann::json::array()));
                 if (context.id.empty()) {
                     throw std::runtime_error("commands catalog has an empty context id.");
@@ -220,7 +210,7 @@ namespace Zeri::Core {
                     context.reachable.push_back(context.id);
                 }
                 for (auto& target : context.reachable) {
-                    target = ToLower(Trim(target));
+                    target = Utils::ToLower(Utils::Trim(target));
                 }
                 if (m_contextIndexById.contains(context.id)) {
                     throw std::runtime_error("commands catalog has duplicated context id '" + context.id + "'.");
@@ -243,16 +233,16 @@ namespace Zeri::Core {
 
             for (const auto& commandNode : commandsJson.at("commands")) {
                 CatalogCommandRecord command;
-                command.id = Trim(commandNode.at("id").get<std::string>());
-                command.command = Trim(commandNode.at("command").get<std::string>());
-                command.synopsis = Trim(commandNode.at("synopsis").get<std::string>());
+                command.id = Utils::Trim(commandNode.at("id").get<std::string>());
+                command.command = Utils::Trim(commandNode.at("command").get<std::string>());
+                command.synopsis = Utils::Trim(commandNode.at("synopsis").get<std::string>());
                 command.baseCommand = ExtractBaseCommand(command.command);
                 if (command.id.empty() || command.command.empty() || command.synopsis.empty() || command.baseCommand.empty()) {
                     throw std::runtime_error("commands catalog entries require id, command, synopsis and valid base command.");
                 }
 
                 const auto scopeNode = commandNode.at("scope");
-                const std::string scopeType = ToLower(Trim(scopeNode.at("type").get<std::string>()));
+                const std::string scopeType = Utils::ToLower(Utils::Trim(scopeNode.at("type").get<std::string>()));
                 if (scopeType == "global") {
                     command.scope.global = true;
                 } else if (scopeType == "context") {
@@ -263,7 +253,7 @@ namespace Zeri::Core {
                     }
                     std::set<std::string> deduped;
                     for (auto& contextId : command.scope.contexts) {
-                        contextId = ToLower(Trim(contextId));
+                        contextId = Utils::ToLower(Utils::Trim(contextId));
                         if (!m_contextIndexById.contains(contextId)) {
                             throw std::runtime_error(
                                 "commands catalog command '" + command.id + "' references unknown context '" + contextId + "'."
@@ -281,7 +271,7 @@ namespace Zeri::Core {
                     command.owners = { "engine", "tui" };
                 }
                 for (auto& owner : command.owners) {
-                    owner = ToLower(Trim(owner));
+                    owner = Utils::ToLower(Utils::Trim(owner));
                 }
 
                 m_commands.push_back(std::move(command));
@@ -289,10 +279,10 @@ namespace Zeri::Core {
 
             for (const auto& entryNode : errorsJson.at("entries")) {
                 CatalogErrorRecord entry;
-                entry.code = ToUpper(Trim(entryNode.at("code").get<std::string>()));
-                entry.message = Trim(entryNode.at("message").get<std::string>());
-                entry.trigger = Trim(entryNode.at("trigger").get<std::string>());
-                entry.hint = Trim(entryNode.at("hint").get<std::string>());
+                entry.code = ToUpper(Utils::Trim(entryNode.at("code").get<std::string>()));
+                entry.message = Utils::Trim(entryNode.at("message").get<std::string>());
+                entry.trigger = Utils::Trim(entryNode.at("trigger").get<std::string>());
+                entry.hint = Utils::Trim(entryNode.at("hint").get<std::string>());
                 if (entry.code.empty() || entry.message.empty() || entry.hint.empty()) {
                     throw std::runtime_error("errors catalog entries require code, message and hint.");
                 }
@@ -304,12 +294,12 @@ namespace Zeri::Core {
 
             for (const auto& languageNode : languagesJson.at("languages")) {
                 CatalogLanguageRecord language;
-                language.id = ToLower(Trim(languageNode.at("id").get<std::string>()));
+                language.id = Utils::ToLower(Utils::Trim(languageNode.at("id").get<std::string>()));
                 language.aliases = JsonStringArray(languageNode.value("aliases", nlohmann::json::array()));
-                language.extension = ToLower(Trim(languageNode.at("extension").get<std::string>()));
-                language.folder = ToLower(Trim(languageNode.at("folder").get<std::string>()));
-                language.runtime = ToLower(Trim(languageNode.at("runtime").get<std::string>()));
-                language.context = ToLower(Trim(languageNode.at("context").get<std::string>()));
+                language.extension = Utils::ToLower(Utils::Trim(languageNode.at("extension").get<std::string>()));
+                language.folder = Utils::ToLower(Utils::Trim(languageNode.at("folder").get<std::string>()));
+                language.runtime = Utils::ToLower(Utils::Trim(languageNode.at("runtime").get<std::string>()));
+                language.context = Utils::ToLower(Utils::Trim(languageNode.at("context").get<std::string>()));
                 if (
                     language.id.empty() || language.extension.empty() || language.folder.empty() ||
                     language.runtime.empty() || language.context.empty()
@@ -326,7 +316,7 @@ namespace Zeri::Core {
                 m_languages.push_back(language);
 
                 auto registerAlias = [this, index](std::string aliasRaw) {
-                    const std::string alias = ToLower(Trim(aliasRaw));
+                    const std::string alias = Utils::ToLower(Utils::Trim(aliasRaw));
                     if (alias.empty()) {
                         return;
                     }
@@ -349,8 +339,8 @@ namespace Zeri::Core {
 
             for (const auto& bridgeTypeNode : bridgeTypesJson.at("types")) {
                 CatalogBridgeTypeRecord bridgeType;
-                bridgeType.id = ToUpper(Trim(bridgeTypeNode.at("id").get<std::string>()));
-                bridgeType.value = ToLower(Trim(bridgeTypeNode.at("value").get<std::string>()));
+                bridgeType.id = ToUpper(Utils::Trim(bridgeTypeNode.at("id").get<std::string>()));
+                bridgeType.value = Utils::ToLower(Utils::Trim(bridgeTypeNode.at("value").get<std::string>()));
                 if (bridgeType.id.empty() || bridgeType.value.empty()) {
                     throw std::runtime_error("bridge types catalog entries require id and value.");
                 }
@@ -368,15 +358,6 @@ namespace Zeri::Core {
         }
     }
 
-    std::string CatalogRegistry::ToLower(std::string_view value) {
-        std::string result;
-        result.reserve(value.size());
-        for (char c : value) {
-            result.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-        }
-        return result;
-    }
-
     std::string CatalogRegistry::ToUpper(std::string_view value) {
         std::string result;
         result.reserve(value.size());
@@ -387,7 +368,7 @@ namespace Zeri::Core {
     }
 
     std::string CatalogRegistry::ExtractBaseCommand(std::string_view command) {
-        const std::string lowered = ToLower(Trim(command));
+        const std::string lowered = Utils::ToLower(Utils::Trim(command));
         if (!lowered.starts_with('/')) {
             return lowered;
         }
@@ -399,7 +380,7 @@ namespace Zeri::Core {
     }
 
     bool CatalogRegistry::HasOwner(const CatalogCommandRecord& command, std::string_view owner) {
-        const std::string normalized = ToLower(owner);
+        const std::string normalized = Utils::ToLower(owner);
         return std::ranges::find(command.owners, normalized) != command.owners.end();
     }
 
