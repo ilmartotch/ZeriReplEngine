@@ -1534,7 +1534,6 @@ int RunMain(int argc, char* argv[]) {
 
     Zeri::Engines::Defaults::PluginLoader pluginLoader(runtimeState, terminal);
     Zeri::Engines::Defaults::LuaPluginLoader luaPluginLoader(runtimeState, terminal);
-    const auto pluginDirectory = Zeri::Engines::Defaults::PluginLoader::ResolveDefaultPluginDirectory();
     bool deferredBackgroundStarted = false;
     std::atomic<bool> executionInProgress{ false };
     std::atomic<Zeri::Engines::IContext*> activeExecutionContext{ nullptr };
@@ -1582,8 +1581,6 @@ int RunMain(int argc, char* argv[]) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(500));
                 runtimeState.GetModuleManager().StartBackgroundScan();
             }).detach();
-            pluginLoader.LoadAll(pluginDirectory);
-            luaPluginLoader.LoadAll(pluginDirectory);
         }
 
         if (HandleBridgeRequest(

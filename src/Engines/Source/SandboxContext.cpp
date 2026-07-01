@@ -321,7 +321,6 @@ namespace Zeri::Engines::Defaults {
                 "  /save - Save session state to disk\n"
                 "  /clear - Clear the chat history\n"
                 "  /status - Show engine diagnostics\n"
-                "  /plugins - List loaded plugins\n"
                 "  /reset - Reset the current session\n"
                 "  /bug report - Show bug-report instructions\n"
                 "  /exit - Exit the REPL\n"

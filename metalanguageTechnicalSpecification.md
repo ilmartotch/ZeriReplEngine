@@ -64,7 +64,6 @@ Zeri uses a context-driven REPL meta-language. Each input line is parsed and dis
 The following are intentionally not part of the current implementation and are reserved for future revisions:
 
 - Script metadata headers interpreted by the REPL
-- Plugin hooks that modify parser behavior
 - Named argument syntax in function calls at parser level
 - Operator overloading
 - Command chaining or any pipeline syntax
